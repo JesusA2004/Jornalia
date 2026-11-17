@@ -1,7 +1,6 @@
 <?php
 
-test('returns a successful response', function () {
-    $response = $this->get(route('home'));
-
-    $response->assertOk();
+test('la raíz lleva al panel y, sin sesión, al inicio de sesión', function () {
+    $this->get('/')->assertRedirect('/dashboard');
+    $this->get('/dashboard')->assertRedirect(route('login'));
 });

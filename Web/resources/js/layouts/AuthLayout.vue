@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import AuthLayout from '@/layouts/auth/AuthSimpleLayout.vue';
+import { Toaster } from '@/components/ui/sonner';
+import AuthLayout from '@/layouts/auth/AuthSplitLayout.vue';
 
 const { title = '', description = '' } = defineProps<{
     title?: string;
@@ -11,4 +12,5 @@ const { title = '', description = '' } = defineProps<{
     <AuthLayout :title="title" :description="description">
         <slot />
     </AuthLayout>
+    <Toaster position="top-right" />
 </template>

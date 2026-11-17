@@ -3,12 +3,15 @@ import { initializeTheme } from '@/composables/useAppearance';
 import AppLayout from '@/layouts/AppLayout.vue';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
+import { APP_TITLE } from '@/lib/brand';
 import { initializeFlashToast } from '@/lib/flashToast';
 
-const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+const envName = import.meta.env.VITE_APP_NAME;
+// Nunca mostrar el nombre por defecto del framework.
+const appName = envName && envName !== 'Laravel' ? String(envName) : APP_TITLE;
 
 void createInertiaApp({
-    title: (title) => (title ? `${title} - ${appName}` : appName),
+    title: (title) => (title ? `${title} · ${appName}` : appName),
     layout: (name) => {
         switch (true) {
             case name === 'Welcome':
@@ -31,12 +34,14 @@ void createInertiaApp({
         });
     },
     progress: {
-        color: '#4B5563',
+        // Sobrescrito por el token --progress en app.css (tema claro/oscuro).
+        color: '#A0E04E',
+        delay: 150,
     },
 });
 
-// This will set light / dark mode on page load...
+// Aplica el tema claro/oscuro al cargar.
 initializeTheme();
 
-// This will listen for flash toast data from the server...
+// Escucha avisos flash del servidor (toasts).
 initializeFlashToast();

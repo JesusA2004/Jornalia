@@ -1,66 +1,54 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
-import { BookOpen, FolderGit2, LayoutGrid } from '@lucide/vue';
 import AppLogo from '@/components/AppLogo.vue';
-import NavFooter from '@/components/NavFooter.vue';
-import NavMain from '@/components/NavMain.vue';
+import SidebarNav from '@/components/layout/SidebarNav.vue';
 import NavUser from '@/components/NavUser.vue';
 import {
     Sidebar,
     SidebarContent,
     SidebarFooter,
     SidebarHeader,
-    SidebarMenu,
-    SidebarMenuButton,
-    SidebarMenuItem,
+    SidebarRail,
 } from '@/components/ui/sidebar';
-import { dashboard } from '@/routes';
-import type { NavItem } from '@/types';
+import { useNavigation } from '@/composables/useNavigation';
+import { BRAND } from '@/lib/brand';
 
-const mainNavItems: NavItem[] = [
-    {
-        title: 'Dashboard',
-        href: dashboard(),
-        icon: LayoutGrid,
-    },
-];
-
-const footerNavItems: NavItem[] = [
-    {
-        title: 'Repository',
-        href: 'https://github.com/laravel/vue-starter-kit',
-        icon: FolderGit2,
-    },
-    {
-        title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#vue',
-        icon: BookOpen,
-    },
-];
+const { groups } = useNavigation();
 </script>
 
 <template>
     <Sidebar collapsible="icon" variant="inset">
-        <SidebarHeader>
-            <SidebarMenu>
-                <SidebarMenuItem>
-                    <SidebarMenuButton size="lg" as-child>
-                        <Link :href="dashboard()">
-                            <AppLogo />
-                        </Link>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
-            </SidebarMenu>
+        <SidebarHeader class="relative px-3 pt-4 pb-3">
+            <Link
+                href="/dashboard"
+                aria-label="Ir al panel"
+                class="flex h-12 items-center rounded-xl px-1.5 outline-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            >
+                <AppLogo
+                    size="md"
+                    inverted
+                    class="group-data-[collapsible=icon]:hidden"
+                />
+                <img
+                    :src="BRAND.iconSmallUrl"
+                    :alt="BRAND.name"
+                    class="hidden size-8 rounded-lg group-data-[collapsible=icon]:block"
+                />
+            </Link>
+            <span
+                class="pointer-events-none absolute inset-x-4 bottom-0 h-px bg-brand-gradient opacity-60 group-data-[collapsible=icon]:inset-x-2"
+                aria-hidden="true"
+            />
         </SidebarHeader>
 
-        <SidebarContent>
-            <NavMain :items="mainNavItems" />
+        <SidebarContent class="gap-1 pt-2 pb-4">
+            <SidebarNav :groups="groups" />
         </SidebarContent>
 
-        <SidebarFooter>
-            <NavFooter :items="footerNavItems" />
+        <SidebarFooter class="border-t border-sidebar-border pt-2">
             <NavUser />
         </SidebarFooter>
+        <SidebarRail />
     </Sidebar>
     <slot />
 </template>

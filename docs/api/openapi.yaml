@@ -1,0 +1,1134 @@
+openapi: 3.1.0
+info:
+  title: MR LANA Asistencias — API v1
+  version: 1.0.0
+  description: |
+    API REST para la app móvil. Fuente de verdad de tipos: `packages/contracts/src/api.ts`.
+    Fechas-hora ISO-8601 UTC con `Z`; fechas `YYYY-MM-DD`; duraciones en minutos enteros.
+    Respuestas correctas `{ data, meta? }`; errores `ApiError`.
+    Los marcajes son append-only: no existen operaciones PUT/PATCH/DELETE sobre ellos.
+servers:
+  - url: http://127.0.0.1:8000/api/v1
+    description: Desarrollo local
+security:
+  - bearer: []
+tags:
+  - name: Autenticación
+  - name: Perfil
+  - name: Asistencia
+  - name: Solicitudes
+  - name: Calendario
+  - name: Notificaciones
+  - name: Dispositivos
+  - name: Ubicación
+  - name: Sistema
+
+paths:
+  /health:
+    get:
+      tags: [Sistema]
+      summary: Estado del servicio (público)
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthEnvelope' }
+
+  /auth/login:
+    post:
+      tags: [Autenticación]
+      summary: Inicia sesión y vincula el dispositivo
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Sesión iniciada
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: '#/components/schemas/LoginResponse' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/refresh:
+    post:
+      tags: [Autenticación]
+      summary: Rota el token actual
+      responses:
+        '200':
+          description: Token nuevo (el anterior queda revocado)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: '#/components/schemas/RefreshResponse' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /auth/logout:
+    post:
+      tags: [Autenticación]
+      summary: Revoca el token actual
+      responses:
+        '204': { description: Sesión cerrada }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /profile:
+    get:
+      tags: [Perfil]
+      summary: Perfil del colaborador y acuses pendientes
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: '#/components/schemas/Profile' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /acknowledgements/{id}:
+    post:
+      tags: [Perfil]
+      summary: Registra el acuse (inmutable, idempotente) de un documento publicado
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AcknowledgeRequest' }
+      responses:
+        '204': { description: Acuse registrado }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  /attendance/today:
+    get:
+      tags: [Asistencia]
+      summary: Jornada de hoy, política y resumen semanal
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: '#/components/schemas/TodayResponse' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /attendance/policy:
+    get:
+      tags: [Asistencia]
+      summary: Política de marcaje efectiva
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: '#/components/schemas/AttendancePolicy' } }
+
+  /attendance/challenge:
+    post:
+      tags: [Asistencia]
+      summary: Nonce de un solo uso (TTL 120 s) para el dispositivo del token
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: '#/components/schemas/ChallengeResponse' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '423': { $ref: '#/components/responses/DevicePending' }
+
+  /attendance/punches:
+    post:
+      tags: [Asistencia]
+      summary: Registra un marcaje firmado (idempotente por client_uuid)
+      description: |
+        `signature = hex(HMAC_SHA256(base64decode(device_secret), client_uuid|type|device_time|nonce|device_uuid))`,
+        con `device_time` exactamente como se envía y `nonce` vacío si es null.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PunchRequest' }
+      responses:
+        '201':
+          description: Marcaje creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PunchReceiptEnvelope' }
+        '200':
+          description: Duplicado idempotente (mismo client_uuid)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PunchReceiptEnvelope' }
+        '401': { $ref: '#/components/responses/InvalidSignature' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '423': { $ref: '#/components/responses/DevicePending' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /attendance/punches/{uuid}:
+    get:
+      tags: [Asistencia]
+      summary: Comprobante de un marcaje propio
+      parameters:
+        - { name: uuid, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PunchReceiptEnvelope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /attendance/history:
+    get:
+      tags: [Asistencia]
+      summary: Historial diario (descendente), paginado por días
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date }, description: 'Por defecto: to − 29 días' }
+        - { name: to, in: query, schema: { type: string, format: date }, description: 'Por defecto: hoy' }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 31, default: 15 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/HistoryDay' } }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  /sync/punches:
+    post:
+      tags: [Asistencia]
+      summary: Sincroniza un lote de marcajes offline (resultado por elemento)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SyncRequest' }
+      responses:
+        '200':
+          description: Resultados por elemento
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: '#/components/schemas/SyncResponse' } }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  /rectifications:
+    get:
+      tags: [Solicitudes]
+      summary: Mis solicitudes de rectificación
+      parameters: [ { $ref: '#/components/parameters/page' }, { $ref: '#/components/parameters/perPage' } ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Rectification' } }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+    post:
+      tags: [Solicitudes]
+      summary: Solicita una rectificación (no altera el marcaje original)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RectificationRequest' }
+          multipart/form-data:
+            schema:
+              allOf:
+                - { $ref: '#/components/schemas/RectificationRequest' }
+                - type: object
+                  properties: { evidence: { type: string, format: binary, description: 'pdf/jpg/png/heic/webp ≤ 10 MB' } }
+      responses:
+        '201':
+          description: Creada
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: '#/components/schemas/Rectification' } }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  /incidence-types:
+    get:
+      tags: [Solicitudes]
+      summary: Tipos de incidencia que el colaborador puede solicitar
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { type: array, items: { $ref: '#/components/schemas/IncidenceType' } } }
+
+  /incidences:
+    get:
+      tags: [Solicitudes]
+      summary: Mis incidencias
+      parameters: [ { $ref: '#/components/parameters/page' }, { $ref: '#/components/parameters/perPage' } ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Incidence' } }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+    post:
+      tags: [Solicitudes]
+      summary: Registra una incidencia (evidencia obligatoria si el tipo la requiere)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IncidenceRequest' }
+          multipart/form-data:
+            schema:
+              allOf:
+                - { $ref: '#/components/schemas/IncidenceRequest' }
+                - type: object
+                  properties: { evidence: { type: string, format: binary } }
+      responses:
+        '201':
+          description: Creada
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: '#/components/schemas/Incidence' } }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  /vacations/balance:
+    get:
+      tags: [Solicitudes]
+      summary: Saldo de vacaciones del año de servicio (LFT arts. 76–81)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: '#/components/schemas/VacationBalance' } }
+
+  /vacations:
+    get:
+      tags: [Solicitudes]
+      summary: Mis solicitudes de vacaciones
+      parameters: [ { $ref: '#/components/parameters/page' }, { $ref: '#/components/parameters/perPage' } ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/VacationRequest' } }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+    post:
+      tags: [Solicitudes]
+      summary: Solicita vacaciones
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VacationRequestBody' }
+      responses:
+        '201':
+          description: Creada
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: '#/components/schemas/VacationRequest' } }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  /vacations/{id}/cancel:
+    post:
+      tags: [Solicitudes]
+      summary: Cancela una solicitud propia (pendiente o aprobada futura)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Cancelada
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: '#/components/schemas/VacationRequest' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  /calendar:
+    get:
+      tags: [Calendario]
+      summary: Calendario mensual (turnos, descansos, festivos, vacaciones, incidencias)
+      parameters:
+        - { name: month, in: query, schema: { type: string, pattern: '^\d{4}-\d{2}$' }, description: 'Por defecto: mes actual' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: '#/components/schemas/CalendarResponse' } }
+
+  /notifications:
+    get:
+      tags: [Notificaciones]
+      summary: Mis notificaciones
+      parameters: [ { $ref: '#/components/parameters/page' }, { $ref: '#/components/parameters/perPage' } ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/AppNotification' } }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+
+  /notifications/{id}/read:
+    post:
+      tags: [Notificaciones]
+      summary: Marca una notificación como leída
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: OK }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /notifications/read-all:
+    post:
+      tags: [Notificaciones]
+      summary: Marca todas como leídas
+      responses:
+        '204': { description: OK }
+
+  /devices:
+    get:
+      tags: [Dispositivos]
+      summary: Mis dispositivos en la organización activa
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { type: array, items: { $ref: '#/components/schemas/Device' } } }
+
+  /devices/push-token:
+    post:
+      tags: [Dispositivos]
+      summary: Registra el token Expo Push de un dispositivo propio
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PushTokenRequest' }
+      responses:
+        '204': { description: OK }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  /location/points:
+    post:
+      tags: [Ubicación]
+      summary: Envía un lote de 1 a 50 puntos de ubicación (sólo dentro de la ventana de jornada)
+      description: Requiere el dispositivo del token aprobado. Cada punto se acepta, deduplica (uuid) o rechaza por separado. Límite 30 lotes/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LocationBatchRequest' }
+      responses:
+        '200':
+          description: Resultado del lote
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: '#/components/schemas/LocationBatchResponse' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '423': { $ref: '#/components/responses/DevicePending' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /location/state:
+    get:
+      tags: [Ubicación]
+      summary: Último punto registrado y configuración de la ventana
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: '#/components/schemas/LocationState' } }
+
+  /face-verification/status:
+    get:
+      tags: [Sistema]
+      summary: Estado del módulo de verificación facial (available=false sin proveedor real)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties: { data: { $ref: '#/components/schemas/FaceVerificationStatus' } }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: Token Sanctum `device:{device_uuid}` emitido por /auth/login.
+
+  parameters:
+    page: { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+    perPage: { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+
+  responses:
+    Unauthenticated:
+      description: Token ausente, inválido o expirado (`unauthenticated`)
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    InvalidSignature:
+      description: Firma HMAC inválida (`invalid_signature`)
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    Forbidden:
+      description: '`forbidden`, `no_employment`, `device_revoked`, `device_unknown`'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    NotFound:
+      description: '`not_found` (también para recursos de otros usuarios u organizaciones)'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    Conflict:
+      description: '`challenge_used`, `challenge_expired`, `invalid_sequence`, `immutable_record`'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    ValidationFailed:
+      description: '`validation_failed` (con `errors`), `location_required`, `outside_geofence`, `policy_violation`'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    DevicePending:
+      description: Dispositivo aún no autorizado (`device_pending`)
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    RateLimited:
+      description: '`rate_limited`'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+
+  schemas:
+    IsoDateTime: { type: string, format: date-time, pattern: 'Z$', examples: ['2026-11-17T16:00:00Z'] }
+    IsoDate: { type: string, format: date, examples: ['2026-11-17'] }
+    PunchType: { type: string, enum: [clock_in, clock_out, break_start, break_end] }
+    ApprovalStatus: { type: string, enum: [pending, approved, rejected, cancelled] }
+    WorkdayStatus: { type: string, enum: [not_started, working, on_break, finished, rest_day, holiday, on_leave] }
+    AuthMethod: { type: string, enum: [device_biometric, device_credential, face_verification, web_session] }
+
+    ApiError:
+      type: object
+      required: [message, code]
+      properties:
+        message: { type: string }
+        code:
+          type: string
+          enum: [unauthenticated, forbidden, not_found, validation_failed, device_pending, device_revoked, device_unknown,
+                 invalid_signature, challenge_expired, challenge_used, duplicate_punch, invalid_sequence, location_required,
+                 outside_geofence, policy_violation, no_employment, rate_limited, immutable_record, server_error]
+        errors: { type: object, additionalProperties: { type: array, items: { type: string } } }
+
+    PaginationMeta:
+      type: object
+      required: [current_page, per_page, total, last_page]
+      properties:
+        current_page: { type: integer }
+        per_page: { type: integer }
+        total: { type: integer }
+        last_page: { type: integer }
+
+    HealthEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [status, time]
+          properties:
+            status: { const: ok }
+            time: { $ref: '#/components/schemas/IsoDateTime' }
+
+    DeviceInfo:
+      type: object
+      required: [device_uuid, name, platform, os_version, app_version, model, biometric_available]
+      properties:
+        device_uuid: { type: string, format: uuid }
+        name: { type: string }
+        platform: { type: string, enum: [android, ios, web] }
+        os_version: { type: [string, 'null'] }
+        app_version: { type: string }
+        model: { type: [string, 'null'] }
+        biometric_available: { type: boolean }
+
+    LoginRequest:
+      type: object
+      required: [email, password, device]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+        device: { $ref: '#/components/schemas/DeviceInfo' }
+
+    Device:
+      type: object
+      required: [id, device_uuid, name, platform, model, status, approved_at, revoked_at, last_seen_at, is_current]
+      properties:
+        id: { type: integer }
+        device_uuid: { type: string, format: uuid }
+        name: { type: string }
+        platform: { type: string, enum: [android, ios, web] }
+        model: { type: [string, 'null'] }
+        status: { type: string, enum: [pending, approved, revoked] }
+        approved_at: { type: [string, 'null'], format: date-time }
+        revoked_at: { type: [string, 'null'], format: date-time }
+        last_seen_at: { type: [string, 'null'], format: date-time }
+        is_current: { type: boolean }
+
+    LoginResponse:
+      type: object
+      required: [token, token_expires_at, device_secret, device, profile]
+      properties:
+        token: { type: string }
+        token_expires_at: { $ref: '#/components/schemas/IsoDateTime' }
+        device_secret: { type: [string, 'null'], description: 'base64 de 32 bytes; sólo al vincular o re-vincular' }
+        device: { $ref: '#/components/schemas/Device' }
+        profile: { $ref: '#/components/schemas/Profile' }
+
+    RefreshResponse:
+      type: object
+      required: [token, token_expires_at]
+      properties:
+        token: { type: string }
+        token_expires_at: { $ref: '#/components/schemas/IsoDateTime' }
+
+    AcknowledgementDocument:
+      type: object
+      required: [id, code, title, version, body_markdown, published_at]
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        title: { type: string }
+        version: { type: string }
+        body_markdown: { type: string }
+        published_at: { $ref: '#/components/schemas/IsoDateTime' }
+
+    Profile:
+      type: object
+      required: [user, organization, employee, pending_acknowledgements]
+      properties:
+        user:
+          type: object
+          required: [id, name, email]
+          properties: { id: { type: integer }, name: { type: string }, email: { type: string } }
+        organization:
+          type: object
+          required: [id, name, timezone]
+          properties: { id: { type: integer }, name: { type: string }, timezone: { type: string } }
+        employee:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [id, employee_number, full_name, first_name, position, department, branch, work_center, hire_date, supervisor, timezone]
+              properties:
+                id: { type: integer }
+                employee_number: { type: string }
+                full_name: { type: string }
+                first_name: { type: string }
+                position: { type: [string, 'null'] }
+                department: { type: [string, 'null'] }
+                branch: { type: [string, 'null'] }
+                work_center: { type: [string, 'null'] }
+                hire_date: { $ref: '#/components/schemas/IsoDate' }
+                supervisor: { type: [string, 'null'] }
+                timezone: { type: string }
+        pending_acknowledgements: { type: array, items: { $ref: '#/components/schemas/AcknowledgementDocument' } }
+
+    AcknowledgeRequest:
+      type: object
+      required: [accepted, device_uuid]
+      properties:
+        accepted: { const: true }
+        device_uuid: { type: string, format: uuid }
+
+    Geofence:
+      type: object
+      required: [id, name, latitude, longitude, radius_meters]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+        radius_meters: { type: integer }
+
+    AttendancePolicy:
+      type: object
+      required: [location_mode, allowed_auth_methods, require_strong_biometric, allow_offline, offline_max_hours, geofences, face_verification_enabled]
+      properties:
+        location_mode: { type: string, enum: [free, record, required, geofence, device_only] }
+        allowed_auth_methods: { type: array, items: { $ref: '#/components/schemas/AuthMethod' } }
+        require_strong_biometric: { type: boolean }
+        allow_offline: { type: boolean }
+        offline_max_hours: { type: integer }
+        geofences: { type: array, items: { $ref: '#/components/schemas/Geofence' } }
+        face_verification_enabled: { type: boolean }
+
+    LocationEvidence:
+      type: object
+      required: [latitude, longitude, accuracy_meters, captured_at, is_mocked]
+      properties:
+        latitude: { type: number }
+        longitude: { type: number }
+        accuracy_meters: { type: [number, 'null'] }
+        captured_at: { $ref: '#/components/schemas/IsoDateTime' }
+        is_mocked: { type: [boolean, 'null'] }
+
+    ChallengeResponse:
+      type: object
+      required: [nonce, expires_at]
+      properties:
+        nonce: { type: string }
+        expires_at: { $ref: '#/components/schemas/IsoDateTime' }
+
+    PunchRequest:
+      type: object
+      required: [client_uuid, type, device_time, timezone, device_uuid, auth_method, nonce, signature, captured_offline, location, face_verification_id]
+      properties:
+        client_uuid: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/PunchType' }
+        device_time: { type: string, description: 'ISO-8601; se firma tal cual se envía' }
+        timezone: { type: string, examples: ['America/Mexico_City'] }
+        device_uuid: { type: string, format: uuid }
+        auth_method: { type: string, enum: [device_biometric, device_credential, face_verification] }
+        nonce: { type: [string, 'null'], description: 'Obligatorio en línea; null offline' }
+        signature: { type: string, pattern: '^[a-f0-9]{64}$' }
+        captured_offline: { type: boolean }
+        location: { oneOf: [ { type: 'null' }, { $ref: '#/components/schemas/LocationEvidence' } ] }
+        face_verification_id: { type: [string, 'null'], format: uuid }
+
+    Punch:
+      type: object
+      required: [uuid, type, status, source, server_time, device_time, clock_skew_seconds, timezone, auth_method, captured_offline, anomalies, location, hash, sequence, rectified]
+      properties:
+        uuid: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/PunchType' }
+        status: { type: string, enum: [accepted, flagged] }
+        source: { type: string, enum: [mobile, mobile_offline, web, kiosk, import] }
+        server_time: { $ref: '#/components/schemas/IsoDateTime' }
+        device_time: { type: [string, 'null'], format: date-time }
+        clock_skew_seconds: { type: [integer, 'null'] }
+        timezone: { type: string }
+        auth_method: { $ref: '#/components/schemas/AuthMethod' }
+        captured_offline: { type: boolean }
+        anomalies:
+          type: array
+          items:
+            type: string
+            enum: [clock_skew, late_sync, mocked_location, outside_geofence, low_accuracy, no_location, out_of_sequence, outside_schedule, rest_day, holiday, offline_not_allowed]
+        location: { oneOf: [ { type: 'null' }, { $ref: '#/components/schemas/LocationEvidence' } ] }
+        hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        sequence: { type: integer }
+        rectified: { type: boolean }
+
+    ScheduledShift:
+      type: object
+      required: [date, starts_at, ends_at, kind, break_minutes, tolerance_minutes, schedule_name]
+      properties:
+        date: { $ref: '#/components/schemas/IsoDate' }
+        starts_at: { $ref: '#/components/schemas/IsoDateTime' }
+        ends_at: { $ref: '#/components/schemas/IsoDateTime' }
+        kind: { type: string, enum: [day, night, mixed] }
+        break_minutes: { type: integer }
+        tolerance_minutes: { type: integer }
+        schedule_name: { type: string }
+
+    IncidenceSummary:
+      type: object
+      required: [id, type_code, type_name, status]
+      properties:
+        id: { type: integer }
+        type_code: { type: string }
+        type_name: { type: string }
+        status: { $ref: '#/components/schemas/ApprovalStatus' }
+
+    Workday:
+      type: object
+      required: [date, status, shift, punches, next_expected, worked_minutes, break_minutes, late_minutes, excess_minutes, incidences]
+      properties:
+        date: { $ref: '#/components/schemas/IsoDate' }
+        status: { $ref: '#/components/schemas/WorkdayStatus' }
+        shift: { oneOf: [ { type: 'null' }, { $ref: '#/components/schemas/ScheduledShift' } ] }
+        punches: { type: array, items: { $ref: '#/components/schemas/Punch' } }
+        next_expected: { oneOf: [ { type: 'null' }, { $ref: '#/components/schemas/PunchType' } ], description: 'Sólo para hoy' }
+        worked_minutes: { type: integer }
+        break_minutes: { type: integer }
+        late_minutes: { type: integer }
+        excess_minutes: { type: integer }
+        incidences: { type: array, items: { $ref: '#/components/schemas/IncidenceSummary' } }
+
+    PunchReceipt:
+      type: object
+      required: [punch, receipt_code, workday]
+      properties:
+        punch: { $ref: '#/components/schemas/Punch' }
+        receipt_code: { type: string, description: 'Folio derivado del hash encadenado', examples: ['ML-3FA2-91BC-0D4E-17'] }
+        workday: { $ref: '#/components/schemas/Workday' }
+
+    PunchReceiptEnvelope:
+      type: object
+      required: [data]
+      properties: { data: { $ref: '#/components/schemas/PunchReceipt' } }
+
+    WeekSummary:
+      type: object
+      required: [week_start, worked_minutes, scheduled_minutes, legal_max_minutes, overtime_minutes, days]
+      properties:
+        week_start: { $ref: '#/components/schemas/IsoDate' }
+        worked_minutes: { type: integer }
+        scheduled_minutes: { type: integer }
+        legal_max_minutes: { type: integer }
+        overtime_minutes: { type: integer, description: 'Horas extra autorizadas de la semana' }
+        days:
+          type: array
+          items:
+            type: object
+            required: [date, status, worked_minutes]
+            properties:
+              date: { $ref: '#/components/schemas/IsoDate' }
+              status: { $ref: '#/components/schemas/WorkdayStatus' }
+              worked_minutes: { type: integer }
+
+    TodayResponse:
+      type: object
+      required: [workday, policy, week, server_time]
+      properties:
+        workday: { $ref: '#/components/schemas/Workday' }
+        policy: { $ref: '#/components/schemas/AttendancePolicy' }
+        week: { $ref: '#/components/schemas/WeekSummary' }
+        server_time: { $ref: '#/components/schemas/IsoDateTime' }
+
+    HistoryDay:
+      type: object
+      required: [date, status, worked_minutes, late_minutes, punches, rectifications]
+      properties:
+        date: { $ref: '#/components/schemas/IsoDate' }
+        status: { $ref: '#/components/schemas/WorkdayStatus' }
+        worked_minutes: { type: integer }
+        late_minutes: { type: integer }
+        punches: { type: array, items: { $ref: '#/components/schemas/Punch' } }
+        rectifications: { type: array, items: { $ref: '#/components/schemas/Rectification' } }
+
+    SyncRequest:
+      type: object
+      required: [punches]
+      properties:
+        punches: { type: array, minItems: 1, maxItems: 100, items: { $ref: '#/components/schemas/PunchRequest' } }
+
+    SyncItemResult:
+      oneOf:
+        - type: object
+          required: [client_uuid, result, punch]
+          properties:
+            client_uuid: { type: string }
+            result: { type: string, enum: [created, duplicate] }
+            punch: { $ref: '#/components/schemas/Punch' }
+        - type: object
+          required: [client_uuid, result, error]
+          properties:
+            client_uuid: { type: string }
+            result: { const: rejected }
+            error: { $ref: '#/components/schemas/ApiError' }
+
+    SyncResponse:
+      type: object
+      required: [results]
+      properties:
+        results: { type: array, items: { $ref: '#/components/schemas/SyncItemResult' } }
+
+    Rectification:
+      type: object
+      required: [id, date, punch_uuid, kind, proposed_type, proposed_time, reason, status, reviewer, review_comment, reviewed_at, created_at]
+      properties:
+        id: { type: integer }
+        date: { $ref: '#/components/schemas/IsoDate' }
+        punch_uuid: { type: [string, 'null'], format: uuid }
+        kind: { type: string, enum: [missing_punch, wrong_type, time_clarification, other] }
+        proposed_type: { oneOf: [ { type: 'null' }, { $ref: '#/components/schemas/PunchType' } ] }
+        proposed_time: { type: [string, 'null'], format: date-time }
+        reason: { type: string }
+        status: { $ref: '#/components/schemas/ApprovalStatus' }
+        reviewer: { type: [string, 'null'] }
+        review_comment: { type: [string, 'null'] }
+        reviewed_at: { type: [string, 'null'], format: date-time }
+        created_at: { $ref: '#/components/schemas/IsoDateTime' }
+
+    RectificationRequest:
+      type: object
+      required: [date, kind, reason]
+      properties:
+        date: { $ref: '#/components/schemas/IsoDate' }
+        punch_uuid: { type: [string, 'null'], format: uuid }
+        kind: { type: string, enum: [missing_punch, wrong_type, time_clarification, other] }
+        proposed_type: { oneOf: [ { type: 'null' }, { $ref: '#/components/schemas/PunchType' } ] }
+        proposed_time: { type: [string, 'null'], format: date-time }
+        reason: { type: string, minLength: 5, maxLength: 2000 }
+
+    IncidenceType:
+      type: object
+      required: [id, code, name, category, requires_evidence, requires_approval, employee_requestable]
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        name: { type: string }
+        category: { type: string, enum: [absence, leave, disability, vacation, time, other] }
+        requires_evidence: { type: boolean }
+        requires_approval: { type: boolean }
+        employee_requestable: { type: boolean }
+
+    Incidence:
+      type: object
+      required: [id, type, starts_on, ends_on, reason, status, has_evidence, reviewer, review_comment, created_at]
+      properties:
+        id: { type: integer }
+        type: { $ref: '#/components/schemas/IncidenceType' }
+        starts_on: { $ref: '#/components/schemas/IsoDate' }
+        ends_on: { $ref: '#/components/schemas/IsoDate' }
+        reason: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/ApprovalStatus' }
+        has_evidence: { type: boolean }
+        reviewer: { type: [string, 'null'] }
+        review_comment: { type: [string, 'null'] }
+        created_at: { $ref: '#/components/schemas/IsoDateTime' }
+
+    IncidenceRequest:
+      type: object
+      required: [incidence_type_id, starts_on, ends_on, reason]
+      properties:
+        incidence_type_id: { type: integer }
+        starts_on: { $ref: '#/components/schemas/IsoDate' }
+        ends_on: { $ref: '#/components/schemas/IsoDate' }
+        reason: { type: string }
+
+    VacationBalance:
+      type: object
+      required: [service_year, period_starts_on, period_ends_on, legal_days, extra_days, entitled_days, used_days, pending_days, available_days, vacation_premium_percent, rule_source]
+      properties:
+        service_year: { type: integer }
+        period_starts_on: { $ref: '#/components/schemas/IsoDate' }
+        period_ends_on: { $ref: '#/components/schemas/IsoDate' }
+        legal_days: { type: integer }
+        extra_days: { type: integer }
+        entitled_days: { type: integer }
+        used_days: { type: integer }
+        pending_days: { type: integer }
+        available_days: { type: integer }
+        vacation_premium_percent: { type: string, pattern: '^\d+\.\d{2}$' }
+        rule_source: { type: string }
+
+    VacationRequest:
+      type: object
+      required: [id, starts_on, ends_on, days, status, comment, reviewer, review_comment, created_at]
+      properties:
+        id: { type: integer }
+        starts_on: { $ref: '#/components/schemas/IsoDate' }
+        ends_on: { $ref: '#/components/schemas/IsoDate' }
+        days: { type: integer }
+        status: { $ref: '#/components/schemas/ApprovalStatus' }
+        comment: { type: [string, 'null'] }
+        reviewer: { type: [string, 'null'] }
+        review_comment: { type: [string, 'null'] }
+        created_at: { $ref: '#/components/schemas/IsoDateTime' }
+
+    VacationRequestBody:
+      type: object
+      required: [starts_on, ends_on]
+      properties:
+        starts_on: { $ref: '#/components/schemas/IsoDate' }
+        ends_on: { $ref: '#/components/schemas/IsoDate' }
+        comment: { type: [string, 'null'] }
+
+    CalendarResponse:
+      type: object
+      required: [month, entries]
+      properties:
+        month: { type: string, examples: ['2026-11'] }
+        entries:
+          type: array
+          items:
+            type: object
+            required: [date, kind, label, starts_at, ends_at]
+            properties:
+              date: { $ref: '#/components/schemas/IsoDate' }
+              kind: { type: string, enum: [shift, rest_day, holiday, vacation, leave, disability, incidence] }
+              label: { type: string }
+              starts_at: { type: [string, 'null'], format: date-time }
+              ends_at: { type: [string, 'null'], format: date-time }
+
+    AppNotification:
+      type: object
+      required: [id, kind, title, body, read_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string }
+        title: { type: string }
+        body: { type: string }
+        read_at: { type: [string, 'null'], format: date-time }
+        created_at: { $ref: '#/components/schemas/IsoDateTime' }
+
+    PushTokenRequest:
+      type: object
+      required: [device_uuid, expo_push_token]
+      properties:
+        device_uuid: { type: string, format: uuid }
+        expo_push_token: { type: string, examples: ['ExponentPushToken[xxxxxxxx]'] }
+
+    FaceVerificationStatus:
+      type: object
+      required: [available, provider, enrolled, consent_required]
+      properties:
+        available: { type: boolean }
+        provider: { type: [string, 'null'] }
+        enrolled: { type: boolean }
+        consent_required: { type: boolean }
+
+    LocationPoint:
+      type: object
+      required: [uuid, latitude, longitude, accuracy_m, heading, speed_mps, altitude_m, captured_at, app_state, is_mocked]
+      properties:
+        uuid: { type: string, format: uuid }
+        latitude: { type: number }
+        longitude: { type: number }
+        accuracy_m: { type: [number, 'null'] }
+        heading: { type: [number, 'null'] }
+        speed_mps: { type: [number, 'null'] }
+        altitude_m: { type: [number, 'null'] }
+        captured_at: { $ref: '#/components/schemas/IsoDateTime' }
+        app_state: { type: string, enum: [foreground, background] }
+        is_mocked: { type: [boolean, 'null'] }
+
+    LocationSettings:
+      type: object
+      required: [window, interval_s, distance_m]
+      properties:
+        window:
+          type: object
+          required: [enabled, active_now, starts_at, ends_at, next_start_at, timezone]
+          properties:
+            enabled: { type: boolean }
+            active_now: { type: boolean }
+            starts_at: { type: [string, 'null'], format: date-time }
+            ends_at: { type: [string, 'null'], format: date-time }
+            next_start_at: { type: [string, 'null'], format: date-time }
+            timezone: { type: string }
+        interval_s:
+          type: object
+          required: [foreground, background]
+          properties: { foreground: { type: integer }, background: { type: integer } }
+        distance_m:
+          type: object
+          required: [foreground, background]
+          properties: { foreground: { type: integer }, background: { type: integer } }
+
+    LocationBatchRequest:
+      type: object
+      required: [points]
+      properties:
+        points: { type: array, minItems: 1, maxItems: 50, items: { $ref: '#/components/schemas/LocationPoint' } }
+
+    LocationBatchResponse:
+      type: object
+      required: [accepted, duplicates, rejected, rejections, settings]
+      properties:
+        accepted: { type: integer }
+        duplicates: { type: integer }
+        rejected: { type: integer }
+        rejections:
+          type: array
+          items:
+            type: object
+            required: [index, uuid, code]
+            properties:
+              index: { type: integer }
+              uuid: { type: [string, 'null'], format: uuid }
+              code: { type: string, enum: [invalid_point, invalid_coordinates, invalid_accuracy, future_time, too_old, outside_window] }
+        settings: { $ref: '#/components/schemas/LocationSettings' }
+
+    LocationState:
+      type: object
+      required: [last, settings]
+      properties:
+        last:
+          oneOf:
+            - type: 'null'
+            - allOf:
+                - { $ref: '#/components/schemas/LocationPoint' }
+                - type: object
+                  required: [received_at]
+                  properties: { received_at: { $ref: '#/components/schemas/IsoDateTime' } }
+        settings: { $ref: '#/components/schemas/LocationSettings' }

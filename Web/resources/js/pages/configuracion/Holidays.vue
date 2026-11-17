@@ -1,0 +1,521 @@
+<script setup lang="ts">
+import { router, useForm } from '@inertiajs/vue3';
+import {
+    Archive,
+    Building,
+    CalendarHeart,
+    Check,
+    Landmark,
+    Lock,
+    MapPin,
+    Pencil,
+    Plus,
+    RotateCcw,
+} from '@lucide/vue';
+import { computed, ref } from 'vue';
+import HolidayController from '@/actions/App/Http/Controllers/Web/Admin/HolidayController';
+import ConfirmDialog from '@/components/app/ConfirmDialog.vue';
+import DatePicker from '@/components/app/DatePicker.vue';
+import EmptyState from '@/components/app/EmptyState.vue';
+import FormField from '@/components/app/FormField.vue';
+import PageHeader from '@/components/app/PageHeader.vue';
+import SelectField from '@/components/app/SelectField.vue';
+import StatusBadge from '@/components/app/StatusBadge.vue';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+    Sheet,
+    SheetContent,
+    SheetDescription,
+    SheetFooter,
+    SheetHeader,
+    SheetTitle,
+} from '@/components/ui/sheet';
+import { Spinner } from '@/components/ui/spinner';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { cn } from '@/lib/utils';
+import type { Tone } from '@/types';
+import InactiveToggle from './components/InactiveToggle.vue';
+import SettingsNav from './components/SettingsNav.vue';
+import ToggleRow from './components/ToggleRow.vue';
+import { civilDate } from './format';
+import type { HolidayRow, ManageCan, Option } from './types';
+
+defineOptions({
+    layout: {
+        breadcrumbs: [
+            { title: 'Administración' },
+            { title: 'Configuración', href: '/configuracion' },
+            { title: 'Festivos' },
+        ],
+    },
+});
+
+const props = defineProps<{
+    year: number;
+    years: number[];
+    holidays: HolidayRow[];
+    work_centers: Option[];
+    can: ManageCan;
+}>();
+
+const yearOptions = computed<Option[]>(() =>
+    [...new Set([...props.years, props.year - 1, props.year + 1])]
+        .sort((a, b) => a - b)
+        .map((y) => ({ value: String(y), label: String(y) })),
+);
+
+const selectedYear = computed<string | null>({
+    get: () => String(props.year),
+    set: (value) => {
+        if (value) {
+            router.get(
+                HolidayController.index.url({ query: { year: value } }),
+                {},
+                { preserveScroll: true, preserveState: true },
+            );
+        }
+    },
+});
+
+const showInactive = ref(false);
+const kindFilter = ref<string>('all');
+const inactiveCount = computed(
+    () => props.holidays.filter((h) => h.deleted).length,
+);
+
+const KIND: Record<
+    HolidayRow['kind'],
+    { label: string; tone: Tone; icon: typeof Landmark }
+> = {
+    official: { label: 'Oficial', tone: 'brand', icon: Landmark },
+    company: { label: 'Empresa', tone: 'info', icon: Building },
+    local: { label: 'Local', tone: 'primary', icon: MapPin },
+};
+
+const months = computed(() => {
+    const groups = new Map<number, HolidayRow[]>();
+
+    for (const h of props.holidays) {
+        if (
+            (!showInactive.value && h.deleted) ||
+            (kindFilter.value !== 'all' && h.kind !== kindFilter.value)
+        ) {
+            continue;
+        }
+
+        const month = Number(h.date.slice(5, 7));
+        groups.set(month, [...(groups.get(month) ?? []), h]);
+    }
+
+    return [...groups.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([month, items]) => ({
+            month,
+            label: civilDate(
+                `${props.year}-${String(month).padStart(2, '0')}-01`,
+                { month: 'long' },
+            ),
+            items,
+        }));
+});
+
+const counts = computed(() => ({
+    official: props.holidays.filter((h) => h.kind === 'official' && !h.deleted)
+        .length,
+    company: props.holidays.filter((h) => h.kind !== 'official' && !h.deleted)
+        .length,
+}));
+
+type HolidayForm = {
+    date: string | null;
+    name: string;
+    kind: 'company' | 'local';
+    work_center_id: string | null;
+    is_mandatory_rest: boolean;
+    legal_basis: string;
+};
+
+const blank = (): HolidayForm => ({
+    date: null,
+    name: '',
+    kind: 'company',
+    work_center_id: null,
+    is_mandatory_rest: true,
+    legal_basis: '',
+});
+
+const open = ref(false);
+const editing = ref<HolidayRow | null>(null);
+const form = useForm<HolidayForm>(blank());
+
+function create(): void {
+    editing.value = null;
+    form.defaults(blank());
+    form.reset();
+    form.clearErrors();
+    open.value = true;
+}
+
+function edit(h: HolidayRow): void {
+    editing.value = h;
+    form.defaults({
+        date: h.date,
+        name: h.name,
+        kind: h.kind === 'local' ? 'local' : 'company',
+        work_center_id: h.work_center_id ? String(h.work_center_id) : null,
+        is_mandatory_rest: h.is_mandatory_rest,
+        legal_basis: h.legal_basis ?? '',
+    });
+    form.reset();
+    form.clearErrors();
+    open.value = true;
+}
+
+function submit(): void {
+    const options = {
+        preserveScroll: true,
+        onSuccess: () => (open.value = false),
+    };
+    const payload = form.transform((data) => ({
+        ...data,
+        work_center_id: data.kind === 'local' ? data.work_center_id : null,
+        legal_basis: data.legal_basis || null,
+    }));
+
+    if (editing.value) {
+        payload.put(HolidayController.update.url(editing.value.id), options);
+    } else {
+        payload.post(HolidayController.store.url(), options);
+    }
+}
+
+const kindModel = computed<string>({
+    get: () => form.kind,
+    set: (v) => {
+        if (v === 'company' || v === 'local') {
+            form.kind = v;
+        }
+    },
+});
+
+const target = ref<HolidayRow | null>(null);
+const confirmOpen = ref(false);
+
+function askDeactivate(h: HolidayRow): void {
+    target.value = h;
+    confirmOpen.value = true;
+}
+
+function deactivate(): void {
+    if (target.value) {
+        router.post(
+            HolidayController.deactivate.url(target.value.id),
+            {},
+            { preserveScroll: true },
+        );
+    }
+}
+
+function restore(h: HolidayRow): void {
+    router.post(
+        HolidayController.restore.url(h.id),
+        {},
+        { preserveScroll: true },
+    );
+}
+
+const help = [
+    {
+        title: 'Oficiales',
+        text: 'Los de la LFT art. 74 se generan solos y no se modifican.',
+        icon: Landmark,
+    },
+    {
+        title: 'De empresa',
+        text: 'Descansos que otorga la empresa a todo el personal.',
+        icon: Building,
+    },
+    {
+        title: 'Locales',
+        text: 'Aplican sólo al centro de trabajo elegido (fiestas estatales o municipales).',
+        icon: MapPin,
+    },
+];
+</script>
+
+<template>
+    <PageHeader
+        title="Configuración"
+        description="Días festivos y de descanso obligatorio."
+        :icon="CalendarHeart"
+        :help="help"
+        help-title="Festivos"
+    />
+
+    <SettingsNav />
+
+    <div class="mb-4 flex flex-wrap items-center gap-2">
+        <SelectField
+            v-model="selectedYear"
+            :options="yearOptions"
+            prefix="Año:"
+            size="sm"
+            class="w-32"
+        />
+        <ToggleGroup
+            v-model="kindFilter"
+            type="single"
+            variant="outline"
+            size="sm"
+        >
+            <ToggleGroupItem value="all">Todos</ToggleGroupItem>
+            <ToggleGroupItem value="official"
+                >Oficiales · {{ counts.official }}</ToggleGroupItem
+            >
+            <ToggleGroupItem value="company">Empresa</ToggleGroupItem>
+            <ToggleGroupItem value="local">Locales</ToggleGroupItem>
+        </ToggleGroup>
+        <div class="ml-auto flex items-center gap-2">
+            <InactiveToggle v-model="showInactive" :count="inactiveCount" />
+            <Button v-if="can.manage" @click="create">
+                <Plus class="icon-sm" />
+                Agregar festivo
+            </Button>
+        </div>
+    </div>
+
+    <EmptyState
+        v-if="months.length === 0"
+        :icon="CalendarHeart"
+        bordered
+        class="rounded-2xl"
+        :title="`Sin festivos en ${year}`"
+        description="Agrega los festivos propios de la empresa o de un centro de trabajo."
+    />
+
+    <div v-else class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <section
+            v-for="group in months"
+            :key="group.month"
+            class="rounded-2xl border bg-card p-4 shadow-elev-1"
+        >
+            <h3
+                class="mb-3 font-display text-sm font-bold tracking-wide text-muted-foreground uppercase"
+            >
+                {{ group.label }}
+            </h3>
+            <ul class="grid gap-2">
+                <li
+                    v-for="h in group.items"
+                    :key="h.id"
+                    :class="
+                        cn(
+                            'flex items-start gap-3 rounded-xl border bg-surface-2/40 p-3',
+                            h.deleted && 'opacity-60',
+                        )
+                    "
+                >
+                    <div
+                        class="flex w-11 shrink-0 flex-col items-center rounded-lg bg-card py-1 shadow-elev-1 ring-1 ring-border"
+                    >
+                        <span
+                            class="font-display text-lg leading-none font-bold"
+                            >{{ Number(h.date.slice(8, 10)) }}</span
+                        >
+                        <span
+                            class="text-[0.625rem] text-muted-foreground uppercase"
+                            >{{ civilDate(h.date, { weekday: 'short' }) }}</span
+                        >
+                    </div>
+                    <div class="min-w-0 flex-1 space-y-1">
+                        <p class="leading-tight font-medium">{{ h.name }}</p>
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            <StatusBadge
+                                :status="h.kind"
+                                :label="KIND[h.kind].label"
+                                :tone="KIND[h.kind].tone"
+                                size="sm"
+                            />
+                            <span
+                                v-if="!h.is_mandatory_rest"
+                                class="text-xs text-muted-foreground"
+                                >No obligatorio</span
+                            >
+                            <StatusBadge
+                                v-if="h.deleted"
+                                status="inactive"
+                                label="Inactivo"
+                                size="sm"
+                            />
+                        </div>
+                        <p
+                            v-if="h.work_center"
+                            class="text-xs text-muted-foreground"
+                        >
+                            {{ h.work_center
+                            }}<template v-if="h.state">
+                                · {{ h.state }}</template
+                            >
+                        </p>
+                        <p
+                            v-if="h.legal_basis"
+                            class="flex items-center gap-1 text-xs text-muted-foreground"
+                        >
+                            <Lock
+                                v-if="h.kind === 'official'"
+                                class="icon-xs"
+                            />
+                            {{ h.legal_basis }}
+                        </p>
+                    </div>
+                    <div
+                        v-if="can.manage && h.editable"
+                        class="flex shrink-0 flex-col gap-1"
+                    >
+                        <Button
+                            v-if="h.deleted"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label="Reactivar"
+                            @click="restore(h)"
+                        >
+                            <RotateCcw class="icon-sm" />
+                        </Button>
+                        <template v-else>
+                            <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label="Editar"
+                                @click="edit(h)"
+                            >
+                                <Pencil class="icon-sm" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label="Desactivar"
+                                @click="askDeactivate(h)"
+                            >
+                                <Archive class="icon-sm" />
+                            </Button>
+                        </template>
+                    </div>
+                </li>
+            </ul>
+        </section>
+    </div>
+
+    <Sheet v-model:open="open">
+        <SheetContent class="flex w-full flex-col gap-0 sm:max-w-md">
+            <SheetHeader class="border-b">
+                <SheetTitle>{{
+                    editing ? 'Editar festivo' : 'Agregar festivo'
+                }}</SheetTitle>
+                <SheetDescription
+                    >Se excluye del cálculo de faltas y
+                    vacaciones.</SheetDescription
+                >
+            </SheetHeader>
+            <form
+                id="holiday-form"
+                class="grid flex-1 content-start gap-5 overflow-y-auto p-5"
+                @submit.prevent="submit"
+            >
+                <FormField label="Tipo" required>
+                    <ToggleGroup
+                        v-model="kindModel"
+                        type="single"
+                        variant="outline"
+                        class="w-full"
+                    >
+                        <ToggleGroupItem value="company" class="flex-1"
+                            ><Building class="icon-sm" />
+                            Empresa</ToggleGroupItem
+                        >
+                        <ToggleGroupItem value="local" class="flex-1"
+                            ><MapPin class="icon-sm" /> Local</ToggleGroupItem
+                        >
+                    </ToggleGroup>
+                </FormField>
+                <FormField
+                    v-if="form.kind === 'local'"
+                    label="Centro de trabajo"
+                    :error="form.errors.work_center_id"
+                    required
+                    v-slot="{ id }"
+                >
+                    <SelectField
+                        :id="id"
+                        v-model="form.work_center_id"
+                        :options="work_centers"
+                        placeholder="Selecciona el centro"
+                        :invalid="!!form.errors.work_center_id"
+                    />
+                </FormField>
+                <FormField
+                    label="Fecha"
+                    :error="form.errors.date"
+                    required
+                    v-slot="{ id }"
+                >
+                    <DatePicker
+                        :id="id"
+                        v-model="form.date"
+                        dropdowns
+                        :invalid="!!form.errors.date"
+                    />
+                </FormField>
+                <FormField
+                    label="Nombre"
+                    :error="form.errors.name"
+                    required
+                    v-slot="{ id }"
+                >
+                    <Input
+                        :id="id"
+                        v-model="form.name"
+                        placeholder="Aniversario de la empresa"
+                    />
+                </FormField>
+                <FormField
+                    label="Fundamento"
+                    :error="form.errors.legal_basis"
+                    hint="Opcional"
+                    v-slot="{ id }"
+                >
+                    <Input
+                        :id="id"
+                        v-model="form.legal_basis"
+                        placeholder="Contrato colectivo, cláusula 12"
+                    />
+                </FormField>
+                <ToggleRow
+                    v-model="form.is_mandatory_rest"
+                    label="Descanso obligatorio"
+                    description="Trabajarlo genera pago adicional."
+                />
+            </form>
+            <SheetFooter class="border-t">
+                <Button
+                    type="submit"
+                    form="holiday-form"
+                    :disabled="form.processing"
+                >
+                    <Spinner v-if="form.processing" />
+                    <Check v-else class="icon-sm" />
+                    {{ editing ? 'Guardar cambios' : 'Agregar' }}
+                </Button>
+            </SheetFooter>
+        </SheetContent>
+    </Sheet>
+
+    <ConfirmDialog
+        v-model:open="confirmOpen"
+        tone="danger"
+        :title="`¿Desactivar «${target?.name ?? ''}»?`"
+        description="Dejará de considerarse festivo; podrás reactivarlo."
+        confirm-label="Desactivar"
+        @confirm="deactivate"
+    />
+</template>

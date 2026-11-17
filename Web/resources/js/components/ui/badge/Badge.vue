@@ -7,12 +7,13 @@ import { Primitive } from "reka-ui"
 import { cn } from "@/lib/utils"
 import { badgeVariants } from "."
 
-const props = defineProps<PrimitiveProps & {
+// Por defecto <span>: la insignia es en línea y puede ir dentro de <p> sin romper la hidratación.
+const props = withDefaults(defineProps<PrimitiveProps & {
   variant?: BadgeVariants["variant"]
   class?: HTMLAttributes["class"]
-}>()
+}>(), { as: "span" })
 
-const delegatedProps = reactiveOmit(props, "class")
+const delegatedProps = reactiveOmit(props, "class", "variant")
 </script>
 
 <template>

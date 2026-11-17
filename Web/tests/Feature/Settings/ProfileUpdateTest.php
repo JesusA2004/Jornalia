@@ -3,7 +3,7 @@
 use App\Models\User;
 
 test('profile page is displayed', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->withOrganization()->create();
 
     $response = $this
         ->actingAs($user)
@@ -13,7 +13,7 @@ test('profile page is displayed', function () {
 });
 
 test('profile information can be updated', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->withOrganization()->create();
 
     $response = $this
         ->actingAs($user)
@@ -34,7 +34,7 @@ test('profile information can be updated', function () {
 });
 
 test('email is stored in lowercase so the user can still log in', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->withOrganization()->create();
 
     $this
         ->actingAs($user)
@@ -57,9 +57,9 @@ test('email is stored in lowercase so the user can still log in', function () {
 });
 
 test('email must be unique regardless of case', function () {
-    User::factory()->create(['email' => 'taken@example.com']);
+    User::factory()->withOrganization()->create(['email' => 'taken@example.com']);
 
-    $user = User::factory()->create();
+    $user = User::factory()->withOrganization()->create();
 
     $response = $this
         ->actingAs($user)
@@ -75,7 +75,7 @@ test('email must be unique regardless of case', function () {
 });
 
 test('email verification status is unchanged when the email address is unchanged', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->withOrganization()->create();
 
     $response = $this
         ->actingAs($user)
@@ -91,36 +91,12 @@ test('email verification status is unchanged when the email address is unchanged
     expect($user->refresh()->email_verified_at)->not->toBeNull();
 });
 
-test('user can delete their account', function () {
-    $user = User::factory()->create();
+test('users cannot delete their own account', function () {
+    $user = User::factory()->withOrganization()->create();
 
-    $response = $this
-        ->actingAs($user)
-        ->delete(route('profile.destroy'), [
-            'password' => 'password',
-        ]);
-
-    $response
-        ->assertSessionHasNoErrors()
-        ->assertRedirect(route('home'));
-
-    $this->assertGuest();
-    expect($user->fresh())->toBeNull();
-});
-
-test('correct password must be provided to delete account', function () {
-    $user = User::factory()->create();
-
-    $response = $this
-        ->actingAs($user)
-        ->from(route('profile.edit'))
-        ->delete(route('profile.destroy'), [
-            'password' => 'wrong-password',
-        ]);
-
-    $response
-        ->assertSessionHasErrors('password')
-        ->assertRedirect(route('profile.edit'));
+    $this->actingAs($user)
+        ->delete('/settings/profile', ['password' => 'password'])
+        ->assertStatus(405);
 
     expect($user->fresh())->not->toBeNull();
 });

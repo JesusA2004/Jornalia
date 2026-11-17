@@ -1,22 +1,20 @@
 <script setup lang="ts">
 import { Form, Head, usePage } from '@inertiajs/vue3';
+import { Check, UserRound } from '@lucide/vue';
 import { computed } from 'vue';
 import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
-import DeleteUser from '@/components/DeleteUser.vue';
-import Heading from '@/components/Heading.vue';
-import InputError from '@/components/InputError.vue';
+import FormField from '@/components/app/FormField.vue';
+import SectionCard from '@/components/app/SectionCard.vue';
+import UserAvatar from '@/components/app/UserAvatar.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { edit } from '@/routes/profile';
+import { Spinner } from '@/components/ui/spinner';
 
 defineOptions({
     layout: {
         breadcrumbs: [
-            {
-                title: 'Profile settings',
-                href: edit(),
-            },
+            { title: 'Mi cuenta', href: '/settings/profile' },
+            { title: 'Perfil', href: '/settings/profile' },
         ],
     },
 });
@@ -26,58 +24,94 @@ const user = computed(() => page.props.auth.user);
 </script>
 
 <template>
-    <Head title="Profile settings" />
+    <Head title="Perfil" />
 
-    <h1 class="sr-only">Profile settings</h1>
-
-    <div class="flex flex-col space-y-6">
-        <Heading
-            variant="small"
-            title="Profile"
-            description="Update your name and email address"
-        />
+    <SectionCard
+        title="Información personal"
+        description="Nombre y correo de acceso."
+        :icon="UserRound"
+        divided
+    >
+        <div class="mb-6 flex items-center gap-4">
+            <UserAvatar
+                :name="user.name"
+                :src="user.avatar || null"
+                size="lg"
+            />
+            <div class="min-w-0">
+                <p class="truncate font-semibold">{{ user.name }}</p>
+                <p class="truncate text-sm text-muted-foreground">
+                    {{ user.email }}
+                </p>
+            </div>
+        </div>
 
         <Form
             v-bind="ProfileController.update.form()"
-            class="space-y-6"
-            v-slot="{ errors, processing }"
+            :options="{ preserveScroll: true }"
+            class="grid gap-5"
+            v-slot="{ errors, processing, recentlySuccessful }"
         >
-            <div class="grid gap-2">
-                <Label for="name">Name</Label>
+            <FormField
+                label="Nombre completo"
+                :error="errors.name"
+                required
+                v-slot="{ id, describedBy }"
+            >
                 <Input
-                    id="name"
-                    class="mt-1 block w-full"
+                    :id="id"
                     name="name"
                     :default-value="user.name"
                     required
                     autocomplete="name"
-                    placeholder="Full name"
+                    placeholder="Nombre y apellidos"
+                    :aria-describedby="describedBy"
+                    :aria-invalid="errors.name ? true : undefined"
                 />
-                <InputError class="mt-2" :message="errors.name" />
-            </div>
+            </FormField>
 
-            <div class="grid gap-2">
-                <Label for="email">Email address</Label>
+            <FormField
+                label="Correo electrónico"
+                :error="errors.email"
+                required
+                v-slot="{ id, describedBy }"
+            >
                 <Input
-                    id="email"
+                    :id="id"
                     type="email"
-                    class="mt-1 block w-full"
                     name="email"
                     :default-value="user.email"
                     required
                     autocomplete="username"
-                    placeholder="Email address"
+                    placeholder="nombre@empresa.com"
+                    :aria-describedby="describedBy"
+                    :aria-invalid="errors.email ? true : undefined"
                 />
-                <InputError class="mt-2" :message="errors.email" />
-            </div>
+            </FormField>
 
-            <div class="flex items-center gap-4">
-                <Button :disabled="processing" data-test="update-profile-button"
-                    >Save</Button
+            <div class="flex items-center gap-3 border-t pt-5">
+                <Button
+                    :disabled="processing"
+                    data-test="update-profile-button"
                 >
+                    <Spinner v-if="processing" />
+                    Guardar cambios
+                </Button>
+                <Transition
+                    enter-active-class="transition-opacity duration-200"
+                    enter-from-class="opacity-0"
+                    leave-active-class="transition-opacity duration-300"
+                    leave-to-class="opacity-0"
+                >
+                    <p
+                        v-show="recentlySuccessful"
+                        class="flex items-center gap-1.5 text-sm text-success-soft-foreground"
+                    >
+                        <Check class="icon-sm" aria-hidden="true" />
+                        Cambios guardados
+                    </p>
+                </Transition>
             </div>
         </Form>
-    </div>
-
-    <DeleteUser />
+    </SectionCard>
 </template>

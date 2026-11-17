@@ -2,55 +2,139 @@
 
 @import 'tw-animate-css';
 
-@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * ============================================================================
+ *  MR LANA Asistencias — Sistema de diseño
+ * ----------------------------------------------------------------------------
+ *  Identidad OFICIAL según docs/identidad/GUIA_MARCA_DIGITAL.md
+ *  (Manual de identidad MR LANA 2026, secciones 4–8):
+ *    Verde base #A0E04E · Cian base #82DBE8 · Negro #000000 · Blanco #FFFFFF
+ *    Degradado oficial #A0E04E → #82DBE8 · Superficie oscura #12302B
+ *  Tonos derivados AA para texto/íconos de color sobre blanco.
+ *
+ *  Reglas:
+ *  - Sobre verde/cian base el texto SIEMPRE va en negro.
+ *  - Las páginas usan clases semánticas (bg-card, text-muted-foreground,
+ *    bg-success-soft, text-brand-strong…), nunca colores crudos.
+ *  - `accent` es el token de shadcn para hover/selección; el verde de marca es
+ *    `brand` (= `primary`) y el cian es `cyan`.
+ *  - El degradado (`bg-brand-gradient`) se usa con mesura: bandas, encabezados
+ *    de marca, ícono. Nunca de fondo de texto largo.
+ * ============================================================================
+ */
+
 @theme inline {
     --font-sans:
-        'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
-        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
+        'Montserrat', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+        sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
         'Noto Color Emoji';
+    --font-display:
+        'Baloo 2', 'Montserrat', ui-sans-serif, system-ui, sans-serif;
+    --font-mono:
+        ui-monospace, 'SFMono-Regular', 'Cascadia Mono', 'Segoe UI Mono', Menlo,
+        Consolas, monospace;
 
+    /* Radios (la marca es redondeada) */
+    --radius-xs: calc(var(--radius) - 8px);
+    --radius-sm: calc(var(--radius) - 6px);
+    --radius-md: calc(var(--radius) - 4px);
     --radius-lg: var(--radius);
-    --radius-md: calc(var(--radius) - 2px);
-    --radius-sm: calc(var(--radius) - 4px);
+    --radius-xl: calc(var(--radius) + 4px);
+    --radius-2xl: calc(var(--radius) + 10px);
 
+    /* Sombras discretas en 3 niveles: shadow-elev-1 / -2 / -3 */
+    --shadow-elev-1: var(--elev-1);
+    --shadow-elev-2: var(--elev-2);
+    --shadow-elev-3: var(--elev-3);
+
+    /* Curvas de transición */
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-emphasized: cubic-bezier(0.3, 0, 0, 1.15);
+
+    /* Base shadcn */
     --color-background: var(--background);
     --color-foreground: var(--foreground);
-
     --color-card: var(--card);
     --color-card-foreground: var(--card-foreground);
-
     --color-popover: var(--popover);
     --color-popover-foreground: var(--popover-foreground);
-
     --color-primary: var(--primary);
     --color-primary-foreground: var(--primary-foreground);
-
+    --color-primary-soft: var(--primary-soft);
+    --color-primary-soft-foreground: var(--primary-soft-foreground);
     --color-secondary: var(--secondary);
     --color-secondary-foreground: var(--secondary-foreground);
-
     --color-muted: var(--muted);
     --color-muted-foreground: var(--muted-foreground);
-
+    --color-subtle-foreground: var(--subtle-foreground);
     --color-accent: var(--accent);
     --color-accent-foreground: var(--accent-foreground);
-
     --color-destructive: var(--destructive);
     --color-destructive-foreground: var(--destructive-foreground);
-
     --color-border: var(--border);
+    --color-border-strong: var(--border-strong);
     --color-input: var(--input);
     --color-ring: var(--ring);
 
+    /* Superficies en capas */
+    --color-surface-1: var(--surface-1);
+    --color-surface-2: var(--surface-2);
+    --color-surface-3: var(--surface-3);
+
+    /* Marca: verde */
+    --color-brand: var(--brand);
+    --color-brand-foreground: var(--brand-foreground);
+    --color-brand-strong: var(--brand-strong);
+    --color-brand-ink: var(--brand-ink);
+    --color-brand-soft: var(--brand-soft);
+    --color-brand-soft-foreground: var(--brand-soft-foreground);
+    --color-brand-deep: var(--brand-deep);
+    --color-brand-deep-foreground: var(--brand-deep-foreground);
+
+    /* Marca: cian */
+    --color-cyan: var(--cyan);
+    --color-cyan-foreground: var(--cyan-foreground);
+    --color-cyan-strong: var(--cyan-strong);
+    --color-cyan-soft: var(--cyan-soft);
+    --color-cyan-soft-foreground: var(--cyan-soft-foreground);
+
+    /* Panel de marca (login) */
+    --color-brand-panel: var(--brand-panel);
+    --color-brand-panel-foreground: var(--brand-panel-foreground);
+
+    /* Estados semánticos */
+    --color-success: var(--success);
+    --color-success-foreground: var(--success-foreground);
+    --color-success-soft: var(--success-soft);
+    --color-success-soft-foreground: var(--success-soft-foreground);
+    --color-warning: var(--warning);
+    --color-warning-foreground: var(--warning-foreground);
+    --color-warning-soft: var(--warning-soft);
+    --color-warning-soft-foreground: var(--warning-soft-foreground);
+    --color-danger: var(--danger);
+    --color-danger-foreground: var(--danger-foreground);
+    --color-danger-soft: var(--danger-soft);
+    --color-danger-soft-foreground: var(--danger-soft-foreground);
+    --color-info: var(--info);
+    --color-info-foreground: var(--info-foreground);
+    --color-info-soft: var(--info-soft);
+    --color-info-soft-foreground: var(--info-soft-foreground);
+    --color-neutral-soft: var(--neutral-soft);
+    --color-neutral-soft-foreground: var(--neutral-soft-foreground);
+
+    /* Gráficas */
     --color-chart-1: var(--chart-1);
     --color-chart-2: var(--chart-2);
     --color-chart-3: var(--chart-3);
     --color-chart-4: var(--chart-4);
     --color-chart-5: var(--chart-5);
+    --color-chart-6: var(--chart-6);
 
+    /* Sidebar */
     --color-sidebar: var(--sidebar);
     --color-sidebar-foreground: var(--sidebar-foreground);
     --color-sidebar-primary: var(--sidebar-primary);
@@ -61,75 +145,302 @@
     --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/* ---------------------------------------------------------------- Claro -- */
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --destructive-foreground: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.87 0 0);
-    --chart-1: oklch(0.646 0.222 41.116);
-    --chart-2: oklch(0.6 0.118 184.704);
-    --chart-3: oklch(0.398 0.07 227.392);
-    --chart-4: oklch(0.828 0.189 84.429);
-    --chart-5: oklch(0.769 0.188 70.08);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.87 0 0);
+    color-scheme: light;
+
+    --radius: 0.875rem;
+
+    /* Colores oficiales */
+    --mrlana-green: #a0e04e;
+    --mrlana-cyan: #82dbe8;
+    --brand-gradient: linear-gradient(100deg, #a0e04e 0%, #82dbe8 100%);
+
+    /* Lienzo y superficies (blanco limpio con matiz verde muy leve) */
+    --background: #f5f8f6;
+    --foreground: #0b1411;
+    --surface-1: #ffffff;
+    --surface-2: #f2f6f3;
+    --surface-3: #e8efea;
+    --card: var(--surface-1);
+    --card-foreground: var(--foreground);
+    --popover: #ffffff;
+    --popover-foreground: var(--foreground);
+
+    /* Primario = verde de marca con texto negro */
+    --primary: #a0e04e;
+    --primary-foreground: #000000;
+    --primary-soft: #eef8e0;
+    --primary-soft-foreground: #1f3b0b;
+
+    --secondary: #edf2ee;
+    --secondary-foreground: #12302b;
+    --muted: #f0f4f1;
+    --muted-foreground: #4f5d58;
+    --subtle-foreground: #75837e;
+    --accent: #edf3ef;
+    --accent-foreground: #0b1411;
+
+    /* Marca: verde y derivados */
+    --brand: #a0e04e;
+    --brand-foreground: #000000;
+    --brand-strong: #4f8a16;
+    --brand-ink: #1f3b0b;
+    --brand-soft: #eef8e0;
+    --brand-soft-foreground: #1f3b0b;
+    --brand-deep: #12302b;
+    --brand-deep-foreground: #ffffff;
+
+    /* Marca: cian y derivados */
+    --cyan: #82dbe8;
+    --cyan-foreground: #000000;
+    --cyan-strong: #137c8b;
+    --cyan-soft: #e4f6f9;
+    --cyan-soft-foreground: #0b4f59;
+
+    --brand-panel: #12302b;
+    --brand-panel-foreground: #ffffff;
+
+    /* Estados (≥ 4.5:1, distinguibles del verde de marca) */
+    --success: #2f8f3a;
+    --success-foreground: #ffffff;
+    --success-soft: #e7f4e8;
+    --success-soft-foreground: #1d6326;
+    --warning: #b26a00;
+    --warning-foreground: #ffffff;
+    --warning-soft: #fdf1dc;
+    --warning-soft-foreground: #7a4800;
+    --danger: #c8322b;
+    --danger-foreground: #ffffff;
+    --danger-soft: #fcebe9;
+    --danger-soft-foreground: #9a231d;
+    --info: #137c8b;
+    --info-foreground: #ffffff;
+    --info-soft: #e4f6f9;
+    --info-soft-foreground: #0b4f59;
+    --neutral-soft: #eef2ef;
+    --neutral-soft-foreground: #3f4c47;
+
+    --destructive: var(--danger);
+    --destructive-foreground: var(--danger-foreground);
+
+    /* Bordes */
+    --border: #e0e8e3;
+    --border-strong: #c9d5cd;
+    --input: #d3ddd6;
+    --ring: #6fae2a;
+
+    /* Gráficas (familia de marca + contrastes de apoyo) */
+    --chart-1: #6db33f;
+    --chart-2: #2aa9bb;
+    --chart-3: #1f5c50;
+    --chart-4: #a0e04e;
+    --chart-5: #e09a32;
+    --chart-6: #7a8aa3;
+
+    /* Sidebar oscura verde profundo */
+    --sidebar: #12302b;
+    --sidebar-foreground: #dfeae5;
+    --sidebar-primary: #a0e04e;
+    --sidebar-primary-foreground: #000000;
+    --sidebar-accent: rgb(255 255 255 / 0.08);
+    --sidebar-accent-foreground: #ffffff;
+    --sidebar-border: rgb(255 255 255 / 0.09);
+    --sidebar-ring: #a0e04e;
+
+    /* Elevación */
+    --elev-1: 0 1px 2px 0 rgb(18 48 43 / 0.06);
+    --elev-2:
+        0 1px 2px 0 rgb(18 48 43 / 0.05), 0 8px 20px -6px rgb(18 48 43 / 0.12);
+    --elev-3:
+        0 2px 4px 0 rgb(18 48 43 / 0.06), 0 24px 48px -12px rgb(18 48 43 / 0.24);
+
+    /* Movimiento */
+    --duration-fast: 120ms;
+    --duration-base: 180ms;
+    --duration-slow: 280ms;
+
+    /* Iconografía */
+    --icon-xs: 0.875rem;
+    --icon-sm: 1rem;
+    --icon-md: 1.125rem;
+    --icon-lg: 1.25rem;
+    --icon-xl: 1.5rem;
+
+    /* Barra de progreso de navegación (Inertia) */
+    --progress: #82dbe8;
 }
 
+/* ---------------------------------------------------------------- Oscuro -- */
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.145 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.145 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.985 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.396 0.141 25.723);
-    --destructive-foreground: oklch(0.637 0.237 25.331);
-    --border: oklch(0.269 0 0);
-    --input: oklch(0.269 0 0);
-    --ring: oklch(0.439 0 0);
-    --chart-1: oklch(0.488 0.243 264.376);
-    --chart-2: oklch(0.696 0.17 162.48);
-    --chart-3: oklch(0.769 0.188 70.08);
-    --chart-4: oklch(0.627 0.265 303.9);
-    --chart-5: oklch(0.645 0.246 16.439);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.985 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(0.269 0 0);
-    --sidebar-ring: oklch(0.439 0 0);
+    color-scheme: dark;
+
+    --background: #0d1715;
+    --foreground: #f2f5f3;
+    --surface-1: #13201d;
+    --surface-2: #182824;
+    --surface-3: #1f312c;
+    --card: var(--surface-1);
+    --card-foreground: var(--foreground);
+    --popover: #15241f;
+    --popover-foreground: var(--foreground);
+
+    --primary: #a0e04e;
+    --primary-foreground: #000000;
+    --primary-soft: rgb(160 224 78 / 0.13);
+    --primary-soft-foreground: #c4ee8c;
+
+    --secondary: #1d2f2a;
+    --secondary-foreground: #f2f5f3;
+    --muted: #1a2a26;
+    --muted-foreground: #a9b8b2;
+    --subtle-foreground: #7f918a;
+    --accent: #1e322c;
+    --accent-foreground: #f2f5f3;
+
+    --brand: #a0e04e;
+    --brand-foreground: #000000;
+    --brand-strong: #a0e04e;
+    --brand-ink: #d6f3b0;
+    --brand-soft: rgb(160 224 78 / 0.13);
+    --brand-soft-foreground: #c4ee8c;
+    --brand-deep: #0a1a17;
+    --brand-deep-foreground: #ffffff;
+
+    --cyan: #82dbe8;
+    --cyan-foreground: #000000;
+    --cyan-strong: #82dbe8;
+    --cyan-soft: rgb(130 219 232 / 0.13);
+    --cyan-soft-foreground: #aee9f1;
+
+    --brand-panel: #0f2622;
+    --brand-panel-foreground: #ffffff;
+
+    --success: #5cc46a;
+    --success-foreground: #04200a;
+    --success-soft: rgb(92 196 106 / 0.14);
+    --success-soft-foreground: #93dd9c;
+    --warning: #f0a84a;
+    --warning-foreground: #2a1700;
+    --warning-soft: rgb(240 168 74 / 0.14);
+    --warning-soft-foreground: #f6c88b;
+    --danger: #f0736b;
+    --danger-foreground: #2a0503;
+    --danger-soft: rgb(240 115 107 / 0.15);
+    --danger-soft-foreground: #f6a7a1;
+    --info: #82dbe8;
+    --info-foreground: #00262c;
+    --info-soft: rgb(130 219 232 / 0.13);
+    --info-soft-foreground: #aee9f1;
+    --neutral-soft: rgb(255 255 255 / 0.07);
+    --neutral-soft-foreground: #c6d2cd;
+
+    --destructive: var(--danger);
+    --destructive-foreground: var(--danger-foreground);
+
+    --border: rgb(255 255 255 / 0.08);
+    --border-strong: rgb(255 255 255 / 0.15);
+    --input: rgb(255 255 255 / 0.13);
+    --ring: #a0e04e;
+
+    --chart-1: #a0e04e;
+    --chart-2: #82dbe8;
+    --chart-3: #4fb59c;
+    --chart-4: #d6f3b0;
+    --chart-5: #f0a84a;
+    --chart-6: #9aa9c2;
+
+    --sidebar: #0a1a17;
+    --sidebar-foreground: #d5e2dc;
+    --sidebar-primary: #a0e04e;
+    --sidebar-primary-foreground: #000000;
+    --sidebar-accent: rgb(255 255 255 / 0.07);
+    --sidebar-accent-foreground: #ffffff;
+    --sidebar-border: rgb(255 255 255 / 0.07);
+    --sidebar-ring: #a0e04e;
+
+    --elev-1: 0 1px 2px 0 rgb(0 0 0 / 0.35);
+    --elev-2: 0 1px 2px 0 rgb(0 0 0 / 0.3), 0 8px 20px -6px rgb(0 0 0 / 0.5);
+    --elev-3: 0 2px 4px 0 rgb(0 0 0 / 0.3), 0 24px 48px -12px rgb(0 0 0 / 0.65);
+
+    --progress: #a0e04e;
+}
+
+/* ------------------------------------------------- Gráficas (unovis) -- */
+[data-slot='chart'] {
+    --vis-font-family: var(--font-sans);
+    --vis-axis-grid-color: var(--border);
+    --vis-axis-grid-line-dasharray: 3 4;
+    --vis-axis-tick-label-color: var(--muted-foreground);
+    --vis-axis-tick-label-font-size: 11px;
+    --vis-crosshair-line-stroke-color: var(--border-strong);
+    --vis-crosshair-circle-stroke-color: var(--card);
+    --vis-donut-central-label-text-color: var(--foreground);
+    --vis-donut-central-sub-label-text-color: var(--muted-foreground);
+    --vis-donut-central-label-font-family: var(--font-display);
+    --vis-donut-central-label-font-size: 1.75rem;
+    --vis-donut-central-label-font-weight: 700;
+    --vis-donut-central-sub-label-font-size: 0.75rem;
+    --vis-donut-background-color: var(--surface-3);
+}
+
+/* ------------------------------------------------------------ Utilidades -- */
+@utility icon-xs {
+    width: var(--icon-xs);
+    height: var(--icon-xs);
+}
+@utility icon-sm {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+}
+@utility icon-md {
+    width: var(--icon-md);
+    height: var(--icon-md);
+}
+@utility icon-lg {
+    width: var(--icon-lg);
+    height: var(--icon-lg);
+}
+@utility icon-xl {
+    width: var(--icon-xl);
+    height: var(--icon-xl);
+}
+
+/* Cifras, horas e importes alineados */
+@utility numeric {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+}
+
+/* Degradado oficial verde → cian (usar con mesura) */
+@utility bg-brand-gradient {
+    background-image: var(--brand-gradient);
+}
+
+/* Texto con el degradado oficial (sólo titulares cortos sobre fondo oscuro) */
+@utility text-brand-gradient {
+    background-image: var(--brand-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+/* Transición estándar para controles interactivos */
+@utility transition-standard {
+    transition-property:
+        color, background-color, border-color, box-shadow, opacity, transform;
+    transition-duration: var(--duration-base);
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Patrón geométrico sutil para paneles de marca (sin imágenes) */
+@utility pattern-grid {
+    background-image: radial-gradient(
+        circle at center,
+        color-mix(in oklch, currentColor 16%, transparent) 1.2px,
+        transparent 1.6px
+    );
+    background-size: 22px 22px;
 }
 
 @layer base {
@@ -137,7 +448,106 @@
         @apply border-border outline-ring/50;
     }
 
+    html {
+        -webkit-text-size-adjust: 100%;
+        text-rendering: optimizeLegibility;
+    }
+
     body {
         @apply bg-background text-foreground;
+        font-feature-settings:
+            'kern' 1,
+            'liga' 1;
+    }
+
+    /* Títulos con Baloo 2 (secundaria oficial para títulos y cifras) */
+    h1,
+    h2,
+    [data-display] {
+        font-family: var(--font-display);
+        letter-spacing: -0.005em;
+    }
+
+    /* Tablas, tiempos y datos numéricos usan cifras tabulares */
+    table,
+    time,
+    kbd,
+    [data-numeric] {
+        font-variant-numeric: tabular-nums;
+    }
+
+    ::selection {
+        background-color: color-mix(
+            in oklch,
+            var(--mrlana-green, #a0e04e) 45%,
+            transparent
+        );
+        color: #000;
+    }
+
+    /* Objetivos táctiles cómodos en pantallas pequeñas (≥ 40 px) */
+    @media (pointer: coarse), (max-width: 767px) {
+        [data-slot='button']:not([data-size='icon-xs']),
+        [data-slot='select-trigger'],
+        [data-slot='input'],
+        [data-slot='combobox-trigger'] {
+            min-height: 2.5rem;
+        }
+
+        [data-slot='button'][data-size^='icon'] {
+            min-width: 2.5rem;
+        }
+    }
+
+    /* Barra de progreso de Inertia (nprogress) */
+    #nprogress .bar {
+        background: var(--brand-gradient) !important;
+        height: 3px !important;
+    }
+    #nprogress .peg {
+        box-shadow:
+            0 0 10px var(--progress),
+            0 0 5px var(--progress) !important;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+            scroll-behavior: auto !important;
+        }
+    }
+}
+
+/*
+ * Objetivos táctiles ≥ 40 px en pantallas pequeñas. Se usa min-height/min-width para no
+ * alterar el diseño de escritorio (h-8/h-9 siguen aplicando donde caben).
+ */
+@layer components {
+    @media (max-width: 767px) {
+        [data-slot='button'],
+        [data-slot='select-trigger'],
+        [data-slot='input'],
+        [data-slot='toggle'],
+        [data-slot='toggle-group-item'],
+        [data-slot='tabs-trigger'],
+        [data-slot='sidebar-trigger'],
+        [data-slot='combobox-trigger'],
+        [data-slot='popover-trigger'],
+        [data-slot='dropdown-menu-trigger'] {
+            min-height: 2.5rem;
+        }
+
+        [data-slot='button'][data-size^='icon'],
+        [data-slot='sidebar-trigger'] {
+            min-width: 2.5rem;
+        }
+
+        [data-slot='tabs-list'] {
+            min-height: calc(2.5rem + 6px);
+        }
     }
 }

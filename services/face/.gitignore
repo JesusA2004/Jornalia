@@ -1,0 +1,9 @@
+.venv/
+.venv-export/
+.cache/
+__pycache__/
+.pytest_cache/
+# SFace (38 MB) se descarga con tools/download_models.py (sha256 fijado).
+models/face_recognition_sface_2021dec.onnx
+*.pth
+.env

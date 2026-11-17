@@ -12,8 +12,17 @@ export default defineConfig({
             input: ['resources/css/app.css', 'resources/js/app.ts'],
             refresh: true,
             fonts: [
-                bunny('Instrument Sans', {
-                    weights: [400, 500, 600],
+                // Tipografías secundarias oficiales del manual MR LANA (OFL):
+                // Montserrat para la interfaz y Baloo 2 para títulos y cifras.
+                bunny('Montserrat', {
+                    weights: [400, 500, 600, 700],
+                    subsets: ['latin', 'latin-ext'],
+                    display: 'swap',
+                }),
+                bunny('Baloo 2', {
+                    weights: [500, 600, 700, 800],
+                    subsets: ['latin', 'latin-ext'],
+                    display: 'swap',
                 }),
             ],
         }),
@@ -39,6 +48,8 @@ export default defineConfig({
                 '**/.cursor/**',
                 '**/.junie/**',
                 '**/vendor/**',
+                // Artefactos de Playwright (capturas, trazas, sesión): no deben recargar la app.
+                '**/tests/e2e/.*/**',
             ],
         },
     },
@@ -48,6 +59,7 @@ export default defineConfig({
             'node_modules/**',
             'public/**',
             'bootstrap/ssr/**',
+            'tests/e2e/.*/**',
             'tailwind.config.js',
             'resources/js/actions/**',
             'resources/js/components/ui/*',

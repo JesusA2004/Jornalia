@@ -1,0 +1,7 @@
+# Sólo para tools/export_onnx.py (conversión única .pth → ONNX). venv aparte: .venv-export
+# torch CPU: pip install -r requirements-export.txt --extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.9.1+cpu
+onnx==1.23.2
+onnxscript==0.7.2
+onnxruntime==1.32.0
+numpy==2.5.5

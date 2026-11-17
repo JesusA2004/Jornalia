@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    // Integración desacoplada con MR LANA People (deshabilitada si no hay URL).
+    'people' => [
+        'url' => env('PEOPLE_API_URL'),
+        'token' => env('PEOPLE_API_TOKEN'),
+    ],
+
 ];

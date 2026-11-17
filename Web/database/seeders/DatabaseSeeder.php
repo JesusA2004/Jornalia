@@ -2,24 +2,23 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use App\Domain\Security\PermissionCatalog;
 use Illuminate\Database\Seeder;
+use Spatie\Permission\Models\Permission;
 
+/**
+ * Sólo datos legítimos: permisos y normativa verificada. No crea usuarios,
+ * colaboradores, marcajes ni métricas. El primer administrador se crea con
+ * `php artisan asistencias:instalar` (contraseña capturada interactivamente).
+ */
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
-        // User::factory(10)->create();
+        foreach (PermissionCatalog::all() as $permission) {
+            Permission::findOrCreate($permission, 'web');
+        }
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        $this->call(LegalFrameworkSeeder::class);
     }
 }

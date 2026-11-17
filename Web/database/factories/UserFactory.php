@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
@@ -30,6 +31,7 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
+            'status' => 'active',
         ];
     }
 
@@ -41,5 +43,20 @@ class UserFactory extends Factory
         return $this->state(fn (array $attributes) => [
             'email_verified_at' => null,
         ]);
+    }
+
+    /**
+     * Usuario vinculado a una organización activa (requisito de las rutas autenticadas).
+     */
+    public function withOrganization(?Organization $organization = null): static
+    {
+        return $this->afterCreating(function (User $user) use ($organization) {
+            $org = $organization ?? Organization::query()->create([
+                'name' => 'Organización de prueba',
+                'slug' => 'org-'.Str::lower(Str::random(8)),
+            ]);
+            $user->organizations()->attach($org->id, ['status' => 'active', 'access_all_branches' => true]);
+            $user->forceFill(['current_organization_id' => $org->id])->save();
+        });
     }
 }

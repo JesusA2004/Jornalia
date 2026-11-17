@@ -1,18 +1,17 @@
 <script setup lang="ts">
-import { Form, Head } from '@inertiajs/vue3';
+import { Form, Head, Link } from '@inertiajs/vue3';
+import { ArrowLeft, MailCheck } from '@lucide/vue';
 import InputError from '@/components/InputError.vue';
-import TextLink from '@/components/TextLink.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import { login } from '@/routes';
 import { email } from '@/routes/password';
 
 defineOptions({
     layout: {
-        title: 'Forgot password',
-        description: 'Enter your email to receive a password reset link',
+        title: 'Recupera tu acceso',
+        description: 'Te enviaremos un enlace a tu correo.',
     },
 });
 
@@ -22,45 +21,55 @@ defineProps<{
 </script>
 
 <template>
-    <Head title="Forgot password" />
+    <Head title="Recuperar contraseña" />
 
     <div
         v-if="status"
-        class="mb-4 text-center text-sm font-medium text-green-600"
+        role="status"
+        class="flex items-start gap-2.5 rounded-lg border border-success/20 bg-success-soft px-3.5 py-3 text-sm text-success-soft-foreground"
     >
-        {{ status }}
+        <MailCheck class="mt-0.5 icon-sm shrink-0" aria-hidden="true" />
+        <span>{{ status }}</span>
     </div>
 
-    <div class="space-y-6">
-        <Form v-bind="email.form()" v-slot="{ errors, processing }">
-            <div class="grid gap-2">
-                <Label for="email">Email address</Label>
-                <Input
-                    id="email"
-                    type="email"
-                    name="email"
-                    autocomplete="off"
-                    v-focus
-                    placeholder="email@example.com"
-                />
-                <InputError :message="errors.email" />
-            </div>
-
-            <div class="my-6 flex items-center justify-start">
-                <Button
-                    class="w-full"
-                    :disabled="processing"
-                    data-test="email-password-reset-link-button"
-                >
-                    <Spinner v-if="processing" />
-                    Email password reset link
-                </Button>
-            </div>
-        </Form>
-
-        <div class="space-x-1 text-center text-sm text-muted-foreground">
-            <span>Or, return to</span>
-            <TextLink :href="login()">log in</TextLink>
+    <Form
+        v-bind="email.form()"
+        v-slot="{ errors, processing }"
+        class="grid gap-5"
+    >
+        <div class="grid gap-2">
+            <Label for="email">Correo electrónico</Label>
+            <Input
+                id="email"
+                type="email"
+                name="email"
+                autocomplete="email"
+                inputmode="email"
+                v-focus
+                required
+                placeholder="nombre@empresa.com"
+                class="h-10"
+                :aria-invalid="errors.email ? true : undefined"
+            />
+            <InputError :message="errors.email" />
         </div>
-    </div>
+
+        <Button
+            size="lg"
+            class="h-11 w-full"
+            :disabled="processing"
+            data-test="email-password-reset-link-button"
+        >
+            <Spinner v-if="processing" />
+            Enviar enlace de recuperación
+        </Button>
+    </Form>
+
+    <Link
+        href="/login"
+        class="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-standard hover:text-foreground"
+    >
+        <ArrowLeft class="icon-sm" aria-hidden="true" />
+        Volver a iniciar sesión
+    </Link>
 </template>

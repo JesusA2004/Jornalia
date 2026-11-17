@@ -1,4 +1,5 @@
 import type { Directive } from 'vue';
+import type { NotificationSummary, OrganizationSummary } from '@/types/app';
 import type { Auth } from '@/types/auth';
 
 // Extend ImportMeta interface for Vite...
@@ -18,8 +19,20 @@ declare module '@inertiajs/core' {
     export interface InertiaConfig {
         sharedPageProps: {
             name: string;
-            auth: Auth;
+            auth: Auth & {
+                /** Permisos efectivos del usuario en la organización activa. */
+                permissions?: string[];
+                /** Organización (empresa) activa. */
+                organization?: OrganizationSummary | null;
+                /** Organizaciones a las que el usuario tiene acceso. */
+                organizations?: OrganizationSummary[];
+                [key: string]: unknown;
+            };
             sidebarOpen: boolean;
+            /** Notificaciones sin leer (campana del encabezado). */
+            notifications_unread?: number;
+            /** Últimas notificaciones (opcional) para la campana. */
+            notifications?: NotificationSummary[];
             [key: string]: unknown;
         };
     }

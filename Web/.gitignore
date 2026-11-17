@@ -43,3 +43,7 @@ yarn-error.log
 /boost.json
 /opencode.json
 /opencode.jsonc
+/tests/e2e/.auth
+/tests/e2e/.resultados
+/tests/e2e/.capturas
+/tests/e2e/*.tmp.*

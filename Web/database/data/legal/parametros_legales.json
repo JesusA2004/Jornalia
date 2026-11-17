@@ -1,0 +1,485 @@
+{
+    "versions": [
+        {
+            "code": "LFT-PRE-2026",
+            "name": "LFT antes de la reforma de reducción de jornada (texto previo al decreto DOF 01-05-2026)",
+            "valid_from": "2023-01-01",
+            "valid_to": "2026-04-30",
+            "verification_status": "unverified",
+            "sources": [
+                {
+                    "title": "DOF 01-05-2026: Decreto que reforma, adiciona y deroga diversas disposiciones de la LFT en materia de reducción de la jornada laboral (identifica los artículos sustituidos)",
+                    "url": "https://dof.gob.mx/nota_detalle.php?codigo=5786537&fecha=01%2F05%2F2026",
+                    "published_on": "2026-05-01"
+                },
+                {
+                    "title": "Ley Federal del Trabajo, texto vigente (Cámara de Diputados), arts. 60, 63, 73, 75, 784 fr. VIII",
+                    "url": "https://www.diputados.gob.mx/LeyesBiblio/pdf/LFT.pdf",
+                    "published_on": "2026-05-14"
+                }
+            ],
+            "weekly_ordinary_max_minutes": 2880,
+            "daily_max_minutes": {
+                "day": 480,
+                "night": 420,
+                "mixed": 450
+            },
+            "night_window": {
+                "start": "20:00",
+                "end": "06:00"
+            },
+            "mixed_max_night_minutes": 209,
+            "min_break_minutes": 30,
+            "overtime": {
+                "daily_max_minutes": 180,
+                "weekly_max_minutes": 540,
+                "max_days_per_week": 3,
+                "double_rate_multiplier": "2.00",
+                "excess_rate_multiplier": "3.00",
+                "minors_allowed": false,
+                "excess_weekly_max_minutes": 0
+            },
+            "rest_days_per_week": 1,
+            "sunday_premium_min_percent": "25.00",
+            "rest_day_work_multiplier": "2.00",
+            "holiday_work_multiplier": "2.00",
+            "vacation_premium_min_percent": "25.00",
+            "minors": {
+                "min_working_age": 15,
+                "max_daily_minutes_under_16": 360,
+                "night_work_allowed_under_18": false,
+                "overtime_allowed_under_18": false
+            },
+            "notes": "Texto anterior de arts. 61, 66, 67 y 68 LFT (3 h diarias, no más de 3 veces por semana; las primeras 9 h semanales al doble, el excedente al triple). El texto previo no se descargó en esta sesión: se reconstruye del decreto DOF 01-05-2026 (que sustituye esos artículos), del transitorio Cuarto (9 h en 2026) y del art. 784 fr. VIII vigente ('cuando ésta no exceda de nueve horas semanales'). valid_from 2023-01-01 es convencional (inicio de vacaciones dignas); estas reglas rigen desde mucho antes. 48 h semanales derivan de 8 h diarias x 6 días (art. 123 A fr. I y IV previos). mixed_max_night_minutes = 209: la jornada es mixta sólo si el periodo nocturno es MENOR de 3.5 h (210 min); con 210 min o más se reputa nocturna (art. 60). rest_day_work_multiplier y holiday_work_multiplier = salario doble ADICIONAL al salario del día de descanso (arts. 73 y 75), es decir, el trabajador percibe en total 3 salarios por ese día.",
+            "daily_total_max_minutes": null
+        },
+        {
+            "code": "LFT-2026",
+            "name": "LFT reformada DOF 01-05-2026, tramo 2026 (48 h ordinarias / 9 h extraordinarias)",
+            "valid_from": "2026-05-01",
+            "valid_to": "2026-12-31",
+            "verification_status": "needs_legal_review",
+            "sources": [
+                {
+                    "title": "DOF 01-05-2026: Decreto LFT reducción de la jornada laboral",
+                    "url": "https://dof.gob.mx/nota_detalle.php?codigo=5786537&fecha=01%2F05%2F2026",
+                    "published_on": "2026-05-01"
+                },
+                {
+                    "title": "Cámara de Diputados, Reforma 52 LFT (PDF DOF)",
+                    "url": "https://www.diputados.gob.mx/LeyesBiblio/ref/lft/LFT_ref52_01may26.pdf",
+                    "published_on": "2026-05-01"
+                },
+                {
+                    "title": "DOF 03-03-2026: Decreto que reforma fracciones IV y XI del Apartado A del art. 123 constitucional",
+                    "url": "https://dof.gob.mx/nota_detalle.php?codigo=5781417&fecha=03/03/2026",
+                    "published_on": "2026-03-03"
+                }
+            ],
+            "weekly_ordinary_max_minutes": 2880,
+            "daily_max_minutes": {
+                "day": 480,
+                "night": 420,
+                "mixed": 450
+            },
+            "night_window": {
+                "start": "20:00",
+                "end": "06:00"
+            },
+            "mixed_max_night_minutes": 209,
+            "min_break_minutes": 30,
+            "overtime": {
+                "daily_max_minutes": 240,
+                "weekly_max_minutes": 540,
+                "max_days_per_week": 4,
+                "double_rate_multiplier": "2.00",
+                "excess_rate_multiplier": "3.00",
+                "minors_allowed": false,
+                "excess_weekly_max_minutes": 240
+            },
+            "rest_days_per_week": 1,
+            "sunday_premium_min_percent": "25.00",
+            "rest_day_work_multiplier": "2.00",
+            "holiday_work_multiplier": "2.00",
+            "vacation_premium_min_percent": "25.00",
+            "minors": {
+                "min_working_age": 15,
+                "max_daily_minutes_under_16": 360,
+                "night_work_allowed_under_18": false,
+                "overtime_allowed_under_18": false
+            },
+            "notes": "Decreto en vigor el 1 de mayo de 2026 (transitorio Primero). Transitorio Segundo: 48 h en 2026. Transitorio Cuarto: 9 h extraordinarias en 2026. El nuevo art. 66 distribuye las horas extra 'en hasta cuatro horas diarias, en un máximo de cuatro días'; se aplica 240 min/4 días desde el 2026-05-01, pero el transitorio Tercero declara el periodo 1-may a 31-dic-2026 de 'ajuste' y la STPS (FAQ 25-mar-2026) dice que la reducción 'iniciará en 2027': REQUIERE CRITERIO JURÍDICO (alternativa conservadora: mantener 180 min/3 días hasta 2026-12-31). Art. 68: el excedente sobre el límite del art. 66 no puede ser mayor de 4 h a la semana (240 min) y se paga con 200% más (triple); la suma de jornada ordinaria y extraordinaria nunca puede exceder 12 h diarias (720 min). Estos dos topes no tienen campo en el esquema: implementarlos como reglas adicionales. El art. 123 A fr. XI constitucional (en vigor 03-03-2026) fija 12 h semanales sin calendario gradual; la LFT lo gradúa (9 h en 2026): posible tensión normativa, requiere criterio jurídico. Registro electrónico de jornada (art. 132 fr. XXXIV) exigible conforme a disposiciones STPS que entran en vigor el 2027-01-01 (transitorio Quinto); al 2026-11-17 no se localizaron publicadas en el DOF.",
+            "daily_total_max_minutes": 720
+        },
+        {
+            "code": "LFT-2027",
+            "name": "LFT reformada DOF 01-05-2026, tramo 2027 (46 h ordinarias / 9 h extraordinarias)",
+            "valid_from": "2027-01-01",
+            "valid_to": "2027-12-31",
+            "verification_status": "verified",
+            "sources": [
+                {
+                    "title": "DOF 01-05-2026: Decreto LFT reducción de la jornada laboral (transitorios Segundo y Cuarto)",
+                    "url": "https://dof.gob.mx/nota_detalle.php?codigo=5786537&fecha=01%2F05%2F2026",
+                    "published_on": "2026-05-01"
+                },
+                {
+                    "title": "Cámara de Diputados, Reforma 52 LFT (PDF DOF)",
+                    "url": "https://www.diputados.gob.mx/LeyesBiblio/ref/lft/LFT_ref52_01may26.pdf",
+                    "published_on": "2026-05-01"
+                }
+            ],
+            "weekly_ordinary_max_minutes": 2760,
+            "daily_max_minutes": {
+                "day": 480,
+                "night": 420,
+                "mixed": 450
+            },
+            "night_window": {
+                "start": "20:00",
+                "end": "06:00"
+            },
+            "mixed_max_night_minutes": 209,
+            "min_break_minutes": 30,
+            "overtime": {
+                "daily_max_minutes": 240,
+                "weekly_max_minutes": 540,
+                "max_days_per_week": 4,
+                "double_rate_multiplier": "2.00",
+                "excess_rate_multiplier": "3.00",
+                "minors_allowed": false,
+                "excess_weekly_max_minutes": 240
+            },
+            "rest_days_per_week": 1,
+            "sunday_premium_min_percent": "25.00",
+            "rest_day_work_multiplier": "2.00",
+            "holiday_work_multiplier": "2.00",
+            "vacation_premium_min_percent": "25.00",
+            "minors": {
+                "min_working_age": 15,
+                "max_daily_minutes_under_16": 360,
+                "night_work_allowed_under_18": false,
+                "overtime_allowed_under_18": false
+            },
+            "notes": "46 h semanales y 9 h extra desde el 1 de enero de 2027 (transitorios Segundo y Cuarto). Excedente sobre el art. 66: máximo 240 min/semana, pagado al triple (art. 68). Tope diario ordinaria+extra: 720 min (art. 68). La jornada puede distribuirse de común acuerdo (art. 58 párrafo segundo). Desde esta fecha entran en vigor las disposiciones STPS del registro electrónico de jornada (transitorio Quinto); su contenido no estaba publicado al 2026-11-17. Cómo se cuenta la 'semana' (calendario o semana de pago) no lo define la ley: requiere criterio jurídico.",
+            "daily_total_max_minutes": 720
+        },
+        {
+            "code": "LFT-2028",
+            "name": "LFT reformada DOF 01-05-2026, tramo 2028 (44 h ordinarias / 10 h extraordinarias)",
+            "valid_from": "2028-01-01",
+            "valid_to": "2028-12-31",
+            "verification_status": "verified",
+            "sources": [
+                {
+                    "title": "DOF 01-05-2026: Decreto LFT reducción de la jornada laboral (transitorios Segundo y Cuarto)",
+                    "url": "https://dof.gob.mx/nota_detalle.php?codigo=5786537&fecha=01%2F05%2F2026",
+                    "published_on": "2026-05-01"
+                },
+                {
+                    "title": "Cámara de Diputados, Reforma 52 LFT (PDF DOF)",
+                    "url": "https://www.diputados.gob.mx/LeyesBiblio/ref/lft/LFT_ref52_01may26.pdf",
+                    "published_on": "2026-05-01"
+                }
+            ],
+            "weekly_ordinary_max_minutes": 2640,
+            "daily_max_minutes": {
+                "day": 480,
+                "night": 420,
+                "mixed": 450
+            },
+            "night_window": {
+                "start": "20:00",
+                "end": "06:00"
+            },
+            "mixed_max_night_minutes": 209,
+            "min_break_minutes": 30,
+            "overtime": {
+                "daily_max_minutes": 240,
+                "weekly_max_minutes": 600,
+                "max_days_per_week": 4,
+                "double_rate_multiplier": "2.00",
+                "excess_rate_multiplier": "3.00",
+                "minors_allowed": false,
+                "excess_weekly_max_minutes": 240
+            },
+            "rest_days_per_week": 1,
+            "sunday_premium_min_percent": "25.00",
+            "rest_day_work_multiplier": "2.00",
+            "holiday_work_multiplier": "2.00",
+            "vacation_premium_min_percent": "25.00",
+            "minors": {
+                "min_working_age": 15,
+                "max_daily_minutes_under_16": 360,
+                "night_work_allowed_under_18": false,
+                "overtime_allowed_under_18": false
+            },
+            "notes": "44 h semanales y 10 h extra desde el 1 de enero de 2028. Excedente sobre el art. 66: máximo 240 min/semana al triple (art. 68). Tope diario ordinaria+extra: 720 min.",
+            "daily_total_max_minutes": 720
+        },
+        {
+            "code": "LFT-2029",
+            "name": "LFT reformada DOF 01-05-2026, tramo 2029 (42 h ordinarias / 11 h extraordinarias)",
+            "valid_from": "2029-01-01",
+            "valid_to": "2029-12-31",
+            "verification_status": "verified",
+            "sources": [
+                {
+                    "title": "DOF 01-05-2026: Decreto LFT reducción de la jornada laboral (transitorios Segundo y Cuarto)",
+                    "url": "https://dof.gob.mx/nota_detalle.php?codigo=5786537&fecha=01%2F05%2F2026",
+                    "published_on": "2026-05-01"
+                },
+                {
+                    "title": "Cámara de Diputados, Reforma 52 LFT (PDF DOF)",
+                    "url": "https://www.diputados.gob.mx/LeyesBiblio/ref/lft/LFT_ref52_01may26.pdf",
+                    "published_on": "2026-05-01"
+                }
+            ],
+            "weekly_ordinary_max_minutes": 2520,
+            "daily_max_minutes": {
+                "day": 480,
+                "night": 420,
+                "mixed": 450
+            },
+            "night_window": {
+                "start": "20:00",
+                "end": "06:00"
+            },
+            "mixed_max_night_minutes": 209,
+            "min_break_minutes": 30,
+            "overtime": {
+                "daily_max_minutes": 240,
+                "weekly_max_minutes": 660,
+                "max_days_per_week": 4,
+                "double_rate_multiplier": "2.00",
+                "excess_rate_multiplier": "3.00",
+                "minors_allowed": false,
+                "excess_weekly_max_minutes": 240
+            },
+            "rest_days_per_week": 1,
+            "sunday_premium_min_percent": "25.00",
+            "rest_day_work_multiplier": "2.00",
+            "holiday_work_multiplier": "2.00",
+            "vacation_premium_min_percent": "25.00",
+            "minors": {
+                "min_working_age": 15,
+                "max_daily_minutes_under_16": 360,
+                "night_work_allowed_under_18": false,
+                "overtime_allowed_under_18": false
+            },
+            "notes": "42 h semanales y 11 h extra desde el 1 de enero de 2029. Excedente sobre el art. 66: máximo 240 min/semana al triple (art. 68). Tope diario ordinaria+extra: 720 min.",
+            "daily_total_max_minutes": 720
+        },
+        {
+            "code": "LFT-2030",
+            "name": "LFT reformada DOF 01-05-2026, régimen definitivo (40 h ordinarias / 12 h extraordinarias)",
+            "valid_from": "2030-01-01",
+            "valid_to": null,
+            "verification_status": "verified",
+            "sources": [
+                {
+                    "title": "DOF 01-05-2026: Decreto LFT reducción de la jornada laboral (arts. 59, 66, 68; transitorios Segundo y Cuarto)",
+                    "url": "https://dof.gob.mx/nota_detalle.php?codigo=5786537&fecha=01%2F05%2F2026",
+                    "published_on": "2026-05-01"
+                },
+                {
+                    "title": "DOF 03-03-2026: Decreto art. 123 A fr. IV y XI constitucional",
+                    "url": "https://dof.gob.mx/nota_detalle.php?codigo=5781417&fecha=03/03/2026",
+                    "published_on": "2026-03-03"
+                }
+            ],
+            "weekly_ordinary_max_minutes": 2400,
+            "daily_max_minutes": {
+                "day": 480,
+                "night": 420,
+                "mixed": 450
+            },
+            "night_window": {
+                "start": "20:00",
+                "end": "06:00"
+            },
+            "mixed_max_night_minutes": 209,
+            "min_break_minutes": 30,
+            "overtime": {
+                "daily_max_minutes": 240,
+                "weekly_max_minutes": 720,
+                "max_days_per_week": 4,
+                "double_rate_multiplier": "2.00",
+                "excess_rate_multiplier": "3.00",
+                "minors_allowed": false,
+                "excess_weekly_max_minutes": 240
+            },
+            "rest_days_per_week": 1,
+            "sunday_premium_min_percent": "25.00",
+            "rest_day_work_multiplier": "2.00",
+            "holiday_work_multiplier": "2.00",
+            "vacation_premium_min_percent": "25.00",
+            "minors": {
+                "min_working_age": 15,
+                "max_daily_minutes_under_16": 360,
+                "night_work_allowed_under_18": false,
+                "overtime_allowed_under_18": false
+            },
+            "notes": "Art. 59: 40 h semanales; art. 66: 12 h extra semanales, hasta 4 h diarias en máximo 4 días, al doble; art. 68: excedente máximo 4 h semanales (240 min) al triple; tope diario ordinaria+extra 720 min. Menores (todas las versiones): art. 177 menores de 16 años máximo 6 h diarias en periodos de máximo 3 h con reposo de 1 h; art. 178 prohíbe a menores de 18 horas extra, domingos y descansos obligatorios; art. 175 fr. I prohíbe trabajo de menores de 18 en establecimientos no industriales después de las 22:00 y art. 176 fr. II.1 trata como peligrosas las labores nocturnas industriales o después de las 22:00; night_work_allowed_under_18=false es la lectura conservadora (la franja 20:00-22:00 en establecimientos no industriales no está expresamente prohibida); art. 179 vacaciones mínimas de 18 días laborables para menores de 18; art. 174 certificado médico.",
+            "daily_total_max_minutes": 720
+        }
+    ],
+    "vacation_table": [
+        {
+            "from_year": 1,
+            "to_year": 1,
+            "days": 12
+        },
+        {
+            "from_year": 2,
+            "to_year": 2,
+            "days": 14
+        },
+        {
+            "from_year": 3,
+            "to_year": 3,
+            "days": 16
+        },
+        {
+            "from_year": 4,
+            "to_year": 4,
+            "days": 18
+        },
+        {
+            "from_year": 5,
+            "to_year": 5,
+            "days": 20
+        },
+        {
+            "from_year": 6,
+            "to_year": 10,
+            "days": 22
+        },
+        {
+            "from_year": 11,
+            "to_year": 15,
+            "days": 24
+        },
+        {
+            "from_year": 16,
+            "to_year": 20,
+            "days": 26
+        },
+        {
+            "from_year": 21,
+            "to_year": 25,
+            "days": 28
+        },
+        {
+            "from_year": 26,
+            "to_year": 30,
+            "days": 30
+        },
+        {
+            "from_year": 31,
+            "to_year": 35,
+            "days": 32
+        },
+        {
+            "from_year": 36,
+            "to_year": 40,
+            "days": 34
+        },
+        {
+            "from_year": 41,
+            "to_year": 45,
+            "days": 36
+        },
+        {
+            "from_year": 46,
+            "to_year": 50,
+            "days": 38
+        },
+        {
+            "from_year": 51,
+            "to_year": null,
+            "days": 40
+        }
+    ],
+    "vacation_table_valid_from": "2023-01-01",
+    "holidays": [
+        {
+            "code": "ANIO_NUEVO",
+            "name": "Año Nuevo",
+            "rule": "fixed",
+            "month": 1,
+            "day": 1,
+            "article": "LFT art. 74 fr. I"
+        },
+        {
+            "code": "CONSTITUCION",
+            "name": "Día de la Constitución (en conmemoración del 5 de febrero)",
+            "rule": "nth_weekday",
+            "month": 2,
+            "weekday": 1,
+            "nth": 1,
+            "article": "LFT art. 74 fr. II"
+        },
+        {
+            "code": "BENITO_JUAREZ",
+            "name": "Natalicio de Benito Juárez (en conmemoración del 21 de marzo)",
+            "rule": "nth_weekday",
+            "month": 3,
+            "weekday": 1,
+            "nth": 3,
+            "article": "LFT art. 74 fr. III"
+        },
+        {
+            "code": "DIA_TRABAJO",
+            "name": "Día del Trabajo",
+            "rule": "fixed",
+            "month": 5,
+            "day": 1,
+            "article": "LFT art. 74 fr. IV"
+        },
+        {
+            "code": "INDEPENDENCIA",
+            "name": "Día de la Independencia",
+            "rule": "fixed",
+            "month": 9,
+            "day": 16,
+            "article": "LFT art. 74 fr. V"
+        },
+        {
+            "code": "REVOLUCION",
+            "name": "Día de la Revolución (en conmemoración del 20 de noviembre)",
+            "rule": "nth_weekday",
+            "month": 11,
+            "weekday": 1,
+            "nth": 3,
+            "article": "LFT art. 74 fr. VI"
+        },
+        {
+            "code": "TRANSMISION_PODER",
+            "name": "Transmisión del Poder Ejecutivo Federal",
+            "rule": "every_six_years",
+            "month": 10,
+            "day": 1,
+            "base_year": 2024,
+            "article": "LFT art. 74 fr. VII (reformada DOF 30-09-2024)"
+        },
+        {
+            "code": "NAVIDAD",
+            "name": "Navidad",
+            "rule": "fixed",
+            "month": 12,
+            "day": 25,
+            "article": "LFT art. 74 fr. VIII"
+        },
+        {
+            "code": "ELECTORAL",
+            "name": "Jornada electoral (elecciones ordinarias federales o locales)",
+            "rule": "manual",
+            "article": "LFT art. 74 fr. IX"
+        }
+    ],
+    "retention": {
+        "attendance_records_years": 5,
+        "basis": "Mínimo laboral: LFT art. 804 fr. III y último párrafo (controles de asistencia: 'durante el último año y un año después de que se extinga la relación laboral'); art. 805 presume ciertos los hechos del actor si no se exhiben. Plazo adoptado: 5 años, porque el registro de asistencia sustenta días trabajados y salarios (Ley del Seguro Social art. 15 fr. II: conservar nóminas y registros con días trabajados 'durante los cinco años siguientes al de su fecha') y la documentación fiscal (CFF art. 30: cinco años). Regla operativa sugerida: conservar cada registro hasta lo que ocurra después entre (a) 5 años desde su fecha y (b) 1 año después de terminada la relación laboral, más bloqueo mientras exista juicio o procedimiento pendiente. Requiere validación jurídica."
+    }
+}

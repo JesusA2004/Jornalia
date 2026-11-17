@@ -38,6 +38,13 @@ return [
             'report' => false,
         ],
 
+        'anchors' => [
+            'driver' => 'local',
+            'root' => env('INTEGRITY_ANCHOR_PATH', storage_path('app/anchors')),
+            'throw' => true,
+            'report' => true,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
