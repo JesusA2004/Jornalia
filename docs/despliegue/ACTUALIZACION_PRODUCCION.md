@@ -7,7 +7,7 @@ Guía para actualizar `asistencias.mr-lana.com` desde el commit `f26d36f` (versi
 > - **Nunca** ejecute `migrate:fresh`, `migrate:refresh`, `migrate:reset`, `db:wipe` ni `db:seed` con seeders de prueba en producción.
 > - No regenere `APP_KEY` ni cambie `INTEGRITY_CHAIN_KEY` / `INTEGRITY_ANCHOR_KEY`: la cadena histórica dejaría de poder verificarse.
 > - Ensaye primero en una copia restaurada del respaldo (§3.4). No actualice producción sin un ensayo exitoso.
-> - Los comandos usan `APP_DIR=/var/www/asistencias` y el programa de Supervisor `asistencias-worker` de [Despliegue](DESPLIEGUE.md). Ajústelos a la instalación real antes de empezar.
+> - Los comandos usan `APP_DIR=/var/www/jornalia` y el programa de Supervisor `asistencias-worker` de [Despliegue](DESPLIEGUE.md). Ajústelos a la instalación real antes de empezar.
 
 ## 1. Qué cambia
 
@@ -38,7 +38,7 @@ Lista detallada de requerimientos: [Trazabilidad](../cierre/TRAZABILIDAD_REVISIO
 ### 3.1 Estado actual
 
 ```bash
-APP_DIR=/var/www/asistencias
+APP_DIR=/var/www/jornalia
 cd "$APP_DIR"
 git rev-parse --short HEAD            # debe mostrar f26d36f
 git status --short                    # sin cambios locales
@@ -76,7 +76,7 @@ SELECT DATEDIFF(CURDATE(), MIN(DATE(server_time))) AS dias_operacion FROM attend
 
 ```bash
 cd "$APP_DIR/Web"
-php artisan down --retry=60          # el scheduler no ejecuta tareas en mantenimiento
+php artisan down --render="errors::503" --retry=60          # el scheduler no ejecuta tareas en mantenimiento
 sudo supervisorctl stop 'asistencias-worker:*'
 ```
 
