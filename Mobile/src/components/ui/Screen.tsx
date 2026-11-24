@@ -6,11 +6,13 @@ import { type Edge, SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@/theme/ThemeProvider';
 import { spacing } from '@/theme/tokens';
 
+import { SharingBar } from '../feedback';
+
 import { AppText } from './primitives';
 
 /**
- * Contenedor de pantalla: safe areas, desplazamiento, pull-to-refresh y
- * manejo de teclado.
+ * Contenedor de pantalla: safe areas, desplazamiento, pull-to-refresh,
+ * manejo de teclado y aviso visible cuando se comparte la ubicación.
  */
 export function Screen({
   children,
@@ -24,6 +26,7 @@ export function Screen({
   edges = ['top'],
   contentStyle,
   footer,
+  sharingBar = true,
 }: {
   children: ReactNode;
   title?: string;
@@ -36,6 +39,8 @@ export function Screen({
   edges?: Edge[];
   contentStyle?: StyleProp<ViewStyle>;
   footer?: ReactNode;
+  /** Aviso fijo «Compartiendo ubicación de trabajo» (por omisión sí). */
+  sharingBar?: boolean;
 }) {
   const { colors } = useTheme();
   const header = title ? (
@@ -78,6 +83,7 @@ export function Screen({
 
   return (
     <SafeAreaView edges={edges} style={{ flex: 1, backgroundColor: colors.background }}>
+      {sharingBar ? <SharingBar /> : null}
       {body}
       {footer}
     </SafeAreaView>

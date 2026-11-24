@@ -17,7 +17,7 @@ export function HelpSteps({ topic }: { topic: HelpTopic }) {
       {topic.steps.map((s, i) => (
         <View key={i} style={styles.step}>
           <View style={[styles.num, { backgroundColor: colors.primary }]}>
-            <AppText variant="heading" style={{ color: '#000' }}>
+            <AppText variant="heading" style={{ color: colors.onPrimary }}>
               {i + 1}
             </AppText>
           </View>
@@ -46,9 +46,9 @@ export function HelpButton({ topic, light }: { topic: keyof typeof HELP; light?:
         hitSlop={8}
         style={({ pressed }) => [
           styles.button,
-          { backgroundColor: light ? 'rgba(255,255,255,0.55)' : colors.surfaceMuted, opacity: pressed ? 0.7 : 1 },
+          { backgroundColor: light ? 'rgba(255,255,255,0.18)' : colors.surfaceMuted, opacity: pressed ? 0.7 : 1 },
         ]}>
-        <AppText variant="heading" style={{ color: light ? '#000' : colors.text }}>
+        <AppText variant="heading" style={{ color: light ? '#FFFFFF' : colors.text }}>
           ?
         </AppText>
       </Pressable>

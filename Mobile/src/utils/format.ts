@@ -127,8 +127,8 @@ export function greeting(now: Date, tz?: string): string {
 export const PUNCH_TYPE_LABEL: Record<PunchType, string> = {
   clock_in: 'Entrada',
   clock_out: 'Salida',
-  break_start: 'Inicio de descanso',
-  break_end: 'Fin de descanso',
+  break_start: 'Inicio de descanso o comida',
+  break_end: 'Fin de descanso o comida',
 };
 
 /** Etiqueta corta (botones y filas). */
@@ -150,8 +150,8 @@ export const PUNCH_DONE_LABEL: Record<PunchType, string> = {
 export const PUNCH_ACTION_LABEL: Record<PunchType, string> = {
   clock_in: 'Registrar entrada',
   clock_out: 'Registrar salida',
-  break_start: 'Iniciar descanso',
-  break_end: 'Terminar descanso',
+  break_start: 'Salir a descanso o comida',
+  break_end: 'Regresar de descanso',
 };
 
 export const WORKDAY_STATUS_LABEL: Record<WorkdayStatus, string> = {
@@ -163,7 +163,7 @@ export const WORKDAY_STATUS_LABEL: Record<WorkdayStatus, string> = {
   holiday: 'Día festivo',
   on_leave: 'Ausencia justificada',
   absent: 'Falta',
-  incomplete: 'Sin salida',
+  incomplete: 'Omisión de salida',
 };
 
 export const APPROVAL_LABEL: Record<ApprovalStatus, string> = {
@@ -189,6 +189,9 @@ export const ANOMALY_LABEL: Record<PunchAnomaly, string> = {
   rest_day: 'Día de descanso',
   holiday: 'Día festivo',
   offline_not_allowed: 'Sin conexión no permitido',
+  missing_clock_out: 'Omisión de salida',
+  missing_clock_in: 'Omisión de entrada',
+  auto_clock_out: 'Generado por sistema (histórico)',
 };
 
 export function anomalyLabel(a: string): string {
@@ -207,7 +210,7 @@ export const AUTH_METHOD_LABEL: Record<AuthMethod, string> = {
   device_credential: 'Bloqueo del dispositivo',
   face_verification: 'Verificación facial',
   web_session: 'Sesión web',
-  system: 'Automático (sistema)',
+  system: 'Generado por sistema (histórico)',
 };
 
 export const LOCATION_MODE_LABEL: Record<LocationMode, string> = {

@@ -15,6 +15,8 @@ const policy = (o: Partial<AttendancePolicy> = {}): AttendancePolicy => ({
   offline_max_hours: 72,
   geofences: [],
   face_verification_enabled: false,
+  location_tracking: 'on_punch',
+  tracking_paused_states: ['break', 'meal'],
   ...o,
 });
 

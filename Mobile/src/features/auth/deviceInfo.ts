@@ -4,6 +4,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { Platform } from 'react-native';
 
 import { APP_VERSION } from '@/config/env';
+import { deviceIntegrity } from '@/features/attendance/integrity';
 import { getOrCreateDeviceUuid } from '@/storage/secure';
 import type { DeviceInfo, Platform as ApiPlatform } from '@/types/contracts';
 
@@ -43,5 +44,6 @@ export async function buildDeviceInfo(): Promise<DeviceInfo> {
     app_version: Application.nativeApplicationVersion ?? APP_VERSION,
     model,
     biometric_available: await biometricAvailable(),
+    integrity: await deviceIntegrity(),
   };
 }

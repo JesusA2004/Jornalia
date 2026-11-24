@@ -22,3 +22,28 @@ export function signPunch(deviceSecretBase64: string, fields: SignableFields): s
   if (key.length === 0) throw new Error('Secreto de dispositivo vacío');
   return bytesToHex(hmac(sha256, key, utf8ToBytes(canonicalString(fields))));
 }
+
+/** Propósito de una firma electrónica (mismo vocabulario que `electronic_signatures.purpose`). */
+export type ConsentPurpose = 'rectification' | 'registration_agreement' | 'privacy_notice';
+
+/**
+ * Cadena canónica de una firma electrónica con biometría del dispositivo
+ * (ElectronicSignatureService::biometricCanonical en el servidor):
+ *   "sign|{purpose}|{signable_id}|{payload_sha256}|{device_uuid}"
+ */
+export function consentCanonical(purpose: ConsentPurpose, subjectId: number | string, payloadSha256: string, deviceUuid: string): string {
+  return ['sign', purpose, String(subjectId), payloadSha256, deviceUuid].join('|');
+}
+
+/** device_signature = hex(HMAC_SHA256(base64decode(device_secret), consentCanonical)) */
+export function signConsent(
+  deviceSecretBase64: string,
+  purpose: ConsentPurpose,
+  subjectId: number | string,
+  payloadSha256: string,
+  deviceUuid: string,
+): string {
+  const key = base64ToBytes(deviceSecretBase64);
+  if (key.length === 0) throw new Error('Secreto de dispositivo vacío');
+  return bytesToHex(hmac(sha256, key, utf8ToBytes(consentCanonical(purpose, subjectId, payloadSha256, deviceUuid))));
+}

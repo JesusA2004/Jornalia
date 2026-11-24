@@ -50,10 +50,26 @@ export function backoffDelay(attempts: number, random: () => number = Math.rando
   return Math.round(exp + exp * 0.2 * random());
 }
 
+/**
+ * Estado visible de un marcaje de la cola. Sólo «confirmed»/«review» significan
+ * que el servidor lo recibió y selló; «pending» nunca se muestra como registrado.
+ *  - review: aceptado con anomalías (p. ej. sincronización tardía) → RH lo revisa.
+ *  - rejected: el servidor no lo aceptó → requiere revisión del colaborador.
+ */
+export type DisplayState = 'pending' | 'confirmed' | 'review' | 'rejected';
+
+export function displayState(item: QueuedPunch): DisplayState {
+  if (item.status === 'pending') return 'pending';
+  if (item.status === 'rejected') return 'rejected';
+  return item.server_punch?.status === 'flagged' ? 'review' : 'confirmed';
+}
+
 export interface QueueSummary {
   pending: number;
   rejected: number;
   synced: number;
+  /** Sincronizados que el servidor aceptó con observaciones. */
+  review: number;
   oldestPendingAt: number | null;
   nextAttemptAt: number | null;
 }
@@ -62,6 +78,7 @@ export function summarize(items: QueuedPunch[]): QueueSummary {
   let pending = 0;
   let rejected = 0;
   let synced = 0;
+  let review = 0;
   let oldestPendingAt: number | null = null;
   let nextAttemptAt: number | null = null;
   for (const it of items) {
@@ -70,9 +87,12 @@ export function summarize(items: QueuedPunch[]): QueueSummary {
       oldestPendingAt = oldestPendingAt === null ? it.created_at : Math.min(oldestPendingAt, it.created_at);
       nextAttemptAt = nextAttemptAt === null ? it.next_attempt_at : Math.min(nextAttemptAt, it.next_attempt_at);
     } else if (it.status === 'rejected') rejected++;
-    else synced++;
+    else {
+      synced++;
+      if (it.server_punch?.status === 'flagged') review++;
+    }
   }
-  return { pending, rejected, synced, oldestPendingAt, nextAttemptAt };
+  return { pending, rejected, synced, review, oldestPendingAt, nextAttemptAt };
 }
 
 export class PunchQueue {

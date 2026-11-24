@@ -17,6 +17,7 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AuthProvider, useAuth } from '@/features/auth/AuthProvider';
+import { KioskProvider, useKiosk } from '@/features/kiosk/KioskProvider';
 import { SyncProvider } from '@/features/offline/SyncProvider';
 import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
 
@@ -38,7 +39,9 @@ export default function RootLayout() {
       <KeyboardProvider>
         <ThemeProvider>
           <AuthProvider>
-            <RootNavigator ready={fontsLoaded || !!fontError} />
+            <KioskProvider>
+              <RootNavigator ready={fontsLoaded || !!fontError} />
+            </KioskProvider>
           </AuthProvider>
         </ThemeProvider>
       </KeyboardProvider>
@@ -48,8 +51,11 @@ export default function RootLayout() {
 
 function RootNavigator({ ready }: { ready: boolean }) {
   const { state } = useAuth();
+  const kiosk = useKiosk();
   const { scheme, colors } = useTheme();
-  const loading = state.status === 'loading' || !ready;
+  const loading = state.status === 'loading' || kiosk.status === 'loading' || !ready;
+  // Un equipo activado como kiosco de sucursal sólo muestra el marcaje compartido.
+  const kioskMode = kiosk.status === 'active';
 
   useEffect(() => {
     if (!loading) void SplashScreen.hideAsync();
@@ -58,20 +64,23 @@ function RootNavigator({ ready }: { ready: boolean }) {
   if (loading) return null;
 
   return (
-    <SyncProvider enabled={state.status === 'signedIn'}>
+    <SyncProvider enabled={state.status === 'signedIn' && !kioskMode}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
-        <Stack.Protected guard={state.status === 'signedOut'}>
+        <Stack.Protected guard={!kioskMode && state.status === 'signedOut'}>
           <Stack.Screen name="login" />
         </Stack.Protected>
-        <Stack.Protected guard={state.status === 'devicePending'}>
+        <Stack.Protected guard={!kioskMode && state.status === 'devicePending'}>
           <Stack.Screen name="dispositivo-pendiente" />
         </Stack.Protected>
-        <Stack.Protected guard={state.status === 'deviceRevoked'}>
+        <Stack.Protected guard={!kioskMode && state.status === 'deviceRevoked'}>
           <Stack.Screen name="dispositivo-revocado" />
         </Stack.Protected>
-        <Stack.Protected guard={state.status === 'signedIn'}>
+        <Stack.Protected guard={!kioskMode && state.status === 'signedIn'}>
           <Stack.Screen name="(app)" />
+        </Stack.Protected>
+        <Stack.Protected guard={kioskMode || state.status === 'signedOut'}>
+          <Stack.Screen name="kiosco" />
         </Stack.Protected>
       </Stack>
     </SyncProvider>

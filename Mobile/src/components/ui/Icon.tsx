@@ -61,6 +61,21 @@ const ICONS = {
   arrowRight: { ios: 'arrow.right', android: 'arrow_forward' },
   zoomIn: { ios: 'plus.magnifyingglass', android: 'zoom_in' },
   zoomOut: { ios: 'minus.magnifyingglass', android: 'zoom_out' },
+  signature: { ios: 'signature', android: 'signature' },
+  document: { ios: 'doc.richtext', android: 'article' },
+  photo: { ios: 'photo.on.rectangle', android: 'photo_library' },
+  attach: { ios: 'paperclip', android: 'attach_file' },
+  pause: { ios: 'pause.circle', android: 'pause_circle' },
+  play: { ios: 'play.circle', android: 'play_circle' },
+  stop: { ios: 'stop.circle', android: 'stop_circle' },
+  megaphone: { ios: 'megaphone', android: 'campaign' },
+  timer: { ios: 'timer', android: 'timer' },
+  meal: { ios: 'fork.knife', android: 'restaurant' },
+  store: { ios: 'building.2', android: 'store' },
+  keypad: { ios: 'circle.grid.3x3', android: 'dialpad' },
+  compare: { ios: 'arrow.left.arrow.right', android: 'compare_arrows' },
+  inbox: { ios: 'tray', android: 'inbox' },
+  shieldAlert: { ios: 'exclamationmark.shield', android: 'gpp_maybe' },
 } as const satisfies Record<string, { ios: SFSymbol; android: AndroidSymbol }>;
 
 export type IconName = keyof typeof ICONS;

@@ -81,7 +81,7 @@ function StepArrow({ kind }: { kind: CapturePhase['kind'] }) {
   });
   return (
     <Animated.View style={[styles.arrow, style]}>
-      <Icon name={STEP_ICON[kind]} size={64} color="#000000" />
+      <Icon name={STEP_ICON[kind]} size={64} color="#12302B" />
     </Animated.View>
   );
 }
@@ -282,7 +282,7 @@ export default function FaceVerificationScreen() {
             </>
           ) : (
             <View style={styles.failCard}>
-              <Icon name={ui.icon} size={44} color={brand.green} />
+              <Icon name={ui.icon} size={44} color={brand.gold} />
               <AppText variant="heading" style={[styles.white, { textAlign: 'center' }]}>
                 {ui.title}
               </AppText>
@@ -333,13 +333,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.3)',
     overflow: 'hidden',
   },
-  progressFill: { height: 10, borderRadius: 5, backgroundColor: brand.green },
+  progressFill: { height: 10, borderRadius: 5, backgroundColor: brand.gold },
   oval: {
     width: 250,
     height: 330,
     borderRadius: 165,
     borderWidth: 5,
-    borderColor: brand.green,
+    borderColor: brand.gold,
   },
   bottom: {
     alignItems: 'center',
@@ -354,7 +354,7 @@ const styles = StyleSheet.create({
     width: 104,
     height: 104,
     borderRadius: 52,
-    backgroundColor: brand.green,
+    backgroundColor: brand.gold,
     alignItems: 'center',
     justifyContent: 'center',
   },

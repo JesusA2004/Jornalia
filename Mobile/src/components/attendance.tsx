@@ -16,12 +16,17 @@ export const PUNCH_ICON: Record<PunchType, IconName> = {
   break_end: 'work',
 };
 
-/** Fila de marcaje original (sellado por el servidor). */
+/**
+ * Fila de marcaje original (sellado por el servidor). Los marcajes con
+ * `source='system'` sólo existen en registros históricos (la salida
+ * automática se eliminó): se muestran como tales, sin crear ni sugerir nada.
+ */
 export function PunchRow({ punch, tz, last, pressable = true }: { punch: Punch; tz?: string; last?: boolean; pressable?: boolean }) {
   const { colors } = useTheme();
   const flagged = punch.status === 'flagged';
   const automatic = punch.source === 'system';
-  const label = automatic ? 'Salida automática' : PUNCH_TYPE_LABEL[punch.type];
+  const label = PUNCH_TYPE_LABEL[punch.type];
+  const received = punch.received_at ?? punch.server_time;
   const body = (
     <View style={[styles.row, !last && { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}>
       <View style={[styles.icon, { backgroundColor: automatic ? colors.infoBg : flagged ? colors.warningBg : colors.surfaceMuted }]}>
@@ -33,13 +38,18 @@ export function PunchRow({ punch, tz, last, pressable = true }: { punch: Punch; 
         </AppText>
         {automatic ? (
           <AppText variant="caption" color="textMuted">
-            Registrada por el sistema
+            Generado por sistema (histórico)
+          </AppText>
+        ) : punch.captured_offline && punch.device_time ? (
+          <AppText variant="caption" color="textMuted" numberOfLines={1}>
+            Capturado {formatTime(punch.device_time, tz ?? punch.timezone)} · recibido {formatTime(received, tz ?? punch.timezone)}
           </AppText>
         ) : null}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
           {punch.captured_offline ? <Pill label="Sin conexión" icon="cloudOff" /> : null}
+          {flagged ? <Pill label="En revisión" tone="warning" icon="warning" /> : null}
           {punch.rectified ? <Pill label="Corregido" tone="info" icon="edit" /> : null}
-          {punch.anomalies.slice(0, 2).map((a) => (
+          {punch.anomalies.filter((a) => a !== 'auto_clock_out').slice(0, 2).map((a) => (
             <Pill key={a} label={anomalyLabel(a)} tone="warning" />
           ))}
           {punch.anomalies.length > 2 ? <Pill label={`+${punch.anomalies.length - 2}`} tone="warning" /> : null}

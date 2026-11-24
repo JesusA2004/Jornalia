@@ -9,6 +9,7 @@ import { AppText, Button, Card, ListRow, SectionHeader } from '@/components/ui/p
 import { API_URL, APP_VARIANT, APP_VERSION } from '@/config/env';
 import { useAuth, useSignedIn } from '@/features/auth/AuthProvider';
 import { useFaceStatus } from '@/features/face/useFaceStatus';
+import { usePinFlag } from '@/features/signature/pinFlag';
 import { useWorkLocation } from '@/features/location/LocationProvider';
 import { useSync } from '@/features/offline/SyncProvider';
 import { canProtectWithBiometrics } from '@/storage/secure';
@@ -34,6 +35,8 @@ export default function ProfileScreen() {
     .map((p) => p[0]?.toUpperCase())
     .join('');
   const pendingDocs = profile.pending_acknowledgements.length;
+  const localPin = usePinFlag(profile.user.id);
+  const pinSet = profile.signature_pin_set ?? localPin;
 
   const confirmSignOut = () => {
     const pending = sync.summary.pending;
@@ -71,7 +74,7 @@ export default function ProfileScreen() {
       }}>
       <Card style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.lg }}>
         <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}>
-          <AppText variant="title" style={{ color: '#000' }}>
+          <AppText variant="title" style={{ color: colors.onPrimary }}>
             {initials}
           </AppText>
         </View>
@@ -90,14 +93,25 @@ export default function ProfileScreen() {
 
       <Card padded={false} style={{ paddingHorizontal: spacing.lg }}>
         <ListRow icon="requests" iconTone="info" title="Solicitudes" subtitle="Correcciones, incidencias y vacaciones" onPress={() => router.push('/solicitudes')} />
-        <ListRow icon="help" iconTone="success" title="Guía de uso" onPress={() => router.push('/guia')} />
-        <ListRow icon="bell" title="Notificaciones" onPress={() => router.push('/notificaciones')} />
+        <ListRow icon="bell" title="Avisos y acuses" onPress={() => router.push('/notificaciones')} />
+        <ListRow icon="help" iconTone="success" title="Guía de uso" onPress={() => router.push('/guia')} last />
+      </Card>
+
+      <SectionHeader title="Firma electrónica" />
+      <Card padded={false} style={{ paddingHorizontal: spacing.lg }}>
+        <ListRow
+          icon="lock"
+          iconTone={pinSet ? 'success' : 'warning'}
+          title={pinSet ? 'Cambiar NIP de firma' : 'Crear NIP de firma'}
+          onPress={() => router.push('/nip')}
+        />
+        <ListRow icon="signature" title="Por firmar" onPress={() => router.push('/firmas')} />
         <ListRow
           icon="seal"
           iconTone={pendingDocs ? 'warning' : 'neutral'}
-          title="Documentos"
-          subtitle={pendingDocs ? `${pendingDocs} por confirmar` : undefined}
-          onPress={() => router.push('/acuses')}
+          title="Documentos firmados"
+          subtitle={pendingDocs ? `${pendingDocs} por confirmar` : 'Convenio y aviso de privacidad'}
+          onPress={() => router.push('/documentos')}
           last
         />
       </Card>
@@ -118,7 +132,15 @@ export default function ProfileScreen() {
           icon="location"
           iconTone={loc.key === 'active' || loc.key === 'active_foreground_only' ? 'success' : 'warning'}
           title="Ubicación de trabajo"
-          subtitle={loc.reading?.background === 'granted' ? 'Permitida todo el tiempo' : loc.reading?.foreground === 'granted' ? 'Mientras uses la app' : 'Sin permiso'}
+          subtitle={
+            loc.mode === 'during_shift'
+              ? `Durante tu jornada · ${loc.reading?.background === 'granted' ? 'permitida siempre' : loc.reading?.foreground === 'granted' ? 'sólo con la app abierta' : 'sin permiso'}`
+              : loc.mode === 'on_punch'
+                ? 'Sólo al marcar'
+                : loc.reading?.foreground === 'granted'
+                  ? 'Permitida'
+                  : 'Sin permiso'
+          }
           onPress={() => void loc.enable()}
         />
         <ListRow

@@ -1,16 +1,20 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
+import { useToday } from '@/features/attendance/TodayProvider';
+import { useSync } from '@/features/offline/SyncProvider';
 import { api } from '@/services/container';
 import { getDb } from '@/storage/db';
-import type { LocationSettings } from '@/types/contracts';
+import type { AttendancePolicy, LocationSettings, LocationTracking } from '@/types/contracts';
 
 import {
+  applyPhase,
   isNotRequired,
   isRunning,
   type LocationReading,
   openAppSettings,
   readLocation,
+  readPhase,
   readSettings,
   reconcileOnLaunch,
   reconfigure,
@@ -23,13 +27,28 @@ import {
   uploadNow,
   watchForeground,
 } from './tracker';
-import { locationSummary, type LocationSummary, type SqlExecutor, type TrackingKey, trackingKey, windowActive } from './workLocation';
+import {
+  locationSummary,
+  type LocationSummary,
+  type SqlExecutor,
+  STATUS_AFTER_PUNCH,
+  type TrackingKey,
+  trackingKey,
+  type TrackingPhase,
+  trackingPhase,
+  windowActive,
+} from './workLocation';
 
 interface LocationValue {
   key: TrackingKey;
   reading: LocationReading | null;
   settings: LocationSettings | null;
   summary: LocationSummary | null;
+  /** Modo del puesto: sólo al marcar o seguimiento durante la jornada. */
+  mode: LocationTracking | null;
+  phase: TrackingPhase;
+  /** true mientras el teléfono comparte ubicación de trabajo (indicador visible). */
+  sharing: boolean;
   /** Pide permiso de primer plano y, después, «todo el tiempo». */
   enable: () => Promise<void>;
   turnOnGps: () => Promise<void>;
@@ -39,12 +58,24 @@ interface LocationValue {
 
 const LocationContext = createContext<LocationValue | null>(null);
 
+/** Epoch ms redondeado al minuto (se actualiza cada minuto). */
+function useMinute(): number {
+  const [m, setM] = useState(() => Math.floor(Date.now() / 60_000) * 60_000);
+  useEffect(() => {
+    const id = setInterval(() => setM(Math.floor(Date.now() / 60_000) * 60_000), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  return m;
+}
+
 const FOREGROUND_UPLOAD_MS = 30_000;
 
 /**
- * Ubicación de trabajo de la sesión: arranca la tarea única al abrir la app
- * (Android 12+ sólo permite iniciarla en pantalla), alimenta la cola en primer
- * plano, envía cada 30 s y la detiene al cerrar sesión.
+ * Ubicación de trabajo de la sesión. La fase la decide la jornada (entrada,
+ * descanso/comida, salida) y el modo del puesto; la tarea única se enciende
+ * sólo en fase «active» (Android 12+ exige iniciarla en pantalla, que es cuando
+ * se marca), alimenta la cola en primer plano, envía cada 30 s y se detiene al
+ * cerrar sesión.
  */
 export function LocationProvider({ userId, children }: { userId: number; children: ReactNode }) {
   const [reading, setReading] = useState<LocationReading | null>(null);
@@ -55,6 +86,26 @@ export function LocationProvider({ userId, children }: { userId: number; childre
   const [now, setNow] = useState(() => Date.now());
   const stopWatch = useRef<(() => void) | null>(null);
   const startingWatch = useRef(false);
+
+  // Fase según la jornada (con marcajes aún sin enviar, manda el último de ellos).
+  const today = useToday();
+  const { items } = useSync();
+  const policy = (today.data?.policy ?? null) as AttendancePolicy | null;
+  const mode: LocationTracking | null = policy ? (policy.location_tracking ?? 'on_punch') : null;
+  const lastPending = items.filter((i) => i.status === 'pending').at(-1)?.request.type ?? null;
+  const status = lastPending ? STATUS_AFTER_PUNCH[lastPending] : (today.data?.workday.status ?? null);
+  // Reloj de minuto: corta el seguimiento si se omitió la salida (contingencia del contrato).
+  const minute = useMinute();
+  const computed = policy
+    ? trackingPhase(mode, status, policy.tracking_paused_states ?? ['break', 'meal'], {
+        shiftEndsAt: today.data?.workday.shift?.ends_at ?? null,
+        contingencyMinutes: policy.location_contingency_minutes ?? null,
+        now: minute,
+      })
+    : null;
+  const [storedPhase, setStoredPhase] = useState<TrackingPhase>('off');
+  const phase: TrackingPhase = computed ?? storedPhase;
+  const phaseRef = useRef<TrackingPhase>('off');
 
   const loadSummary = useCallback(async () => {
     try {
@@ -68,7 +119,12 @@ export function LocationProvider({ userId, children }: { userId: number; childre
     const r = await readLocation();
     setReading(r);
     setNotRequired(await isNotRequired(userId));
-    if (r.foreground === 'granted') {
+    const active = phaseRef.current === 'active';
+    if (!active) {
+      stopWatch.current?.();
+      stopWatch.current = null;
+    }
+    if (r.foreground === 'granted' && active) {
       await startWorkLocation(userId);
       if (AppState.currentState === 'active' && !stopWatch.current && !startingWatch.current && r.gpsOn) {
         // Un solo seguimiento de primer plano aunque sync() se llame en paralelo.
@@ -134,6 +190,22 @@ export function LocationProvider({ userId, children }: { userId: number; childre
     };
   }, [sync, upload]);
 
+  // Fase sin política aún (arranque sin red): se conserva la última guardada.
+  useEffect(() => {
+    if (computed !== null) return;
+    void readPhase().then((p) => {
+      phaseRef.current = p;
+      setStoredPhase(p);
+    });
+  }, [computed]);
+
+  // Cambio de fase por un marcaje: encender, pausar o detener el seguimiento.
+  useEffect(() => {
+    if (computed === null) return;
+    phaseRef.current = computed;
+    void applyPhase(userId, computed).then(() => sync());
+  }, [computed, userId, sync]);
+
   // Detener al salir de la sesión (desmontaje del área autenticada).
   useEffect(() => {
     return () => {
@@ -167,7 +239,10 @@ export function LocationProvider({ userId, children }: { userId: number; childre
     running: reading ? running : null,
     notRequired,
     outsideWindow: settings ? !windowActive(settings, now) : false,
+    mode,
+    phase,
   });
+  const sharing = (key === 'active' || key === 'active_foreground_only') && phase === 'active';
 
   const value = useMemo<LocationValue>(
     () => ({
@@ -175,6 +250,9 @@ export function LocationProvider({ userId, children }: { userId: number; childre
       reading,
       settings,
       summary,
+      mode,
+      phase,
+      sharing,
       enable,
       turnOnGps: async () => {
         await turnOnGps();
@@ -183,9 +261,14 @@ export function LocationProvider({ userId, children }: { userId: number; childre
       openSettings: openAppSettings,
       refresh: sync,
     }),
-    [key, reading, settings, summary, enable, sync],
+    [key, reading, settings, summary, mode, phase, sharing, enable, sync],
   );
   return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>;
+}
+
+/** Igual que useWorkLocation pero sin lanzar fuera de la sesión (p. ej. en Screen). */
+export function useOptionalWorkLocation(): LocationValue | null {
+  return useContext(LocationContext);
 }
 
 export function useWorkLocation(): LocationValue {

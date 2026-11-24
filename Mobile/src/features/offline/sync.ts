@@ -1,5 +1,6 @@
 import { ApiRequestError, NetworkError, describeError } from '@/api/errors';
 import type { SyncRequest, SyncResponse } from '@/types/contracts';
+import { isoNow } from '@/utils/time';
 
 import type { PunchQueue } from './queue';
 
@@ -19,6 +20,7 @@ export interface SyncDeps {
   /** Ignora el backoff (sincronización manual o al reconectar). */
   force?: boolean;
   maxBatches?: number;
+  now?: () => Date;
 }
 
 const EMPTY: SyncOutcome = { sent: 0, created: 0, duplicate: 0, rejected: 0, failed: 0, stoppedBy: null };
@@ -41,7 +43,13 @@ export function isSyncRunning(): boolean {
   return running !== null;
 }
 
-async function doSync({ queue, send, force = false, maxBatches = 10 }: SyncDeps): Promise<SyncOutcome> {
+/**
+ * Cada lote declara `synced_at` (hora de envío según el teléfono) para que el
+ * servidor distinga una sincronización tardía de un reloj alterado; el
+ * `device_time` de cada marcaje es el de la captura y nunca se modifica (la
+ * firma HMAC lo cubre). Los lotes salen en orden de captura.
+ */
+async function doSync({ queue, send, force = false, maxBatches = 10, now = () => new Date() }: SyncDeps): Promise<SyncOutcome> {
   const outcome: SyncOutcome = { ...EMPTY };
   const seen = new Set<string>();
   for (let i = 0; i < maxBatches; i++) {
@@ -50,7 +58,8 @@ async function doSync({ queue, send, force = false, maxBatches = 10 }: SyncDeps)
     batch.forEach((b) => seen.add(b.client_uuid));
     outcome.sent += batch.length;
     try {
-      const res = await send({ punches: batch.map((b) => b.request) });
+      const syncedAt = isoNow(now());
+      const res = await send({ punches: batch.map((b) => ({ ...b.request, synced_at: syncedAt })), synced_at: syncedAt });
       const counts = await queue.applyResults(batch, res.results ?? []);
       outcome.created += counts.created;
       outcome.duplicate += counts.duplicate;

@@ -11,7 +11,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { useWorkLocation } from '@/features/location/LocationProvider';
+import { useOptionalWorkLocation, useWorkLocation } from '@/features/location/LocationProvider';
 import type { TrackingKey } from '@/features/location/workLocation';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, spacing, TOUCH_MIN } from '@/theme/tokens';
@@ -36,16 +36,43 @@ export function PulseDot({ color, size = 12 }: { color: string; size?: number })
 }
 
 const LOCATION_UI: Record<TrackingKey, { label: string; tone: 'ok' | 'pause' | 'action' | 'muted'; icon: IconName }> = {
-  active: { label: 'Ubicación activa', tone: 'ok', icon: 'location' },
-  active_foreground_only: { label: 'Ubicación activa', tone: 'ok', icon: 'location' },
+  active: { label: 'Compartiendo ubicación', tone: 'ok', icon: 'location' },
+  active_foreground_only: { label: 'Compartiendo ubicación', tone: 'ok', icon: 'location' },
   starting: { label: 'Activando ubicación…', tone: 'muted', icon: 'location' },
-  paused_window: { label: 'En pausa (fuera de turno)', tone: 'pause', icon: 'clock' },
-  stopped: { label: 'Ubicación en pausa', tone: 'action', icon: 'locationOff' },
+  paused_window: { label: 'Ubicación en pausa', tone: 'pause', icon: 'pause' },
+  paused_break: { label: 'Ubicación en pausa (descanso)', tone: 'pause', icon: 'pause' },
+  off_shift: { label: 'Ubicación apagada', tone: 'muted', icon: 'locationOff' },
+  on_punch_only: { label: 'Ubicación sólo al marcar', tone: 'muted', icon: 'location' },
+  stopped: { label: 'Ubicación detenida', tone: 'action', icon: 'locationOff' },
   no_permission: { label: 'Activa la ubicación', tone: 'action', icon: 'locationOff' },
   gps_off: { label: 'Enciende el GPS', tone: 'action', icon: 'locationOff' },
   not_required: { label: 'Ubicación no requerida', tone: 'muted', icon: 'locationOff' },
   unavailable: { label: 'Ubicación no disponible', tone: 'muted', icon: 'locationOff' },
 };
+
+/**
+ * Aviso persistente y visible mientras se comparte la ubicación de trabajo.
+ * Se muestra en todas las pantallas de la sesión (además de la notificación
+ * del servicio en Android). Sin sesión no muestra nada.
+ */
+export function SharingBar() {
+  const loc = useOptionalWorkLocation();
+  const { colors } = useTheme();
+  if (!loc?.sharing) return null;
+  return (
+    <View
+      style={[styles.sharing, { backgroundColor: colors.brandSoft }]}
+      accessibilityRole="text"
+      accessibilityLabel="Estás compartiendo tu ubicación de trabajo"
+      accessibilityLiveRegion="polite">
+      <PulseDot color={colors.primary} size={8} />
+      <AppText variant="captionStrong" style={{ color: colors.brandInk, flex: 1 }} numberOfLines={1}>
+        Compartiendo ubicación de trabajo
+      </AppText>
+      <Icon name="location" size={14} color={colors.brandInk} />
+    </View>
+  );
+}
 
 /** Indicador simple del estado de la ubicación de trabajo. */
 export function LocationIndicator() {
@@ -62,8 +89,8 @@ export function LocationIndicator() {
           : loc.key === 'active_foreground_only' && loc.reading?.canAskBackground
             ? () => void loc.enable()
             : undefined;
-  const bg = ui.tone === 'ok' ? colors.successBg : ui.tone === 'action' ? colors.warningBg : colors.surfaceMuted;
-  const fg = ui.tone === 'ok' ? colors.success : ui.tone === 'action' ? colors.warning : colors.textMuted;
+  const bg = ui.tone === 'ok' ? colors.brandSoft : ui.tone === 'action' ? colors.warningBg : colors.surfaceMuted;
+  const fg = ui.tone === 'ok' ? colors.brandInk : ui.tone === 'action' ? colors.warning : colors.textMuted;
   return (
     <Pressable
       onPress={onPress}
@@ -71,13 +98,13 @@ export function LocationIndicator() {
       accessibilityRole={onPress ? 'button' : 'text'}
       accessibilityLabel={ui.label}
       style={({ pressed }) => [styles.loc, { backgroundColor: bg, opacity: pressed ? 0.75 : 1 }]}>
-      {ui.tone === 'ok' ? <PulseDot color={colors.success} /> : <Icon name={ui.icon} size={22} color={fg} />}
+      {ui.tone === 'ok' ? <PulseDot color={colors.primary} /> : <Icon name={ui.icon} size={22} color={fg} />}
       <AppText variant="bodyStrong" style={{ color: fg, flex: 1 }} numberOfLines={1}>
         {ui.label}
       </AppText>
       {onPress ? (
         <View style={[styles.locAction, { backgroundColor: ui.tone === 'action' ? colors.primary : 'transparent' }]}>
-          <AppText variant="captionStrong" style={{ color: ui.tone === 'action' ? '#000' : fg }}>
+          <AppText variant="captionStrong" style={{ color: ui.tone === 'action' ? colors.onPrimary : fg }}>
             {ui.tone === 'action' ? 'Activar' : 'Mejorar'}
           </AppText>
         </View>
@@ -150,6 +177,16 @@ export function PunchFeedback({
 }
 
 const styles = StyleSheet.create({
+  sharing: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    minHeight: 32,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    marginHorizontal: spacing.xl,
+    marginTop: spacing.xs,
+  },
   loc: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 56, borderRadius: radius.lg, paddingHorizontal: spacing.md },
   locAction: { minHeight: 36, minWidth: TOUCH_MIN + 24, paddingHorizontal: spacing.md, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
   overlay: { alignItems: 'center', justifyContent: 'space-evenly', paddingVertical: spacing.huge },

@@ -4,11 +4,12 @@ import { Alert, View } from 'react-native';
 
 import { describeError } from '@/api/errors';
 import { HelpButton } from '@/components/help';
-import { ApprovalPill, RectificationItem } from '@/components/requests';
+import { ApprovalPill, NewRectificationButton, RectificationItem } from '@/components/requests';
 import { Segmented } from '@/components/ui/fields';
 import { Screen } from '@/components/ui/Screen';
 import { AppText, Button, Card, EmptyState, ErrorState, LoadingState, ProgressBar, SectionHeader } from '@/components/ui/primitives';
 import { useSignedIn } from '@/features/auth/AuthProvider';
+import { useNow } from '@/hooks/useNow';
 import { usePaginated } from '@/hooks/usePaginated';
 import { useQuery } from '@/hooks/useQuery';
 import { api } from '@/services/container';
@@ -48,10 +49,11 @@ function LoadMore({ visible, loading, onPress }: { visible: boolean; loading: bo
 function Rectifications({ version }: { version: number }) {
   const { profile } = useSignedIn();
   const tz = profile.employee?.timezone ?? profile.organization.timezone;
+  const now = useNow(60_000).getTime();
   const list = usePaginated((page) => api.rectifications.list(page), [version]);
   return (
     <>
-      <Button title="Corregir un día" icon="add" onPress={() => router.push('/rectificacion')} />
+      <NewRectificationButton />
       {list.loading ? (
         <LoadingState />
       ) : list.error && !list.items.length ? (
@@ -61,12 +63,13 @@ function Rectifications({ version }: { version: number }) {
       ) : (
         <View style={{ gap: spacing.sm }}>
           {list.items.map((r) => (
-            <View key={r.id} style={{ gap: 4 }}>
-              <AppText variant="captionStrong" color="textMuted">
-                {formatCivilDate(r.date)}
-              </AppText>
-              <RectificationItem r={r} tz={tz} />
-            </View>
+            <RectificationItem
+              key={r.id}
+              r={r}
+              tz={tz}
+              now={now}
+              onPress={() => router.push({ pathname: '/rectificaciones/[id]', params: { id: String(r.id) } })}
+            />
           ))}
           <LoadMore visible={list.hasMore} loading={list.loadingMore} onPress={list.loadMore} />
         </View>

@@ -137,10 +137,19 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       'expo-notifications',
       {
         icon: './assets/brand/notification-icon.png',
-        color: '#A0E04E',
+        color: '#225C54',
         defaultChannel: 'default',
       },
     ],
+    [
+      'expo-image-picker',
+      {
+        photosPermission: 'MR LANA Asistencias usa tus fotos sólo para adjuntar evidencia a tus solicitudes.',
+        cameraPermission: 'MR LANA Asistencias usa la cámara para adjuntar evidencia a tus solicitudes.',
+        microphonePermission: false,
+      },
+    ],
+    'expo-document-picker',
     ['expo-sqlite', { useSQLCipher: true }],
     'expo-background-task',
     '@react-native-community/datetimepicker',

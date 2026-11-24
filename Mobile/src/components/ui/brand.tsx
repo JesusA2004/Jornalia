@@ -32,7 +32,7 @@ export function Mascot({ pose = 'saludo', height = 140 }: { pose?: keyof typeof 
   return <Image source={m.src} style={{ height, width: height * m.ratio }} contentFit="contain" accessible={false} />;
 }
 
-/** Degradado oficial verde → cian. Usar con mesura (encabezados de marca, botón de marcaje). */
+/** Degradado institucional #225C54 (texto blanco). Usar con mesura: encabezados y botón de marcaje. */
 export function BrandGradient({ children, style }: { children?: ReactNode; style?: StyleProp<ViewStyle> }) {
   return (
     <LinearGradient colors={brand.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={style}>

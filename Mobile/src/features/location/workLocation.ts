@@ -10,7 +10,15 @@
  *    marcados ANTES de enviar y borrados al recibir respuesta.
  * Contrato: POST /location/points (LocationBatchRequest → LocationBatchResponse).
  */
-import type { LocationBatchResponse, LocationPoint, LocationSettings } from '@/types/contracts';
+import type {
+  LocationBatchResponse,
+  LocationPoint,
+  LocationSettings,
+  LocationTracking,
+  PunchType,
+  TrackingPausedState,
+  WorkdayStatus,
+} from '@/types/contracts';
 
 export type AppStateKind = LocationPoint['app_state'];
 
@@ -239,10 +247,13 @@ export async function storeSamples(
   uuid: () => string,
   now: number,
   settings: LocationSettings | null,
+  /** true cuando el seguimiento lo gobierna la jornada (entrada/descanso/salida) y no la ventana. */
+  shiftDriven = false,
 ): Promise<number> {
   const recent = samples.filter((s) => {
     const t = Date.parse(s.captured_at);
-    return !Number.isNaN(t) && t >= now - MAX_AGE_MS && t <= now + MAX_FUTURE_MS && windowActive(settings, t);
+    const allowed = shiftDriven ? settings?.window.enabled !== false : windowActive(settings, t);
+    return !Number.isNaN(t) && t >= now - MAX_AGE_MS && t <= now + MAX_FUTURE_MS && allowed;
   });
   if (!recent.length) return 0;
   const row = await ensureState(db, userId);
@@ -355,9 +366,66 @@ export async function locationSummary(db: SqlExecutor, userId: number): Promise<
   };
 }
 
+/* ───────────────────────── Fase según la jornada ───────────────────────── */
+
+/**
+ * Fase del seguimiento (revisión RH, pantalla 04):
+ *  - «on_punch»: sólo se toma ubicación al marcar → nunca hay seguimiento.
+ *  - «during_shift»: inicia con la entrada, se pausa en descanso/comida, se
+ *    reanuda al terminar la pausa y se detiene con la salida.
+ */
+export type TrackingPhase = 'off' | 'active' | 'paused';
+
+/** Estado de la jornada tras un marcaje (para calcular la fase con marcajes aún sin enviar). */
+export const STATUS_AFTER_PUNCH: Record<PunchType, WorkdayStatus> = {
+  clock_in: 'working',
+  clock_out: 'finished',
+  break_start: 'on_break',
+  break_end: 'working',
+};
+
+export interface PhaseOptions {
+  /** Fin del turno programado (ISO). */
+  shiftEndsAt?: string | null;
+  /** Minutos tras el fin de turno en que se corta el seguimiento si se omitió la salida. */
+  contingencyMinutes?: number | null;
+  now?: number;
+}
+
+export function trackingPhase(
+  mode: LocationTracking | null | undefined,
+  status: WorkdayStatus | (string & {}) | null | undefined,
+  pausedStates: readonly TrackingPausedState[] = ['break', 'meal'],
+  opts: PhaseOptions = {},
+): TrackingPhase {
+  if (mode !== 'during_shift' || !status) return 'off';
+  // Salida omitida: el seguimiento no se prolonga indefinidamente (la omisión
+  // queda para rectificarse; nunca se genera un marcaje de salida).
+  const end = opts.shiftEndsAt ? Date.parse(opts.shiftEndsAt) : NaN;
+  if (!Number.isNaN(end) && typeof opts.contingencyMinutes === 'number' && opts.contingencyMinutes > 0 && opts.now !== undefined) {
+    if (opts.now > end + opts.contingencyMinutes * 60_000) return 'off';
+  }
+  if (status === 'working') return 'active';
+  if (status === 'on_break') return pausedStates.includes('break') ? 'paused' : 'active';
+  if (status === 'on_meal') return pausedStates.includes('meal') ? 'paused' : 'active';
+  return 'off';
+}
+
 /* ───────────────────────── Estado visible ───────────────────────── */
 
-export type TrackingKey = 'active' | 'active_foreground_only' | 'starting' | 'paused_window' | 'stopped' | 'no_permission' | 'gps_off' | 'not_required' | 'unavailable';
+export type TrackingKey =
+  | 'active'
+  | 'active_foreground_only'
+  | 'starting'
+  | 'paused_window'
+  | 'paused_break'
+  | 'off_shift'
+  | 'on_punch_only'
+  | 'stopped'
+  | 'no_permission'
+  | 'gps_off'
+  | 'not_required'
+  | 'unavailable';
 
 export interface TrackingInput {
   available: boolean;
@@ -367,14 +435,20 @@ export interface TrackingInput {
   running: boolean | null;
   notRequired: boolean;
   outsideWindow: boolean;
+  /** Modo del puesto (null = aún sin política). */
+  mode?: LocationTracking | null;
+  phase?: TrackingPhase;
 }
 
 export function trackingKey(i: TrackingInput): TrackingKey {
   if (!i.available) return 'unavailable';
   if (i.notRequired) return 'not_required';
+  if (i.mode === 'on_punch') return i.foreground === 'granted' ? 'on_punch_only' : 'no_permission';
   if (i.foreground !== 'granted') return 'no_permission';
   if (!i.gpsOn) return 'gps_off';
-  if (i.outsideWindow) return 'paused_window';
+  if (i.phase === 'paused') return 'paused_break';
+  if (i.phase === 'off') return 'off_shift';
+  if (i.phase === undefined && i.outsideWindow) return 'paused_window';
   if (i.running === null) return 'starting';
   if (!i.running) return 'stopped';
   return i.background === 'granted' ? 'active' : 'active_foreground_only';

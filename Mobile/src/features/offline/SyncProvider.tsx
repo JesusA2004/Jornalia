@@ -2,6 +2,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
+import { deviceIntegrity } from '@/features/attendance/integrity';
 import { api, punchQueue } from '@/services/container';
 
 import { registerBackgroundSync, unregisterBackgroundSync } from './backgroundSync';
@@ -52,7 +53,7 @@ export function SyncProvider({ enabled, children }: { enabled: boolean; children
       if (!enabled || !onlineRef.current) return null;
       setSyncing(true);
       try {
-        const outcome = await syncPunches({ queue: punchQueue, send: api.sync.punches, force });
+        const outcome = await syncPunches({ queue: punchQueue, send: async (body) => api.sync.punches(body, await deviceIntegrity()), force });
         setLastOutcome(outcome);
         if (outcome.sent > 0 || outcome.stoppedBy === null) setLastSyncAt(Date.now());
         return outcome;

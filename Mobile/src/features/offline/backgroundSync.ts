@@ -1,6 +1,7 @@
 import * as BackgroundTask from 'expo-background-task';
 import * as TaskManager from 'expo-task-manager';
 
+import { deviceIntegrity } from '@/features/attendance/integrity';
 import { api, punchQueue } from '@/services/container';
 import { getSession } from '@/storage/secure';
 
@@ -18,7 +19,7 @@ TaskManager.defineTask(SYNC_TASK, async () => {
   try {
     const session = await getSession();
     if (!session) return BackgroundTask.BackgroundTaskResult.Success;
-    await syncPunches({ queue: punchQueue, send: api.sync.punches });
+    await syncPunches({ queue: punchQueue, send: async (body) => api.sync.punches(body, await deviceIntegrity()) });
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch {
     return BackgroundTask.BackgroundTaskResult.Failed;

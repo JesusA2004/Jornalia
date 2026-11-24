@@ -41,8 +41,8 @@ export default function NewRectificationScreen() {
   const evidence = useEvidence();
 
   useEffect(() => {
-    evidenceStore.set(null);
-    return () => evidenceStore.set(null);
+    evidenceStore.clear();
+    return () => evidenceStore.clear();
   }, []);
 
   const day = useQuery(() => api.attendance.history({ from: date, to: date, page: 1 }).then((r) => r.data[0] ?? null), [date]);
@@ -57,6 +57,7 @@ export default function NewRectificationScreen() {
     if (needsType && !type) e.type = 'Selecciona el tipo de marcaje.';
     if (needsTime && !time) e.time = 'Indica la hora correcta.';
     if (reason.trim().length < 10) e.reason = 'Describe el motivo (mínimo 10 caracteres).';
+    if (!evidence.length) e.evidence = 'Adjunta al menos una evidencia.';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -75,15 +76,15 @@ export default function NewRectificationScreen() {
           proposed_time: needsTime && time ? wallTimeToUtcIso(date, time.h, time.m, tz) : null,
           reason: reason.trim(),
         },
-        evidence,
+        [...evidence],
       );
-      evidenceStore.set(null);
-      Alert.alert('Enviada', 'Tu jefe la revisará.');
+      evidenceStore.clear();
+      Alert.alert('Enviada', 'Tu jefe la revisa y después tú la firmas.');
       router.back();
     } catch (e) {
       if (e instanceof ApiRequestError && e.code === 'validation_failed') {
         const fe: Record<string, string> = {};
-        for (const [k, v] of Object.entries(e.fieldErrors)) if (v[0]) fe[k] = v[0];
+        for (const [k, v] of Object.entries(e.fieldErrors)) if (v[0]) fe[k.startsWith('evidence') ? 'evidence' : k] = v[0];
         setErrors(fe);
       }
       setServerError(describeError(e));
@@ -181,9 +182,9 @@ export default function NewRectificationScreen() {
         hint={`${reason.trim().length}/1000`}
       />
 
-      <EvidencePicker />
+      <EvidencePicker required error={errors.evidence} />
 
-      <Button title="Enviar rectificación" onPress={() => void submit()} loading={busy} size="lg" />
+      <Button title="Enviar" icon="arrowRight" onPress={() => void submit()} loading={busy} disabled={!evidence.length} size="lg" />
     </Screen>
   );
 }

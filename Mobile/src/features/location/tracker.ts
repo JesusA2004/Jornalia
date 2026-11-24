@@ -9,9 +9,12 @@
  *    cuando la app está en pantalla (al abrirla).
  *  - La tarea está ligada a la sesión: en cada entrega relee la credencial; sin
  *    sesión o con otro usuario se detiene y descarta lo no enviado.
- *  - Fuera de la ventana de jornada la tarea sigue viva (para reanudarse sola),
- *    pero cada muestra se descarta antes de guardarse.
- *  - Nunca se inventan coordenadas.
+ *  - El GPS sólo corre en la fase «active» de la jornada (modo «during_shift»):
+ *    inicia con la entrada, se detiene en descanso/comida y con la salida. En
+ *    modo «on_punch» nunca hay seguimiento (sólo ubicación al marcar).
+ *  - Ahorro de batería: precisión equilibrada en segundo plano (60 s / 50 m) y
+ *    alta sólo con la app en pantalla.
+ *  - Nunca se inventan coordenadas; `is_mocked` viaja tal como lo reporta el SO.
  */
 import * as Crypto from 'expo-crypto';
 import * as Location from 'expo-location';
@@ -35,6 +38,7 @@ import {
   rearmQueue,
   type SqlExecutor,
   storeSamples,
+  type TrackingPhase,
   type UploadErrorKind,
   uploadPending,
 } from './workLocation';
@@ -45,6 +49,7 @@ const KEY_CONTEXT = 'location.context';
 const KEY_SETTINGS = 'location.settings';
 const KEY_NOT_REQUIRED = 'location.not_required';
 const KEY_MODE_STARTED = 'location.started';
+const KEY_PHASE = 'location.phase';
 
 const UPLOAD_INTERVAL_BG_MS = 60_000;
 let lastBackgroundUpload = 0;
@@ -85,6 +90,12 @@ export async function isNotRequired(userId: number): Promise<boolean> {
   return (await SecureStore.getItemAsync(KEY_NOT_REQUIRED).catch(() => null)) === String(userId);
 }
 
+/** Fase persistida (la lee la tarea en segundo plano). Por omisión «off». */
+export async function readPhase(): Promise<TrackingPhase> {
+  const v = await SecureStore.getItemAsync(KEY_PHASE).catch(() => null);
+  return v === 'active' || v === 'paused' ? v : 'off';
+}
+
 async function del(key: string) {
   await SecureStore.deleteItemAsync(key).catch(() => undefined);
 }
@@ -100,14 +111,15 @@ async function tokenFor(ctx: Context): Promise<string | null> {
 
 const SERVICE = {
   notificationTitle: 'Ubicación de trabajo activa',
-  notificationBody: 'Se comparte sólo durante tu turno. Se detiene al cerrar sesión.',
+  notificationBody: 'Sólo durante tu jornada. Se pausa en descanso y se detiene con tu salida.',
   notificationColor: brand.green,
 };
 
 function taskOptions(settings: LocationSettings | null): Location.LocationTaskOptions {
   const c = cadenceFor('background', settings);
   return {
-    accuracy: Location.Accuracy.High,
+    // Equilibrada: fusiona red/Wi-Fi/GPS sin mantener el GPS fino encendido.
+    accuracy: Location.Accuracy.Balanced,
     timeInterval: c.intervalS * 1000,
     distanceInterval: c.distanceM,
     deferredUpdatesInterval: 60_000,
@@ -211,7 +223,7 @@ const currentAppState = (): AppStateKind => (AppState.currentState === 'active' 
 /** Guarda muestras (de la tarea o del seguimiento en primer plano) por el mismo filtro. */
 export async function ingest(userId: number, samples: LocationSample[], state: AppStateKind): Promise<number> {
   const db = (await getDb()) as unknown as SqlExecutor;
-  return storeSamples(db, userId, samples, state, () => Crypto.randomUUID(), Date.now(), await readSettings());
+  return storeSamples(db, userId, samples, state, () => Crypto.randomUUID(), Date.now(), await readSettings(), true);
 }
 
 // La tarea se define a nivel de módulo para que el SO pueda relanzar la app en
@@ -225,6 +237,10 @@ if (Platform.OS !== 'web') {
       const ctx = await readContext();
       if (!ctx) {
         await stopUpdates(); // nunca un GPS sin sesión
+        return;
+      }
+      if ((await readPhase()) !== 'active') {
+        await stopUpdates(); // en pausa o fuera de jornada: sin GPS
         return;
       }
       const token = await tokenFor(ctx);
@@ -348,7 +364,24 @@ export async function startWorkLocation(userId: number): Promise<StartResult> {
   } catch {
     // la base se reintenta en la siguiente entrega
   }
+  if ((await readPhase()) !== 'active') {
+    await stopUpdates();
+    return 'waiting';
+  }
   return (await ensureUpdates()) ? 'active' : 'waiting';
+}
+
+/**
+ * Aplica la fase de la jornada: «active» enciende el seguimiento (sólo con la
+ * app en pantalla, que es cuando se marca); «paused»/«off» lo apagan y envían
+ * lo pendiente. Idempotente.
+ */
+export async function applyPhase(userId: number, phase: TrackingPhase): Promise<StartResult> {
+  await SecureStore.setItemAsync(KEY_PHASE, phase).catch(() => undefined);
+  if (phase === 'active') return startWorkLocation(userId);
+  await stopUpdates();
+  await uploadNow(userId).catch(() => undefined);
+  return 'waiting';
 }
 
 /** Ajusta la cadencia tras recibir ajustes nuevos (sólo en pantalla). */
@@ -363,6 +396,7 @@ export async function stopWorkLocation(): Promise<void> {
   const ctx = await readContext();
   await del(KEY_NOT_REQUIRED);
   await del(KEY_SETTINGS);
+  await del(KEY_PHASE);
   await endWork(ctx?.userId ?? null, true);
 }
 
@@ -371,7 +405,7 @@ export async function reconcileOnLaunch(): Promise<void> {
   try {
     if (!(await isRunning())) return;
     const fg = await Location.getForegroundPermissionsAsync();
-    if (fg.status !== Location.PermissionStatus.GRANTED) await stopUpdates();
+    if (fg.status !== Location.PermissionStatus.GRANTED || (await readPhase()) !== 'active') await stopUpdates();
   } catch {
     // sin efecto
   }

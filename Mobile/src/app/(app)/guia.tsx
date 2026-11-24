@@ -7,7 +7,7 @@ import { AppText, Card } from '@/components/ui/primitives';
 import { HELP } from '@/features/help/content';
 import { spacing } from '@/theme/tokens';
 
-const ORDER = ['inicio', 'ubicacion', 'historial', 'solicitudes', 'sincronizacion', 'perfil'] as const;
+const ORDER = ['inicio', 'ubicacion', 'firma', 'convenio', 'nip', 'avisos', 'historial', 'solicitudes', 'sincronizacion', 'perfil'] as const;
 
 export default function GuideScreen() {
   return (

@@ -1,6 +1,7 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { Platform, Share, StyleSheet, View } from 'react-native';
 
+import { HelpButton } from '@/components/help';
 import { Screen } from '@/components/ui/Screen';
 import { Icon } from '@/components/ui/Icon';
 import { AppText, Banner, Button, Card, ErrorState, ListRow, LoadingState, Pill, SectionHeader } from '@/components/ui/primitives';
@@ -18,7 +19,7 @@ const SOURCE_LABEL: Record<PunchSource, string> = {
   web: 'Web',
   kiosk: 'Kiosco',
   import: 'Importación',
-  system: 'Salida automática del sistema',
+  system: 'Generado por sistema (histórico)',
 };
 
 export default function ReceiptScreen() {
@@ -49,7 +50,7 @@ function ReceiptBody({ receipt, tz, stale }: { receipt: PunchReceipt; tz: string
 
   return (
     <Screen edges={['bottom']}>
-      <Stack.Screen options={{ title: 'Comprobante de marcaje' }} />
+      <Stack.Screen options={{ title: 'Comprobante', headerRight: () => <HelpButton topic="comprobante" /> }} />
       {stale ? <Banner tone="warning" icon="cloudOff" title="Comprobante guardado" message="Mostrando la copia local; sin conexión con el servidor." /> : null}
 
       <Card style={{ alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xxl }}>
@@ -64,7 +65,7 @@ function ReceiptBody({ receipt, tz, stale }: { receipt: PunchReceipt; tz: string
           {formatCivilDateLong(receipt.workday.date)}
         </AppText>
         <View style={{ alignSelf: 'center' }}>
-          <Pill label={flagged ? 'Con observaciones' : 'Registrado'} tone={flagged ? 'warning' : 'success'} />
+          <Pill label={flagged ? 'En revisión' : 'Registrado'} tone={flagged ? 'warning' : 'success'} />
         </View>
         <View style={[styles.folio, { borderColor: colors.border }]}>
           <AppText variant="label" color="textMuted">
@@ -86,15 +87,16 @@ function ReceiptBody({ receipt, tz, stale }: { receipt: PunchReceipt; tz: string
 
       <SectionHeader title="Detalle" />
       <Card padded={false} style={{ paddingHorizontal: spacing.lg }}>
-        <ListRow title="Hora oficial (servidor)" subtitle={formatDateTime(p.server_time, tz)} />
+        <ListRow title="Hora oficial (recepción)" subtitle={formatDateTime(p.received_at ?? p.server_time, tz)} />
         <ListRow
-          title="Hora del teléfono (declarada)"
+          title="Hora del teléfono (captura)"
           subtitle={
             p.device_time
               ? `${formatDateTime(p.device_time, tz)}${p.clock_skew_seconds ? ` · desfase ${p.clock_skew_seconds} s` : ''}`
               : 'No disponible'
           }
         />
+        {p.synced_at ? <ListRow title="Envío desde el teléfono" subtitle={formatDateTime(p.synced_at, tz)} /> : null}
         <ListRow title="Verificación" subtitle={AUTH_METHOD_LABEL[p.auth_method]} />
         <ListRow title="Origen" subtitle={`${SOURCE_LABEL[p.source]}${p.captured_offline ? ' · capturado sin conexión' : ''}`} />
         <ListRow

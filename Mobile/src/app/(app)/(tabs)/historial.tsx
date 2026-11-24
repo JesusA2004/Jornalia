@@ -10,6 +10,7 @@ import { Segmented } from '@/components/ui/fields';
 import { Icon } from '@/components/ui/Icon';
 import { AppText, Button, Card, EmptyState, ErrorState, LoadingState, Pill } from '@/components/ui/primitives';
 import { useSignedIn } from '@/features/auth/AuthProvider';
+import { useNow } from '@/hooks/useNow';
 import { usePaginated } from '@/hooks/usePaginated';
 import { api } from '@/services/container';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -94,6 +95,7 @@ export default function HistoryScreen() {
 
 function DayCard({ day, tz }: { day: HistoryDay; tz: string }) {
   const { colors } = useTheme();
+  const now = useNow(60_000).getTime();
   return (
     <Card style={{ gap: spacing.sm }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.sm }}>
@@ -124,11 +126,17 @@ function DayCard({ day, tz }: { day: HistoryDay; tz: string }) {
 
       {day.rectifications.length > 0 ? (
         <View style={{ gap: spacing.sm }}>
-          <AppText variant="label" color="info">
-            Rectificaciones
+          <AppText variant="label" color="goldStrong">
+            Correcciones
           </AppText>
           {day.rectifications.map((r) => (
-            <RectificationItem key={r.id} r={r} tz={tz} />
+            <RectificationItem
+              key={r.id}
+              r={r}
+              tz={tz}
+              now={now}
+              onPress={() => router.push({ pathname: '/rectificaciones/[id]', params: { id: String(r.id) } })}
+            />
           ))}
         </View>
       ) : null}

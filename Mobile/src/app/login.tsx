@@ -11,6 +11,7 @@ import { Icon } from '@/components/ui/Icon';
 import { AppText, Banner, Button } from '@/components/ui/primitives';
 import { API_URL, APP_VARIANT } from '@/config/env';
 import { SecretStoreError, useAuth } from '@/features/auth/AuthProvider';
+import { KioskEntryLink } from '@/features/kiosk/KioskEntryLink';
 import { getLastEmail } from '@/storage/secure';
 import { useTheme } from '@/theme/ThemeProvider';
 import { brand, radius, spacing } from '@/theme/tokens';
@@ -109,7 +110,7 @@ export default function LoginScreen() {
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
       <KeyboardAwareScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled" bottomOffset={110}>
-          <View style={[styles.hero, { paddingTop: insets.top + spacing.xxl, backgroundColor: brand.deep }]}>
+          <BrandGradient style={[styles.hero, { paddingTop: insets.top + spacing.xxl }]}>
             <View style={styles.heroRow}>
               <View style={{ flex: 1, gap: spacing.md }}>
                 <Logo width={168} />
@@ -119,8 +120,8 @@ export default function LoginScreen() {
               </View>
               <Mascot pose="saludo" height={150} />
             </View>
-            <BrandGradient style={styles.band} />
-          </View>
+            <View style={[styles.band, { backgroundColor: brand.gold }]} />
+          </BrandGradient>
 
           <View style={[styles.form, { backgroundColor: colors.background }]}>
             <View style={{ gap: spacing.xs }}>
@@ -176,6 +177,8 @@ export default function LoginScreen() {
             />
 
             <Button title="Entrar" onPress={submit} loading={busy} size="lg" style={{ marginTop: spacing.sm }} />
+
+            <KioskEntryLink />
 
             {APP_VARIANT !== 'production' ? (
               <AppText variant="caption" color="textSubtle" style={{ textAlign: 'center' }}>

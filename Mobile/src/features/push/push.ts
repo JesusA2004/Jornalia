@@ -1,8 +1,11 @@
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { AndroidImportance } from 'expo-notifications';
+import { type Href, router } from 'expo-router';
+import { useEffect } from 'react';
 import { Platform } from 'react-native';
 
+import { routeForNotification } from '@/features/notifications/routing';
 import { api } from '@/services/container';
 
 Notifications.setNotificationHandler({
@@ -58,4 +61,31 @@ export async function registerPushToken(deviceUuid: string, askPermission: boole
   } catch (e) {
     return { status: 'error', message: e instanceof Error ? e.message : 'Error desconocido' };
   }
+}
+
+/**
+ * Navegación al tocar una notificación push (en frío o con la app abierta):
+ * abre la solicitud, comprobante o aviso correspondiente y lo marca leído.
+ * `enabled=false` mientras el flujo del convenio bloquea la app.
+ */
+export function useNotificationNavigation(enabled: boolean): void {
+  useEffect(() => {
+    if (!enabled) return;
+    const open = (response: Notifications.NotificationResponse | null) => {
+      if (!response) return;
+      const content = response.notification.request.content;
+      const data = (content.data ?? {}) as Record<string, unknown>;
+      const kind = typeof data.kind === 'string' ? data.kind : null;
+      if (typeof data.notification_id === 'string') void api.notifications.read(data.notification_id).catch(() => undefined);
+      router.push(routeForNotification(kind, data) as Href);
+    };
+    try {
+      open(Notifications.getLastNotificationResponse());
+      Notifications.clearLastNotificationResponse();
+    } catch {
+      // módulo no disponible (web)
+    }
+    const sub = Notifications.addNotificationResponseReceivedListener(open);
+    return () => sub.remove();
+  }, [enabled]);
 }

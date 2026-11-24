@@ -27,8 +27,8 @@ export default function NewIncidenceScreen() {
   const selected = requestable.find((t) => t.id === typeId) ?? null;
 
   useEffect(() => {
-    evidenceStore.set(null);
-    return () => evidenceStore.set(null);
+    evidenceStore.clear();
+    return () => evidenceStore.clear();
   }, []);
 
   const validate = () => {
@@ -36,7 +36,7 @@ export default function NewIncidenceScreen() {
     if (!typeId) e.incidence_type_id = 'Selecciona el tipo de incidencia.';
     if (end < start) e.ends_on = 'La fecha final no puede ser anterior a la inicial.';
     if (reason.trim().length < 5) e.reason = 'Describe el motivo.';
-    if (selected?.requires_evidence && !evidence) e.evidence = 'Este tipo de incidencia requiere evidencia.';
+    if (selected?.requires_evidence && !evidence.length) e.evidence = 'Este tipo de incidencia requiere evidencia.';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -46,8 +46,8 @@ export default function NewIncidenceScreen() {
     setBusy(true);
     setServerError(null);
     try {
-      await api.incidences.create({ incidence_type_id: typeId, starts_on: start, ends_on: end, reason: reason.trim() }, evidence);
-      evidenceStore.set(null);
+      await api.incidences.create({ incidence_type_id: typeId, starts_on: start, ends_on: end, reason: reason.trim() }, evidence[0] ?? null);
+      evidenceStore.clear();
       Alert.alert('Incidencia registrada', selected?.requires_approval ? 'Quedó en revisión de tu supervisor.' : 'Se registró correctamente.');
       router.back();
     } catch (e) {
@@ -111,7 +111,7 @@ export default function NewIncidenceScreen() {
         error={errors.ends_on}
       />
       <TextField label="Motivo" value={reason} onChangeText={setReason} multiline maxLength={1000} error={errors.reason} placeholder="Describe brevemente la incidencia" />
-      <EvidencePicker required={selected?.requires_evidence} />
+      <EvidencePicker required={selected?.requires_evidence} max={1} />
       {errors.evidence ? (
         <AppText variant="caption" color="danger">
           {errors.evidence}

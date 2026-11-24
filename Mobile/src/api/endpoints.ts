@@ -5,6 +5,7 @@ import type {
   CalendarResponse,
   ChallengeResponse,
   Device,
+  DocumentSignResult,
   FaceChallenge,
   FaceVerificationResult,
   FaceVerificationStatus,
@@ -22,9 +23,13 @@ import type {
   PunchReceipt,
   PunchRequest,
   PushTokenRequest,
+  PendingDocument,
   Rectification,
   RectificationRequest,
   RefreshResponse,
+  SignedDocument,
+  SignaturePinRequest,
+  SignRequest,
   SyncRequest,
   SyncResponse,
   TodayResponse,
@@ -35,21 +40,29 @@ import type {
 
 import type { ApiClient } from './client';
 
-/** Archivo de evidencia capturado con la cámara. */
+/** Archivo de evidencia (cámara, galería o documento). */
 export interface EvidenceFile {
   uri: string;
   name: string;
   type: string;
+  /** Tamaño en bytes si se conoce. */
+  size?: number | null;
 }
 
-function toForm(fields: Record<string, string | number | null>, evidence: EvidenceFile): FormData {
+export function toForm(fields: Record<string, string | number | null>, evidence: EvidenceFile | EvidenceFile[], field = 'evidence'): FormData {
   const form = new FormData();
   for (const [key, value] of Object.entries(fields)) {
     if (value !== null) form.append(key, String(value));
   }
   // React Native acepta { uri, name, type } como archivo en FormData.
-  form.append('evidence', evidence as unknown as Blob);
+  const files = Array.isArray(evidence) ? evidence : [evidence];
+  for (const f of files) form.append(field, { uri: f.uri, name: f.name, type: f.type } as unknown as Blob);
   return form;
+}
+
+/** Señales de integridad del teléfono en la cabecera `X-Device-Integrity` (contrato). */
+function integrityHeaders(signals: readonly string[]): { headers?: Record<string, string> } {
+  return signals.length ? { headers: { 'X-Device-Integrity': signals.join(',') } } : {};
 }
 
 /** Funciones tipadas para cada endpoint del contrato v1 (ver packages/contracts). */
@@ -64,26 +77,45 @@ export function createEndpoints(api: ApiClient) {
       get: () => api.get<Profile>('/profile').then((r) => r.data),
       acknowledge: (id: number, body: AcknowledgeRequest) =>
         api.post<void>(`/acknowledgements/${id}`, body).then(() => undefined),
+      /** Alta o cambio del NIP de firma electrónica. */
+      setSignaturePin: (body: SignaturePinRequest) => api.post<unknown>('/profile/signature-pin', body).then(() => undefined),
+    },
+    documents: {
+      /** Convenio de registro y aviso de privacidad pendientes (bloqueantes). */
+      pending: () => api.get<PendingDocument[]>('/documents/pending').then((r) => r.data),
+      sign: (id: number, body: SignRequest) => api.post<DocumentSignResult>(`/documents/${id}/sign`, body).then((r) => r.data ?? null),
+      /** Documentos ya firmados/aceptados (consulta). */
+      signed: () => api.get<SignedDocument[]>('/documents').then((r) => r.data),
+    },
+    announcements: {
+      /** Confirmación de lectura de un comunicado importante. */
+      read: (id: number | string, deviceUuid: string) =>
+        api.post<unknown>(`/announcements/${encodeURIComponent(String(id))}/read`, { device_uuid: deviceUuid }).then(() => undefined),
     },
     attendance: {
       today: () => api.get<TodayResponse>('/attendance/today').then((r) => r.data),
       policy: () => api.get<AttendancePolicy>('/attendance/policy').then((r) => r.data),
       challenge: () => api.post<ChallengeResponse>('/attendance/challenge').then((r) => r.data),
-      punch: (body: PunchRequest) => api.post<PunchReceipt>('/attendance/punches', body).then((r) => r),
+      punch: (body: PunchRequest, integrity: readonly string[] = []) =>
+        api.post<PunchReceipt>('/attendance/punches', body, integrityHeaders(integrity)).then((r) => r),
       receipt: (uuid: string) => api.get<PunchReceipt>(`/attendance/punches/${encodeURIComponent(uuid)}`).then((r) => r.data),
       history: (params: { from?: string; to?: string; page?: number }) =>
         api.get<HistoryDay[], PaginationMeta>('/attendance/history', { query: params }),
     },
     sync: {
-      punches: (body: SyncRequest) => api.post<SyncResponse>('/sync/punches', body, { timeoutMs: 45000 }).then((r) => r.data),
+      punches: (body: SyncRequest, integrity: readonly string[] = []) =>
+        api.post<SyncResponse>('/sync/punches', body, { timeoutMs: 45000, ...integrityHeaders(integrity) }).then((r) => r.data),
     },
     rectifications: {
-      list: (page = 1) => api.get<Rectification[], PaginationMeta>('/rectifications', { query: { page } }),
-      create: (body: RectificationRequest, evidence?: EvidenceFile | null) =>
-        (evidence
-          ? api.request<Rectification>('POST', '/rectifications', { form: toForm({ ...body }, evidence) })
-          : api.post<Rectification>('/rectifications', body)
-        ).then((r) => r.data),
+      list: (page = 1, stage?: string) => api.get<Rectification[], PaginationMeta>('/rectifications', { query: { page, stage } }),
+      show: (id: number) => api.get<Rectification>(`/rectifications/${id}`).then((r) => r.data),
+      /** La evidencia es obligatoria (multipart `evidence[]`). */
+      create: (body: RectificationRequest, evidence: EvidenceFile[]) =>
+        api
+          .request<Rectification>('POST', '/rectifications', { form: toForm({ ...body }, evidence, 'evidence[]'), timeoutMs: 60000 })
+          .then((r) => r.data),
+      sign: (id: number, body: SignRequest) => api.post<Rectification>(`/rectifications/${id}/sign`, body).then((r) => r.data),
+      decline: (id: number, reason: string) => api.post<Rectification>(`/rectifications/${id}/decline`, { reason }).then((r) => r.data),
     },
     incidences: {
       types: () => api.get<IncidenceType[]>('/incidence-types').then((r) => r.data),

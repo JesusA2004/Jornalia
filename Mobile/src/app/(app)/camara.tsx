@@ -51,7 +51,7 @@ export default function CameraScreen() {
     try {
       const photo = await camera.current.takePictureAsync({ quality: 0.7, skipProcessing: false });
       if (!photo?.uri) throw new Error('Sin imagen');
-      evidenceStore.set({ uri: photo.uri, name: `evidencia-${Date.now()}.jpg`, type: 'image/jpeg' });
+      evidenceStore.add({ uri: photo.uri, name: `evidencia-${Date.now()}.jpg`, type: 'image/jpeg' });
       router.back();
     } catch {
       setError('No se pudo tomar la foto. Intenta de nuevo.');

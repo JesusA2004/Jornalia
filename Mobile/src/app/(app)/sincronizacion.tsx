@@ -10,7 +10,7 @@ import type { QueuedPunch } from '@/features/offline/queue';
 import { useSync } from '@/features/offline/SyncProvider';
 import { useNow } from '@/hooks/useNow';
 import { spacing } from '@/theme/tokens';
-import { formatDateTime, formatTime, PUNCH_TYPE_LABEL } from '@/utils/format';
+import { civilDateInZone, formatDateTime, formatTime, PUNCH_TYPE_LABEL } from '@/utils/format';
 
 export default function SyncScreen() {
   const sync = useSync();
@@ -64,6 +64,9 @@ export default function SyncScreen() {
       </Card>
 
       <Stack.Screen options={{ headerRight: () => <HelpButton topic="sincronizacion" /> }} />
+      <AppText variant="caption" color="textMuted">
+        Pendiente = guardado en tu teléfono, aún no registrado.
+      </AppText>
       {late ? (
         <Banner
           tone="warning"
@@ -96,7 +99,7 @@ export default function SyncScreen() {
 
       {rejected.length ? (
         <>
-          <SectionHeader title="Rechazados por el servidor" />
+          <SectionHeader title="Requieren revisión" />
           <Card padded={false} style={{ paddingHorizontal: spacing.lg }}>
             {rejected.map((i, idx) => (
               <ListRow
@@ -104,14 +107,14 @@ export default function SyncScreen() {
                 icon="error"
                 iconTone="danger"
                 title={`${PUNCH_TYPE_LABEL[i.request.type]} · ${formatDateTime(i.request.device_time, tz)}`}
-                subtitle={i.error?.message ?? i.last_error ?? 'Rechazado'}
+                subtitle={`Requiere revisión: ${i.error?.message ?? i.last_error ?? 'rechazado'}`}
                 last={idx === rejected.length - 1}
                 onPress={() =>
                   Alert.alert('Marcaje rechazado', `${i.error?.message ?? ''}\n\n¿Qué deseas hacer?`, [
                     { text: 'Cerrar', style: 'cancel' },
                     {
                       text: 'Solicitar rectificación',
-                      onPress: () => router.push({ pathname: '/rectificacion', params: { date: i.request.device_time.slice(0, 10) } }),
+                      onPress: () => router.push({ pathname: '/rectificacion', params: { date: civilDateInZone(new Date(i.request.device_time), tz) } }),
                     },
                     { text: 'Descartar aviso', style: 'destructive', onPress: () => void sync.dismissRejected(i.client_uuid) },
                   ])
@@ -129,12 +132,12 @@ export default function SyncScreen() {
             {synced.map((i, idx) => (
               <ListRow
                 key={i.client_uuid}
-                icon="cloudDone"
-                iconTone="success"
-                title={PUNCH_TYPE_LABEL[i.request.type]}
+                icon={i.server_punch?.status === 'flagged' ? 'warning' : 'cloudDone'}
+                iconTone={i.server_punch?.status === 'flagged' ? 'warning' : 'success'}
+                title={`${PUNCH_TYPE_LABEL[i.request.type]}${i.server_punch?.status === 'flagged' ? ' · en revisión' : ''}`}
                 subtitle={
                   i.server_punch
-                    ? `Hora oficial ${formatDateTime(i.server_punch.server_time, tz)}${i.server_punch.status === 'flagged' ? ' · con observaciones' : ''}`
+                    ? `Capturado ${formatTime(i.request.device_time, tz)} · recibido ${formatDateTime(i.server_punch.received_at ?? i.server_punch.server_time, tz)}`
                     : 'Registrado'
                 }
                 onPress={i.server_punch ? () => router.push({ pathname: '/comprobante/[uuid]', params: { uuid: i.server_punch!.uuid } }) : undefined}

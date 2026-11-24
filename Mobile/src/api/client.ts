@@ -9,6 +9,8 @@ export interface RequestOptions {
   body?: unknown;
   /** Cuerpo multipart (evidencias). Si se indica, `body` se ignora. */
   form?: FormData;
+  /** Cabeceras adicionales (p. ej. X-Device-Integrity). */
+  headers?: Record<string, string>;
   /** false para endpoints públicos (login, health). */
   auth?: boolean;
   timeoutMs?: number;
@@ -59,7 +61,7 @@ export class ApiClient {
   async request<T, M = undefined>(method: HttpMethod, path: string, options: RequestOptions = {}): Promise<ApiResult<T, M>> {
     const fetchImpl = this.config.fetchImpl ?? fetch;
     const url = buildUrl(this.config.baseUrl, path, options.query);
-    const headers: Record<string, string> = { Accept: 'application/json' };
+    const headers: Record<string, string> = { ...options.headers, Accept: 'application/json' };
 
     if (options.auth !== false) {
       const token = await this.config.getToken();

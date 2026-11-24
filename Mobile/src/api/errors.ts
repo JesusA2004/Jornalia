@@ -26,6 +26,13 @@ const KNOWN_CODES: readonly ApiErrorCode[] = [
   'face_locked',
   'face_challenge_invalid',
   'face_challenge_expired',
+  'kiosk_unauthenticated',
+  'kiosk_activation_invalid',
+  'kiosk_invalid_credentials',
+  'kiosk_wrong_branch',
+  'kiosk_employee_inactive',
+  'pin_locked',
+  'pin_not_set',
 ];
 
 /** Error devuelto por el servidor con forma `ApiError`. */
@@ -131,6 +138,13 @@ export function defaultMessage(code: ApiErrorCode): string {
     face_locked: 'Demasiados intentos con rostro. Usa tu huella.',
     face_challenge_invalid: 'El reto ya no es válido. Intenta de nuevo.',
     face_challenge_expired: 'Se acabó el tiempo. Intenta de nuevo.',
+    kiosk_unauthenticated: 'Este kiosco ya no está activo.',
+    kiosk_activation_invalid: 'Código de activación no válido o vencido.',
+    kiosk_invalid_credentials: 'Número o NIP incorrecto.',
+    kiosk_wrong_branch: 'Este kiosco no corresponde a tu sucursal.',
+    kiosk_employee_inactive: 'Tu registro no está activo. Acude con RH.',
+    pin_locked: 'NIP bloqueado 15 minutos por intentos fallidos.',
+    pin_not_set: 'Primero crea tu NIP de firma.',
   };
   return map[code];
 }
