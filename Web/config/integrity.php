@@ -13,7 +13,10 @@ return [
     | Si no se define se usa APP_KEY. Respáldela: sin ella no puede verificarse
     | la cadena histórica.
     */
-    'chain_key' => env('INTEGRITY_CHAIN_KEY', env('APP_KEY', '')),
+    // `?:` y no el valor por defecto de env(): una línea vacía `INTEGRITY_CHAIN_KEY=` (como en
+    // .env.example) devuelve '' y no null, y sin esto la cadena quedaría sin clave en lugar de
+    // usar APP_KEY. Para instalaciones que ya definen la clave o no tienen la línea, no cambia nada.
+    'chain_key' => env('INTEGRITY_CHAIN_KEY') ?: env('APP_KEY', ''),
 
     /* Disco donde se escriben las anclas externas (ver config/filesystems.php). */
     'anchor_disk' => env('INTEGRITY_ANCHOR_DISK', 'anchors'),

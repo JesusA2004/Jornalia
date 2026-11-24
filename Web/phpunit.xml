@@ -32,6 +32,7 @@
         <env name="DB_USERNAME" value="root"/>
         <env name="DB_PASSWORD" value=""/>
         <env name="DB_DATABASE" value="jornalia_test"/>
+        <env name="INTEGRITY_CHAIN_KEY" value="test-chain-key-not-for-production"/>
         <env name="INTEGRITY_ANCHOR_KEY" value="test-anchor-key-not-for-production"/>
         <env name="INTEGRITY_ANCHOR_PATH" value="storage/framework/testing/anchors"/>
         <env name="DB_URL" value=""/>
