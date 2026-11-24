@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Domain\Security\PermissionCatalog;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -17,6 +18,7 @@ use Illuminate\Support\Carbon;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use Laravel\Sanctum\Contracts\HasAbilities;
 use Laravel\Sanctum\HasApiTokens;
+use Spatie\Permission\Contracts\Permission;
 use Spatie\Permission\Traits\HasRoles;
 
 /**
@@ -45,7 +47,11 @@ use Spatie\Permission\Traits\HasRoles;
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, HasRoles, Notifiable, SoftDeletes, TwoFactorAuthenticatable;
+    use HasApiTokens, HasFactory, Notifiable, SoftDeletes, TwoFactorAuthenticatable;
+
+    use HasRoles {
+        checkPermissionTo as private spatieCheckPermissionTo;
+    }
 
     /**
      * Token de la petición actual: PersonalAccessToken (app móvil), TransientToken
@@ -131,5 +137,21 @@ class User extends Authenticatable
             ->where('organizations.id', $organizationId)
             ->wherePivot('status', 'active')
             ->exists();
+    }
+
+    /**
+     * Separación de funciones: el superadministrador nunca obtiene un permiso operativo,
+     * ni siquiera por un rol asignado (Spatie evalúa este método en su `Gate::before`,
+     * que corre antes que el de la aplicación).
+     *
+     * @param  string|int|Permission|\BackedEnum  $permission
+     */
+    public function checkPermissionTo($permission, ?string $guardName = null): bool
+    {
+        if ($this->is_super_admin && is_string($permission) && PermissionCatalog::isOperational($permission)) {
+            return false;
+        }
+
+        return $this->spatieCheckPermissionTo($permission, $guardName);
     }
 }

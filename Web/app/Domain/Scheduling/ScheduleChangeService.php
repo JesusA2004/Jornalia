@@ -108,6 +108,9 @@ final class ScheduleChangeService
             throw ValidationException::withMessages(['change' => 'No puedes autorizar un cambio que tú solicitaste.']);
         }
         $employee = $this->employee($change);
+        if ($employee->user_id !== null && $employee->user_id === $by->id) {
+            throw ValidationException::withMessages(['change' => 'No puedes autorizar un cambio de tu propio horario.']);
+        }
         // Al autorizar se revalida: si la fecha ya llegó, el cambio sería retroactivo.
         $this->assertFuture($employee, $change->date->toDateString());
 

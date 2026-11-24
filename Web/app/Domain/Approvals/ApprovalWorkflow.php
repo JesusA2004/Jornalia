@@ -68,8 +68,22 @@ final class ApprovalWorkflow
         if (! $employee instanceof Employee) {
             $employee = Employee::query()->find((int) $subjectModel->getAttribute('employee_id'));
         }
-        // Nadie decide sobre su propia solicitud (separación de funciones).
+        // Nadie decide sobre su propia solicitud ni sobre una que él mismo capturó a nombre
+        // de otro (separación de funciones, docs/seguridad/ROLES_Y_PERMISOS.md regla 3).
         if ($employee === null || $employee->user_id === $user->id) {
+            return false;
+        }
+        $capturedBy = $subjectModel->getAttribute('requested_by');
+        if ($capturedBy !== null && (int) $capturedBy === $user->id) {
+            return false;
+        }
+        // Multinivel: cada nivel lo resuelve una persona distinta (jefe y RH no pueden ser la misma).
+        $alreadyDecided = ApprovalDecision::query()
+            ->where('approvable_type', $subjectModel->getMorphClass())
+            ->where('approvable_id', $subjectModel->getKey())
+            ->where('decided_by', $user->id)
+            ->exists();
+        if ($alreadyDecided) {
             return false;
         }
         if ($subjectModel->getAttribute('status') !== ApprovalStatus::Pending) {

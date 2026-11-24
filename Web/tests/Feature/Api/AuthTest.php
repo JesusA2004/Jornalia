@@ -57,7 +57,7 @@ it('con dispositivo aprobado permite solicitar desafío', function () {
     $info = ($this->deviceInfo)();
     $token = $this->mobileLogin($info)->json('data.token');
     $device = Device::query()->where('device_uuid', $info['device_uuid'])->firstOrFail();
-    app(DeviceService::class)->approve($this->user, $device);
+    app(DeviceService::class)->approve($this->userIn($this->org, 'Administrador RH', allBranches: true), $device);
 
     $this->mobile('POST', '/attendance/challenge', token: $token)
         ->assertOk()
@@ -68,7 +68,7 @@ it('revocar un dispositivo invalida su token y el nuevo inicio de sesión lo re-
     $info = ($this->deviceInfo)();
     $first = $this->mobileLogin($info);
     $device = Device::query()->where('device_uuid', $info['device_uuid'])->firstOrFail();
-    app(DeviceService::class)->approve($this->user, $device);
+    app(DeviceService::class)->approve($this->userIn($this->org, 'Administrador RH', allBranches: true), $device);
     app(DeviceService::class)->revoke($this->user, $device, 'Extravío');
 
     $this->assertApiError($this->mobile('GET', '/profile', token: $first->json('data.token')), 401, 'unauthenticated');

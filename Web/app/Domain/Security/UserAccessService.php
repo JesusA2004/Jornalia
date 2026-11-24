@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\UserAccessReview;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
@@ -33,6 +34,24 @@ final class UserAccessService
         private readonly AuditLogger $audit,
         private readonly TwoFactorPolicy $twoFactor,
     ) {}
+
+    /**
+     * Tras cambiar o restablecer la contraseña: cierra todos los tokens de la app y las
+     * sesiones web en otros equipos (y el «recordarme»). Se conserva sólo la sesión
+     * desde la que se hizo el cambio, si la hay.
+     */
+    public function closeSessionsAfterPasswordChange(User $user, ?string $keepSessionId = null): void
+    {
+        $tokens = $user->tokens()->delete();
+        $sessions = DB::table('sessions')->where('user_id', $user->id)
+            ->when($keepSessionId !== null, fn ($q) => $q->where('id', '!=', $keepSessionId))
+            ->delete();
+        $user->forceFill(['remember_token' => Str::random(60)])->saveQuietly();
+
+        $this->audit->log('user.password_changed', $user, 'Contraseña cambiada: sesiones y tokens cerrados', [
+            'tokens_revoked' => $tokens, 'sessions_closed' => $sessions,
+        ], $user->current_organization_id);
+    }
 
     /**
      * Desactiva la pertenencia del usuario a la organización y cierra sus sesiones de API.

@@ -144,6 +144,10 @@ final class DeviceService
         if ($employee !== null && $employee->status === EmployeeStatus::Terminated) {
             throw new AttendanceException('employee_terminated', 'El colaborador está dado de baja: no se pueden autorizar dispositivos.', 422);
         }
+        // Sin autoautorización: nadie autoriza el teléfono con el que él mismo marca.
+        if ((int) $device->user_id === $by->id) {
+            throw new AttendanceException('self_approval', 'No puedes autorizar tu propio dispositivo.', 403);
+        }
 
         $device->forceFill([
             'status' => DeviceStatus::Approved,

@@ -75,7 +75,20 @@ class AppServiceProvider extends ServiceProvider
     {
         // El superadministrador NO obtiene autorización operativa sobre asistencia
         // (aprobar, validar, aplicar, rectificar): regla dura de separación de funciones.
-        Gate::before(fn (User $user, string $ability) => $user->is_super_admin && ! PermissionCatalog::isOperational($ability) ? true : null);
+        // Sólo se le conceden permisos del catálogo NO operativos; las habilidades de policy
+        // (`approve`, `update`…) se evalúan en la policy, que a su vez pide el permiso real
+        // (p. ej. DevicePolicy::approve exige `devices.approve`, operativo) y la organización.
+        // Lo operativo se le NIEGA (false) aunque tenga un rol que lo incluya.
+        Gate::before(function (User $user, string $ability): ?bool {
+            if (! $user->is_super_admin) {
+                return null;
+            }
+            if (PermissionCatalog::isOperational($ability)) {
+                return false;
+            }
+
+            return in_array($ability, PermissionCatalog::all(), true) ? true : null;
+        });
     }
 
     protected function configureRateLimiting(): void

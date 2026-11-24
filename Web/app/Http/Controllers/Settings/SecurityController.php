@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Settings;
 
 use App\Domain\Security\TwoFactorPolicy;
+use App\Domain\Security\UserAccessService;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\PasswordUpdateRequest;
 use App\Http\Requests\Settings\TwoFactorAuthenticationRequest;
@@ -39,9 +40,12 @@ class SecurityController extends Controller
      */
     public function update(PasswordUpdateRequest $request): RedirectResponse
     {
-        $request->user()->update([
+        $user = $request->user();
+        $user->update([
             'password' => $request->password,
         ]);
+        // Cambio de contraseña: cierra tokens de la app y sesiones en otros equipos.
+        app(UserAccessService::class)->closeSessionsAfterPasswordChange($user, $request->session()->getId());
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Password updated.')]);
 

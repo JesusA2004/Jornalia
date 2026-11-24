@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Web\Admin;
 
+use App\Domain\Security\PermissionCatalog;
 use App\Domain\Workforce\EmployeeAccountService;
 use App\Models\Employee;
 use App\Models\Role;
@@ -20,10 +21,15 @@ class EmployeeAccountController extends AdminController
     {
         $this->authorize('manageAccount', $employee);
 
+        // Sin escalamiento: desde el expediente sólo se otorga «Colaborador» salvo a quien
+        // administra roles (`users.roles`); la autoridad laboral nunca (exige vigencia).
+        $grantable = $request->user()?->can('users.roles')
+            ? Role::query()->where('organization_id', $this->organizationId())->where('name', '!=', PermissionCatalog::ROLE_AUTHORITY)->pluck('name')->all()
+            : [PermissionCatalog::ROLE_EMPLOYEE];
         $data = $request->validate([
             'email' => ['required', 'email', 'max:160'],
             'mode' => ['required', Rule::in(['password', 'reset'])],
-            'role' => ['nullable', 'string', Rule::in(Role::query()->where('organization_id', $this->organizationId())->pluck('name')->all())],
+            'role' => ['nullable', 'string', Rule::in($grantable)],
         ], [], ['email' => 'correo', 'mode' => 'método de acceso', 'role' => 'rol']);
 
         $result = $this->accounts->createFor($this->actor($request), $employee, $data['email'], $data['mode'], $data['role'] ?? 'Colaborador');

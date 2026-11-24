@@ -97,6 +97,32 @@ Detalle del módulo: [Integridad y conservación](../cumplimiento/INTEGRIDAD_Y_C
 | Edad mínima 15 años (art. 22) | Validada en la importación CSV (`EmployeeImportValidator`, fecha obligatoria) | En el alta y la edición manual la fecha de nacimiento es opcional y no se valida la edad mínima. |
 | Trabajo nocturno y jornada de menores de 16 | Alertas `minor_night_work` y `minor_daily_limit` | Son alertas: no bloquean el horario. |
 
+## Casos límite del motor (auditoría P2)
+
+Una sola fuente: `PunchRecorder` → `EffectiveTimeline` → `WorkdayCalculator` → `WeeklyOvertimeCalculator`. Pruebas: `Web/tests/Feature/Domain/AttendanceEngineEdgeCasesTest.php`, salvo donde se indica otra.
+
+| Caso | Comportamiento | Prueba |
+|---|---|---|
+| Jornada nocturna que cruza medianoche, mes o año | Se atribuye al día de inicio; el día siguiente no queda con omisión. | Fin de mes (nueva); medianoche y año: `AttendanceLedgerTest`, `WeeklyOvertimeTest` |
+| Marcajes duplicados o doble toque | Mismo `client_uuid` ⇒ el mismo marcaje (200). Segunda entrada en línea ⇒ `invalid_sequence`. Mismo nonce ⇒ rechazado. | `PunchTest`, `AttendanceLedgerTest` |
+| Cambio de semana, mes o año | Semana lunes a domingo con la versión legal vigente el lunes. | `WeeklyOvertimeTest` |
+| Diferencia de hora dispositivo-servidor | Hora oficial = servidor. Más de 10 min ⇒ alerta `clock_skew`. **Corregido:** en línea, la hora del dispositivo ya no elige la asignación ni la política. | `ClockSkewTest` + nueva |
+| Sin conexión y sincronización fuera de orden | Cuenta la hora declarada (si no es futura). Fuera de orden ⇒ `out_of_sequence` en revisión; el cálculo ordena por hora. **Corregido:** sincronizar con más de 4 días de retraso ya no deja fuera la captura (cuenta en su día, `late_sync`). | Nuevas |
+| Descansos y comidas | El descanso registrado se descuenta. Sin registro no se descuenta (art. 64). En línea no se puede salir con el descanso abierto. Sin conexión se acepta: no se descuenta y queda `break_not_closed`. | Nueva |
+| Festivos | Día de descanso obligatorio laborado ⇒ estado «Festivo laborado» y anomalía `holiday` en el marcaje. | Nueva |
+| Dobles y triples | Ver «Imputación del tiempo extra». | `WeeklyOvertimeTest`, `LegalEngineTest` |
+| Jornada incompleta | Entrada sin salida ⇒ `missing_clock_out` al cerrar el día siguiente. Nunca se completa sola. | `NoAutomaticPunchesTest` |
+| Cambio de horario programado | Sólo el autorizado cambia el turno contra el que se calculan retardo y excedente. | Nueva |
+| Baja durante la jornada | **Corregido:** relación laboral y asignación por fecha civil del centro de trabajo. El último día se puede checar la salida por la tarde (app y kiosco). No se aceptan marcajes la víspera del ingreso. | Nuevas |
+| Rectificación posterior al cierre de nómina | Queda extemporánea (`is_late`); sólo RH con `rectifications.apply_late` la aplica. | `RectificationWorkflowTest` |
+
+### Pendiente de RH/Jurídico (criterios no definidos; el sistema no los inventa)
+
+- **Descanso registrado parcial frente a no registrado.** Con un descanso programado de 60 min, quien no registra descanso no genera excedente (se compara con el lapso completo). Quien registra 30 min sí genera 30 min de excedente (se compara con la jornada programada). Definir el criterio único (coordinar con «pausa de comida»).
+- **Salida después de la fecha de baja en un turno nocturno** que inicia el último día y termina al día siguiente: hoy se rechaza (no hay relación laboral vigente ese día civil). Definir si se acepta y se atribuye al día de inicio.
+- **Excedente diario mayor a 4 h** dentro del tope semanal: hoy se paga doble y se marca «sobre límite». Confirmar si debe pagarse triple.
+- **Mismo usuario autoriza (paso 3) y valida (paso 5)** una rectificación ajena: hoy se permite. Ver `docs/seguridad/AUDITORIA_SEGURIDAD.md` (R1).
+
 ## Pendientes jurídicos
 
 - Validar la tabla 2027 y dar seguimiento a las disposiciones de la STPS del registro electrónico (art. 132 fr. XXXIV; vigentes desde el 1 de enero de 2027, no publicadas al corte).

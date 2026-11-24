@@ -16,6 +16,7 @@ use App\Models\Branch;
 use App\Models\Employee;
 use App\Models\FaceVerification;
 use App\Models\Kiosk;
+use App\Models\Organization;
 use App\Models\Punch;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -204,11 +205,17 @@ final class KioskService
             throw $invalid();
         }
 
-        if ($employee->status !== EmployeeStatus::Active || ! $user->isActive()) {
+        // Fecha civil de la sucursal (regla 4): después de las 18:00 de Ciudad de México ya
+        // es «mañana» en UTC. Mismo criterio que la app: puede marcar quien tenga relación
+        // laboral vigente hoy y acceso activo; una baja con fecha futura (estatus «Baja»
+        // anticipado) no bloquea los días que aún trabaja (`asistencias:revocar-bajas`).
+        $today = CarbonImmutable::now($this->timezone($kiosk))->toDateString();
+        if ($employee->status === EmployeeStatus::Inactive || ! $user->isActive()
+            || ! $user->belongsToOrganization((int) $kiosk->organization_id)
+            || $employee->employmentOn($today) === null) {
             throw new AttendanceException('kiosk_employee_inactive', 'Tu registro no está activo. Acude con Recursos Humanos.', 403);
         }
 
-        $today = now()->toDateString();
         $assigned = DB::table('employment_assignments as ea')
             ->join('employments as em', 'em.id', '=', 'ea.employment_id')
             ->where('em.employee_id', $employee->id)
@@ -291,6 +298,19 @@ final class KioskService
     public static function hashCode(string $code): string
     {
         return hash('sha256', strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $code) ?? ''));
+    }
+
+    /**
+     * Zona horaria de la sucursal del kiosco (centro de trabajo) o, en su defecto, de la organización.
+     */
+    private function timezone(Kiosk $kiosk): string
+    {
+        $branch = Branch::query()->withoutGlobalScopes()->with('workCenter')->find($kiosk->branch_id);
+
+        // `??` tolera nulos intermedios (sucursal o centro de trabajo inexistentes).
+        return $branch?->workCenter->timezone
+            ?? Organization::query()->find($kiosk->organization_id)->timezone
+            ?? (string) config('app.timezone', 'UTC');
     }
 
     private function issueCode(Kiosk $kiosk): string

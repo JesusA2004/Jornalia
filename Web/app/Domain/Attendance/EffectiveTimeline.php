@@ -40,8 +40,11 @@ final class EffectiveTimeline
         $margin = 4; // días: cubre capturas offline sincronizadas tarde
         $punches = Punch::query()
             ->where('employee_id', $employeeId)
-            ->where('server_time', '>=', $fromUtc->subDays($margin))
-            ->where(fn ($q) => $q->where('server_time', '<', $toUtc->addDays($margin)))
+            ->where(fn ($q) => $q
+                ->where(fn ($w) => $w->where('server_time', '>=', $fromUtc->subDays($margin))->where('server_time', '<', $toUtc->addDays($margin)))
+                // Captura sin conexión sincronizada con más retraso que el margen: cuenta en su
+                // hora declarada (queda «en revisión» por `late_sync`, nunca se descarta).
+                ->orWhere(fn ($w) => $w->where('captured_offline', true)->where('device_time', '>=', $fromUtc)->where('device_time', '<', $toUtc)))
             ->orderBy('server_time')
             ->get();
 

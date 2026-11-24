@@ -3,6 +3,7 @@
 namespace App\Domain\Workforce;
 
 use App\Domain\Audit\AuditLogger;
+use App\Domain\Security\PermissionCatalog;
 use App\Models\Device;
 use App\Models\Employee;
 use App\Models\Role;
@@ -61,11 +62,23 @@ final class EmployeeAccountService
                 throw ValidationException::withMessages(['email' => 'El correo ya tiene una cuenta: se vinculará y podrá usar su contraseña actual o restablecerla. Elige «Enviar enlace».']);
             }
 
+            // Un acceso desactivado sólo se reactiva en Usuarios (con sus validaciones), no aquí.
+            $inactive = $user->organizations()->where('organizations.id', $organization->id)->wherePivot('status', '!=', 'active')->exists();
+            if ($inactive) {
+                throw ValidationException::withMessages(['email' => 'Esa cuenta tiene el acceso desactivado en la organización. Reactívala en Usuarios y roles.']);
+            }
             $user->organizations()->syncWithoutDetaching([$organization->id => ['status' => 'active', 'access_all_branches' => false]]);
             if ($role !== null && Role::query()->where('organization_id', $organization->id)->where('name', $role)->exists()) {
                 $registrar = app(PermissionRegistrar::class);
                 $registrar->setPermissionsTeamId($organization->id);
-                $user->unsetRelation('roles');
+                $user->unsetRelation('roles')->unsetRelation('permissions');
+                // Separación de funciones: no combinar administración de usuarios con operación.
+                $resulting = $user->getAllPermissions()->pluck('name')
+                    ->merge(Role::query()->where('organization_id', $organization->id)->where('name', $role)->firstOrFail()->permissions->pluck('name'))
+                    ->unique()->all();
+                if (PermissionCatalog::segregationConflicts($resulting) !== []) {
+                    throw ValidationException::withMessages(['role' => 'Ese rol combinaría administración de usuarios con permisos operativos (separación de funciones).']);
+                }
                 if (! $user->hasRole($role)) {
                     $user->assignRole($role);
                 }
