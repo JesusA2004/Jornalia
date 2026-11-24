@@ -1,3 +1,5 @@
+# Actualiza las acciones fijadas por SHA en .github/workflows (raíz del monorepo).
+# GitHub sólo lee este archivo en la raíz; el de Web/.github no tenía efecto.
 version: 2
 updates:
   - package-ecosystem: "github-actions"

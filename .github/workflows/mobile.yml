@@ -1,0 +1,135 @@
+# App móvil Expo (Mobile/) y contrato API compartido (packages/contracts):
+# dependencias, diagnóstico Expo, lint, tipos, pruebas Jest y build Android.
+# Documentación: docs/despliegue/CI.md
+name: mobile
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Mobile/**'
+      - 'packages/**'
+      - '.github/workflows/mobile.yml'
+  pull_request:
+    paths:
+      - 'Mobile/**'
+      - 'packages/**'
+      - '.github/workflows/mobile.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+defaults:
+  run:
+    shell: bash
+    working-directory: Mobile
+
+env:
+  NODE_VERSION: '22'
+  # Sin telemetría ni prompts interactivos de Expo CLI.
+  EXPO_NO_TELEMETRY: '1'
+  CI: 'true'
+
+jobs:
+  calidad:
+    name: Expo doctor, lint, tipos y Jest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configurar Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: Mobile/package-lock.json
+
+      - name: Instalar dependencias (package-lock.json)
+        run: npm ci --no-audit --no-fund
+
+      - name: Diagnóstico Expo (expo-doctor)
+        run: npx expo-doctor
+
+      - name: Configuración pública de Expo
+        # Evalúa app.config.ts y confirma que produce un JSON válido.
+        run: |
+          npx expo config --type public --json > "$RUNNER_TEMP/expo-config.json"
+          node -e '
+            const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            if (!c.android || !c.android.package) throw new Error("app.config.ts no define android.package");
+            console.log(c.name + " · " + c.android.package + " · SDK " + c.sdkVersion);
+          ' "$RUNNER_TEMP/expo-config.json"
+
+      - name: Lint (ESLint vía Expo)
+        run: npx expo lint --max-warnings 0
+
+      - name: Tipos (incluye packages/contracts)
+        run: npx tsc --noEmit
+
+      - name: Contrato API compila de forma aislada (strict)
+        run: >-
+          npx tsc --ignoreConfig --noEmit --strict --noUncheckedIndexedAccess
+          --exactOptionalPropertyTypes --target ES2022 --module ESNext
+          --moduleResolution Bundler --skipLibCheck ../packages/contracts/src/api.ts
+
+      - name: Pruebas (Jest)
+        run: npx jest --ci --maxWorkers=2
+
+  android:
+    name: Build Android (debug)
+    # Compilación nativa completa (~20-30 min): sólo en main o bajo demanda.
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configurar Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: Mobile/package-lock.json
+
+      - name: Configurar JDK 17
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Caché de Gradle
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('Mobile/package-lock.json', 'Mobile/app.config.ts', 'Mobile/plugins/**') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Instalar dependencias (package-lock.json)
+        run: npm ci --no-audit --no-fund
+
+      - name: Generar proyecto nativo (expo prebuild)
+        # android/ no se versiona (Continuous Native Generation). Sin google-services.json
+        # el build no incluye Firebase (ver app.config.ts).
+        run: npx expo prebuild --platform android --no-install --clean
+
+      - name: Compilar APK debug (arm64-v8a)
+        working-directory: Mobile/android
+        # Una sola ABI basta para validar la compilación nativa y reduce el tiempo a la mitad.
+        run: ./gradlew assembleDebug --no-daemon --stacktrace -PreactNativeArchitectures=arm64-v8a
+
+      - name: Verificar APK generado
+        run: ls -lh android/app/build/outputs/apk/debug/*.apk

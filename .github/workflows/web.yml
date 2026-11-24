@@ -1,0 +1,278 @@
+# Frontend web (Web/): formato, lint, tipos y build de producción; y pruebas
+# E2E con Playwright contra la app servida con assets compilados.
+# Documentación: docs/despliegue/CI.md
+name: web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Web/**'
+      - '.github/workflows/web.yml'
+  pull_request:
+    paths:
+      - 'Web/**'
+      - '.github/workflows/web.yml'
+  workflow_dispatch:
+    inputs:
+      navegadores:
+        description: 'Navegadores E2E separados por espacio (chromium firefox webkit)'
+        type: string
+        default: chromium
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+defaults:
+  run:
+    shell: bash
+    working-directory: Web
+
+env:
+  PHP_VERSION: '8.4'
+  PHP_EXTENSIONS: mbstring, intl, bcmath, pdo_mysql, zip, gd, sodium, exif, fileinfo
+  NODE_VERSION: '22'
+
+jobs:
+  calidad:
+    name: Formato, lint, tipos y build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    # Wayfinder lee el esquema de la BD para tipar los parámetros de ruta: sin BD
+    # los tipos generados serían más laxos que en desarrollo.
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: '1'
+          MARIADB_DATABASE: jornalia_ci
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      DB_CONNECTION: mariadb
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3307'
+      DB_DATABASE: jornalia_ci
+      DB_USERNAME: root
+      DB_PASSWORD: ''
+      DB_ENGINE: InnoDB
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configurar PHP
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          tools: composer:v2
+          coverage: none
+
+      - name: Ubicar caché de Composer
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Caché de Composer
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-${{ hashFiles('Web/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-
+
+      - name: Instalar dependencias PHP (composer.lock)
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Preparar .env de CI y esquema
+        run: |
+          cp .env.example .env
+          php artisan key:generate --ansi
+          php artisan migrate --force --no-interaction
+
+      - name: Configurar Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: Web/package-lock.json
+
+      - name: Instalar dependencias JS (package-lock.json)
+        run: npm ci --no-audit --no-fund
+
+      - name: Generar rutas tipadas (Wayfinder)
+        run: php artisan wayfinder:generate --with-form
+
+      - name: Formato y lint (vp check)
+        run: npm run check
+
+      - name: Tipos (vue-tsc)
+        run: npx vue-tsc --noEmit
+
+      - name: Build de producción
+        run: npm run build
+
+  e2e:
+    name: E2E Playwright
+    # Pendiente de verificación: el entorno E2E (`e2e:preparar` + specs responsivas) aún no se
+    # ha ejecutado de punta a punta. Mientras tanto corre sólo bajo demanda (workflow_dispatch).
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: '1'
+          MARIADB_DATABASE: jornalia_e2e
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      # Todos los comandos artisan (y el build, que invoca Wayfinder) leen .env.e2e.
+      APP_ENV: e2e
+      E2E_BASE_URL: http://127.0.0.1:8020
+      E2E_WORKERS: '2'
+      NAVEGADORES: ${{ inputs.navegadores || 'chromium' }}
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validar navegadores solicitados
+        run: |
+          for b in $NAVEGADORES; do
+            case "$b" in
+              chromium|firefox|webkit) ;;
+              *) echo "::error::Navegador no válido: $b"; exit 1 ;;
+            esac
+          done
+
+      - name: Configurar PHP
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          tools: composer:v2
+          coverage: none
+
+      - name: Ubicar caché de Composer
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Caché de Composer
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-${{ hashFiles('Web/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-
+
+      - name: Instalar dependencias PHP (composer.lock)
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Preparar .env.e2e de CI
+        # Claves generadas en cada corrida (nunca en el repositorio); BD efímera del servicio.
+        run: |
+          cp .env.example .env.e2e
+          set_env() {
+            awk -v k="$1" -v v="$2" '
+              $0 ~ "^" k "=" { print k "=" v; found = 1; next }
+              { print }
+              END { if (!found) print k "=" v }
+            ' .env.e2e > .env.e2e.tmp && mv .env.e2e.tmp .env.e2e
+          }
+          set_env APP_ENV e2e
+          set_env APP_DEBUG false
+          set_env APP_URL "$E2E_BASE_URL"
+          set_env LOG_LEVEL warning
+          set_env DB_HOST 127.0.0.1
+          set_env DB_PORT 3307
+          set_env DB_DATABASE jornalia_e2e
+          set_env DB_USERNAME root
+          set_env DB_PASSWORD ''
+          set_env DB_ENGINE InnoDB
+          set_env QUEUE_CONNECTION sync
+          set_env MAIL_MAILER log
+          set_env INTEGRITY_CHAIN_KEY "$(openssl rand -hex 32)"
+          set_env INTEGRITY_ANCHOR_KEY "$(openssl rand -hex 32)"
+          set_env INTEGRITY_ANCHOR_PATH "$GITHUB_WORKSPACE/Web/storage/app/anchors"
+          set_env FCM_HABILITADO false
+          set_env FACE_SERVICE_URL ''
+          set_env FACE_SERVICE_TOKEN ''
+          php artisan key:generate --force --ansi
+
+      - name: Migrar y preparar datos E2E
+        run: |
+          php artisan migrate --force --no-interaction
+          php artisan e2e:preparar --no-interaction
+          # Ocultar en los logs la contraseña y los secretos TOTP sembrados.
+          jq -r '.password, (.accounts[] | .totpSecret) | select(. != null and . != "")' tests/e2e/.auth/cuentas.json \
+            | while read -r secreto; do echo "::add-mask::$secreto"; done
+
+      - name: Configurar Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: Web/package-lock.json
+
+      - name: Instalar dependencias JS (package-lock.json)
+        run: npm ci --no-audit --no-fund
+
+      - name: Build de producción
+        run: npm run build
+
+      - name: Servir la aplicación (php artisan serve)
+        run: |
+          PHP_CLI_SERVER_WORKERS=4 nohup php artisan serve --host=127.0.0.1 --port=8020 --no-reload \
+            > "$RUNNER_TEMP/serve.log" 2>&1 &
+          curl --silent --show-error --fail --retry 30 --retry-delay 2 --retry-all-errors \
+            --output /dev/null "$E2E_BASE_URL/login"
+
+      - name: Instalar navegadores de Playwright
+        # global-setup inicia sesión con Chromium: siempre se instala.
+        run: |
+          read -ra navegadores <<< "$NAVEGADORES"
+          npx playwright install --with-deps chromium "${navegadores[@]}"
+
+      - name: Pruebas E2E
+        run: |
+          proyectos=()
+          for b in $NAVEGADORES; do proyectos+=("--project=$b-*"); done
+          npx playwright test "${proyectos[@]}"
+
+      - name: Bitácora del servidor (sólo si falla)
+        if: ${{ failure() }}
+        run: |
+          tail -n 100 "$RUNNER_TEMP/serve.log" || true
+          tail -n 200 storage/logs/laravel.log || true
+
+      - name: Publicar reporte y capturas (sin sesiones, cuentas ni trazas)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-reporte
+          path: |
+            Web/tests/e2e/.resultados/
+            Web/tests/e2e/.capturas/
+            !Web/tests/e2e/.auth/**
+            !**/trace.zip
+            !**/*.trace
+          # Las carpetas de resultados empiezan con punto (ignoradas por git).
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7

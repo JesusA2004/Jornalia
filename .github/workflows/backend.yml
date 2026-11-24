@@ -1,0 +1,184 @@
+# Backend Laravel (Web/): dependencias, estilo, análisis estático, migraciones
+# sobre MariaDB 11.4 real (InnoDB + triggers de inmutabilidad) y suite Pest.
+# Documentación: docs/despliegue/CI.md
+name: backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Web/**'
+      - 'packages/**'
+      - '.github/workflows/backend.yml'
+  pull_request:
+    paths:
+      - 'Web/**'
+      - 'packages/**'
+      - '.github/workflows/backend.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # En main se valida cada commit; en ramas y PR se cancela la corrida obsoleta.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+defaults:
+  run:
+    shell: bash
+    working-directory: Web
+
+env:
+  PHP_VERSION: '8.4'
+  PHP_EXTENSIONS: mbstring, intl, bcmath, pdo_mysql, zip, gd, sodium, exif, fileinfo
+
+jobs:
+  analisis:
+    name: Composer, Pint y PHPStan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configurar PHP
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          ini-values: memory_limit=2G
+          tools: composer:v2
+          coverage: none
+
+      - name: Validar composer.json y composer.lock
+        run: composer validate --strict
+
+      - name: Ubicar caché de Composer
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Caché de Composer
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-${{ hashFiles('Web/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-
+
+      - name: Instalar dependencias (composer.lock)
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Preparar .env de CI
+        run: |
+          cp .env.example .env
+          php artisan key:generate --ansi
+
+      - name: Estilo (Pint)
+        run: vendor/bin/pint --test
+
+      - name: Análisis estático (PHPStan, nivel de phpstan.neon)
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=2G
+
+  pruebas:
+    name: Migraciones y Pest (MariaDB 11.4)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          # Contenedor efímero de CI, accesible sólo dentro del runner.
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: '1'
+          MARIADB_DATABASE: jornalia_test
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      # Mismos valores que phpunit.xml; se declaran para que migrate los use también.
+      DB_CONNECTION: mariadb
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3307'
+      DB_DATABASE: jornalia_test
+      DB_USERNAME: root
+      DB_PASSWORD: ''
+      DB_ENGINE: InnoDB
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configurar PHP
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          ini-values: memory_limit=2G
+          tools: composer:v2
+          coverage: none
+
+      - name: Ubicar caché de Composer
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Caché de Composer
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-${{ hashFiles('Web/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-
+
+      - name: Instalar dependencias (composer.lock)
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Preparar .env de CI
+        run: |
+          cp .env.example .env
+          php artisan key:generate --ansi
+
+      - name: Migraciones desde cero (MariaDB real)
+        run: php artisan migrate --force --no-interaction
+
+      - name: Verificar InnoDB y triggers de inmutabilidad
+        env:
+          DB_CONTAINER: ${{ job.services.mariadb.id }}
+        run: |
+          sql() { docker exec "$DB_CONTAINER" mariadb -uroot -N -B "$DB_DATABASE" -e "$1"; }
+
+          otros=$(sql "SELECT CONCAT(table_name, ':', engine) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE' AND engine <> 'InnoDB'")
+          if [ -n "$otros" ]; then
+            echo "::error::Tablas con motor distinto de InnoDB: $otros"
+            exit 1
+          fi
+
+          # Los marcajes son append-only también a nivel de base de datos.
+          for trigger in attendance_punches_no_update attendance_punches_no_delete; do
+            if [ "$(sql "SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema = DATABASE() AND trigger_name = '$trigger'")" != "1" ]; then
+              echo "::error::Falta el trigger $trigger"
+              exit 1
+            fi
+          done
+
+          echo "Tablas: $(sql "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()")"
+          echo "Triggers: $(sql "SELECT GROUP_CONCAT(trigger_name ORDER BY trigger_name) FROM information_schema.triggers WHERE trigger_schema = DATABASE()")"
+
+      - name: Pruebas (Pest)
+        run: |
+          mkdir -p storage/logs/junit
+          php -d memory_limit=2G vendor/pestphp/pest/bin/pest --compact --log-junit storage/logs/junit/pest.xml
+
+      - name: Publicar reporte JUnit
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: backend-junit
+          path: Web/storage/logs/junit/pest.xml
+          if-no-files-found: warn
+          retention-days: 14

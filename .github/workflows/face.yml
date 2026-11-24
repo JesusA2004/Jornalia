@@ -1,0 +1,85 @@
+# Microservicio de verificación facial (services/face): dependencias fijadas,
+# descarga y verificación sha256 de los modelos oficiales y suite pytest.
+# Documentación: docs/despliegue/CI.md y docs/seguridad/BIOMETRIA.md
+name: face
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/**'
+      - '.github/workflows/face.yml'
+  pull_request:
+    paths:
+      - 'services/**'
+      - '.github/workflows/face.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+defaults:
+  run:
+    shell: bash
+    working-directory: services/face
+
+jobs:
+  pruebas:
+    name: Modelos y pytest (Python 3.12)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      # Token sintético sólo para las pruebas (tests/conftest.py usa el mismo valor por defecto).
+      FACE_SERVICE_TOKEN: token-de-prueba
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configurar Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            services/face/requirements.txt
+            services/face/requirements-dev.txt
+
+      - name: Instalar dependencias (versiones fijadas, sin torch)
+        run: |
+          python -m pip install --disable-pip-version-check --upgrade pip
+          python -m pip install --disable-pip-version-check -r requirements-dev.txt
+          python -m pip check
+
+      - name: Caché de modelos oficiales
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            services/face/models/face_recognition_sface_2021dec.onnx
+            services/face/.cache/minifasnet/*.pth
+          key: face-models-${{ hashFiles('services/face/tools/download_models.py') }}
+
+      - name: Descargar y verificar modelos (sha256 fijado)
+        # El script descarta el archivo y termina con error si el hash no coincide.
+        run: python -I tools/download_models.py
+
+      - name: Verificar manifest de modelos
+        # El manifest versionado debe coincidir con el regenerado a partir de las fuentes oficiales.
+        run: git diff --exit-code -- models/manifest.json
+
+      - name: Pruebas (pytest)
+        run: python -m pytest -q --junitxml="$RUNNER_TEMP/face-junit.xml"
+
+      - name: Publicar reporte JUnit
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: face-junit
+          path: ${{ runner.temp }}/face-junit.xml
+          if-no-files-found: warn
+          retention-days: 14
