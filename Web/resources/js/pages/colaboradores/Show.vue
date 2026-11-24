@@ -747,7 +747,9 @@ watch(moveOpen, (isOpen) => {
                             </p>
                             <p class="text-xs text-muted-foreground">
                                 {{ x.reason }}
-                                <template v-if="x.status && x.status !== 'approved'">
+                                <template
+                                    v-if="x.status && x.status !== 'approved'"
+                                >
                                     ·
                                     {{
                                         x.status === 'pending'

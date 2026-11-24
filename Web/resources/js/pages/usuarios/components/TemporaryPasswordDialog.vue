@@ -53,7 +53,7 @@ async function copy(): Promise<void> {
         <DialogContent v-if="credentials" class="sm:max-w-md">
             <DialogHeader>
                 <div
-                    class="mb-1 flex size-11 items-center justify-center rounded-2xl bg-brand-gradient text-black shadow-elev-1"
+                    class="mb-1 flex size-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground"
                 >
                     <KeyRound class="size-5" aria-hidden="true" />
                 </div>

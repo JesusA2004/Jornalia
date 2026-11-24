@@ -10,7 +10,7 @@ const STATE = {
     done: { icon: Check, ring: 'bg-success text-white', text: 'Aprobado' },
     current: {
         icon: Clock,
-        ring: 'bg-warning text-black animate-pulse',
+        ring: 'bg-warning text-warning-foreground',
         text: 'En revisión',
     },
     pending: {

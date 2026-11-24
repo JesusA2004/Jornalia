@@ -1193,7 +1193,7 @@ export type ComplianceIndexProps = {
 /* ─────────────────────────── Integridad ─────────────────────────── */
 
 export type ChainVerification = {
-    chain: 'punches' | 'adjustments';
+    chain: 'punches' | 'adjustments' | 'signatures';
     label: string;
     checked: number;
     valid: boolean;
@@ -1206,7 +1206,7 @@ export type ChainVerification = {
 
 export type IntegrityIndexProps = {
     chains: Array<{
-        chain: 'punches' | 'adjustments';
+        chain: 'punches' | 'adjustments' | 'signatures';
         label: string;
         records: number;
         head_sequence: number;

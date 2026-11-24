@@ -40,10 +40,10 @@ const HEIGHTS = {
             v-if="withProduct"
             :class="
                 cn(
-                    'border-l pl-3 font-display text-[0.8125rem] leading-none font-semibold tracking-[0.14em] uppercase',
+                    'text-[0.6875rem] leading-none font-semibold tracking-[0.22em] uppercase',
                     inverted
-                        ? 'border-white/20 text-white/80'
-                        : 'border-border-strong text-brand-deep dark:text-foreground/80',
+                        ? 'text-[var(--sidebar-gold)]'
+                        : 'text-gold-strong',
                 )
             "
             >{{ BRAND.product }}</span

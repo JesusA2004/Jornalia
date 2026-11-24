@@ -117,14 +117,16 @@ const trendIcon = computed(() =>
         "
     >
         <div class="flex items-start justify-between gap-3">
-            <p class="text-sm leading-snug font-medium text-muted-foreground">
+            <p
+                class="text-[0.8125rem] leading-snug font-medium text-muted-foreground"
+            >
                 {{ label }}
             </p>
             <span
                 v-if="icon"
                 :class="
                     cn(
-                        'flex size-8 shrink-0 items-center justify-center rounded-lg',
+                        'flex size-8 shrink-0 items-center justify-center rounded-full',
                         TONE_ICON_CLASSES[tone],
                     )
                 "
@@ -140,7 +142,7 @@ const trendIcon = computed(() =>
         <div v-else class="space-y-2">
             <p class="flex items-baseline gap-1.5">
                 <span
-                    class="font-display text-[2rem] leading-none font-bold text-foreground"
+                    class="font-display numeric text-[1.625rem] leading-none font-semibold text-foreground"
                     >{{ displayValue }}</span
                 >
                 <span v-if="unit" class="text-sm text-muted-foreground">{{

@@ -159,27 +159,19 @@ const help = [
             <Link
                 v-if="featured"
                 :href="ReportController.show(featured.key).url"
-                class="group relative block overflow-hidden rounded-2xl border border-brand/25 bg-gradient-to-br from-brand-soft via-card to-card p-6 shadow-elev-1 transition-all hover:-translate-y-px hover:shadow-elev-2 focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none sm:p-7"
+                class="group relative block overflow-hidden rounded-2xl border border-l-4 border-l-gold bg-card p-6 shadow-elev-1 transition-standard hover:border-border-strong hover:border-l-gold hover:shadow-elev-2 focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none sm:p-7"
             >
-                <div
-                    class="pointer-events-none absolute -top-16 -right-16 size-56 rounded-full bg-brand/10 blur-3xl"
-                    aria-hidden="true"
-                />
-                <ShieldCheck
-                    class="pointer-events-none absolute right-6 bottom-4 size-28 text-brand/10 sm:size-36"
-                    aria-hidden="true"
-                />
                 <div
                     class="relative flex flex-col gap-5 sm:flex-row sm:items-center"
                 >
                     <span
-                        class="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-brand text-brand-foreground shadow-elev-2"
+                        class="flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground"
                     >
                         <Scale class="size-7" aria-hidden="true" />
                     </span>
                     <div class="min-w-0 flex-1 space-y-1.5">
                         <p
-                            class="text-xs font-semibold tracking-wider text-brand-strong uppercase"
+                            class="text-[0.6875rem] font-semibold tracking-[0.18em] text-gold-strong uppercase"
                         >
                             Para la autoridad laboral
                         </p>

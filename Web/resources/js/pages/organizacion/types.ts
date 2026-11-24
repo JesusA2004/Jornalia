@@ -100,7 +100,11 @@ export type OrganizationPageProps = {
     official: {
         status: 'applied' | 'unchanged' | 'conflict' | 'skipped';
         changes: { field: string; before: string | null; after: string }[];
-        conflicts: { field: string; current: string | null; official: string }[];
+        conflicts: {
+            field: string;
+            current: string | null;
+            official: string;
+        }[];
         message: string;
     };
     people: {

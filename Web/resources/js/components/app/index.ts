@@ -28,4 +28,3 @@ export { default as StatList } from './StatList.vue';
 export { default as StatusBadge } from './StatusBadge.vue';
 export { default as Timeline } from './Timeline.vue';
 export { default as UserAvatar } from './UserAvatar.vue';
-export { default as WelcomeBanner } from './WelcomeBanner.vue';

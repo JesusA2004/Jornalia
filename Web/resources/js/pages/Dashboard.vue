@@ -1068,7 +1068,7 @@ const help = [
                 tone="warning"
             />
             <KpiTile
-                label="Excedente"
+                label="Tiempo extra"
                 :value="
                     formatMinutes(
                         personal.period_totals.excess_minutes,

@@ -51,6 +51,11 @@ type Run = {
 
 const props = defineProps<{
     people: { configured: boolean; last_success_at: string | null };
+    people_incidences: {
+        configured: boolean;
+        last_success_at: string | null;
+        last_run_status: string | null;
+    };
     runs: Run[];
     can: { sync: boolean };
 }>();
@@ -60,6 +65,7 @@ const expanded = ref<number | null>(null);
 
 const SOURCES: Record<string, string> = {
     people_structure: 'Estructura y bajas',
+    people_incidences: 'Incidencias y vacaciones',
     people_api: 'Colaboradores (API)',
     csv: 'Colaboradores (CSV)',
 };
@@ -102,7 +108,9 @@ function summary(run: Run): string {
         n('created') ? `${n('created')} nuevos` : null,
         n('updated') ? `${n('updated')} actualizados` : null,
         n('terminated') ? `${n('terminated')} bajas` : null,
+        n('cancelled') ? `${n('cancelled')} canceladas` : null,
         n('conflicts') ? `${n('conflicts')} conflictos` : null,
+        n('errors') && !n('conflicts') ? `${n('errors')} con error` : null,
     ]
         .filter(Boolean)
         .join(' · ');
@@ -170,7 +178,9 @@ const help: HelpStep[] = [
                     <StatusBadge v-else label="Sin configurar" tone="warning" />
                 </div>
                 <div class="flex items-center gap-2">
-                    <span class="text-muted-foreground">Última sincronización</span>
+                    <span class="text-muted-foreground"
+                        >Última sincronización</span
+                    >
                     <span class="numeric font-medium">{{ lastSuccess }}</span>
                 </div>
             </div>

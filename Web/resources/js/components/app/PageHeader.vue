@@ -77,20 +77,20 @@ withDefaults(
             <div class="flex min-w-0 items-start gap-4">
                 <div
                     v-if="icon"
-                    class="hidden size-12 shrink-0 items-center justify-center rounded-2xl bg-brand-gradient text-black shadow-elev-1 sm:flex"
+                    class="hidden size-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground sm:flex"
                 >
                     <component :is="icon" class="icon-lg" aria-hidden="true" />
                 </div>
-                <div class="min-w-0 space-y-1.5">
+                <div class="min-w-0 space-y-1">
                     <p
                         v-if="eyebrow"
-                        class="text-xs font-bold tracking-[0.14em] text-brand-strong uppercase"
+                        class="text-[0.6875rem] font-semibold tracking-[0.18em] text-gold-strong uppercase"
                     >
                         {{ eyebrow }}
                     </p>
-                    <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-2.5">
                         <h1
-                            class="font-display text-[1.75rem] leading-tight font-bold text-balance text-foreground md:text-[2rem]"
+                            class="font-display text-[1.5rem] leading-tight font-semibold text-balance text-foreground md:text-[1.75rem]"
                         >
                             {{ title }}
                         </h1>

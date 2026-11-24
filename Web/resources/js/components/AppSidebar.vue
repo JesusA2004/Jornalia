@@ -18,27 +18,26 @@ const { groups } = useNavigation();
 
 <template>
     <Sidebar collapsible="icon" variant="inset">
-        <SidebarHeader class="relative px-3 pt-4 pb-3">
+        <SidebarHeader
+            class="border-b border-sidebar-border px-3 pt-4 pb-3 group-data-[collapsible=icon]:px-2"
+        >
             <Link
                 href="/dashboard"
                 aria-label="Ir al panel"
-                class="flex h-12 items-center rounded-xl px-1.5 outline-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                class="flex h-11 items-center rounded-lg px-1.5 outline-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             >
                 <AppLogo
-                    size="md"
+                    size="sm"
                     inverted
                     class="group-data-[collapsible=icon]:hidden"
                 />
                 <img
-                    :src="BRAND.iconSmallUrl"
+                    :src="BRAND.logoUrl"
                     :alt="BRAND.name"
-                    class="hidden size-8 rounded-lg group-data-[collapsible=icon]:block"
+                    class="hidden h-auto w-9 group-data-[collapsible=icon]:block"
+                    draggable="false"
                 />
             </Link>
-            <span
-                class="pointer-events-none absolute inset-x-4 bottom-0 h-px bg-brand-gradient opacity-60 group-data-[collapsible=icon]:inset-x-2"
-                aria-hidden="true"
-            />
         </SidebarHeader>
 
         <SidebarContent class="gap-1 pt-2 pb-4">

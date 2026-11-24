@@ -4,8 +4,8 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="color-scheme" content="light dark">
-        <meta name="theme-color" content="#12302B" media="(prefers-color-scheme: light)">
-        <meta name="theme-color" content="#0D1715" media="(prefers-color-scheme: dark)">
+        <meta name="theme-color" content="#15332E" media="(prefers-color-scheme: light)">
+        <meta name="theme-color" content="#0B1311" media="(prefers-color-scheme: dark)">
         <meta name="application-name" content="{{ config('app.name', 'MR LANA Asistencias') }}">
         <meta name="robots" content="noindex, nofollow">
 
@@ -27,11 +27,11 @@
         {{-- Fondo del documento sincronizado con --background de resources/css/app.css --}}
         <style>
             html {
-                background-color: #f5f8f6;
+                background-color: #f4f3ef;
             }
 
             html.dark {
-                background-color: #0d1715;
+                background-color: #0e1614;
             }
         </style>
 

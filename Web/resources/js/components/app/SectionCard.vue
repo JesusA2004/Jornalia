@@ -46,7 +46,7 @@ withDefaults(
                 <div class="flex min-w-0 flex-1 items-start gap-3">
                     <div
                         v-if="icon"
-                        class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-3 text-muted-foreground ring-1 ring-border"
+                        class="flex size-8 shrink-0 items-center justify-center rounded-md bg-brand-soft text-brand-soft-foreground"
                     >
                         <component
                             :is="icon"
@@ -56,7 +56,7 @@ withDefaults(
                     </div>
                     <div class="min-w-0 space-y-1">
                         <h2
-                            class="font-display text-lg leading-tight font-bold"
+                            class="font-display text-[0.9375rem] leading-tight font-semibold"
                         >
                             {{ title }}
                         </h2>

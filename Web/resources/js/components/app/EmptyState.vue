@@ -75,7 +75,7 @@ withDefaults(
                 v-else
                 :class="
                     cn(
-                        'relative mb-3 flex items-center justify-center rounded-xl ring-1 ring-border',
+                        'relative mb-2 flex items-center justify-center rounded-lg',
                         size === 'sm' ? 'size-10' : 'size-12',
                         TONE_ICON_CLASSES[tone],
                     )
@@ -87,7 +87,7 @@ withDefaults(
                     aria-hidden="true"
                 />
             </EmptyMedia>
-            <EmptyTitle class="font-display text-lg font-bold">{{
+            <EmptyTitle class="font-display text-base font-semibold">{{
                 title
             }}</EmptyTitle>
             <EmptyDescription v-if="description || $slots.description">

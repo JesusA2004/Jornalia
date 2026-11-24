@@ -70,9 +70,14 @@ function upload(event: Event): void {
         </template>
 
         <div class="grid gap-3 sm:grid-cols-2">
-            <div class="flex items-center justify-between gap-3 rounded-xl border px-4 py-3">
+            <div
+                class="flex items-center justify-between gap-3 rounded-xl border px-4 py-3"
+            >
                 <span class="flex items-center gap-2 text-sm font-medium">
-                    <Smartphone class="icon-sm text-muted-foreground" aria-hidden="true" />
+                    <Smartphone
+                        class="icon-sm text-muted-foreground"
+                        aria-hidden="true"
+                    />
                     App
                 </span>
                 <StatusBadge
@@ -81,9 +86,14 @@ function upload(event: Event): void {
                     size="sm"
                 />
             </div>
-            <div class="flex items-center justify-between gap-3 rounded-xl border px-4 py-3">
+            <div
+                class="flex items-center justify-between gap-3 rounded-xl border px-4 py-3"
+            >
                 <span class="flex items-center gap-2 text-sm font-medium">
-                    <FileSignature class="icon-sm text-muted-foreground" aria-hidden="true" />
+                    <FileSignature
+                        class="icon-sm text-muted-foreground"
+                        aria-hidden="true"
+                    />
                     Convenio
                 </span>
                 <StatusBadge
@@ -108,11 +118,18 @@ function upload(event: Event): void {
                     :href="`/colaboradores/${employeeId}/convenio/${p.id}`"
                     class="flex min-w-0 items-center gap-2 hover:underline"
                 >
-                    <Paperclip class="icon-sm shrink-0 text-muted-foreground" aria-hidden="true" />
+                    <Paperclip
+                        class="icon-sm shrink-0 text-muted-foreground"
+                        aria-hidden="true"
+                    />
                     <span class="truncate">{{ p.name }}</span>
                 </a>
                 <span class="shrink-0 text-xs text-muted-foreground">
-                    {{ p.uploaded_at ? formatDate(p.uploaded_at, 'date-short') : '' }}
+                    {{
+                        p.uploaded_at
+                            ? formatDate(p.uploaded_at, 'date-short')
+                            : ''
+                    }}
                 </span>
             </li>
         </ul>

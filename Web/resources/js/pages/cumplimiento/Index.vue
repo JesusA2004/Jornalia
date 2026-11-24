@@ -423,7 +423,7 @@ const help = [
                                 class="block h-1.5 overflow-hidden rounded-full bg-surface-3"
                             >
                                 <span
-                                    class="block h-full rounded-full bg-gradient-to-r from-warning to-danger transition-all"
+                                    class="block h-full rounded-full bg-warning transition-all"
                                     :style="{
                                         width: `${(r.total / maxRule) * 100}%`,
                                     }"

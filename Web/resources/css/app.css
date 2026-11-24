@@ -8,22 +8,20 @@
 
 /*
  * ============================================================================
- *  MR LANA Asistencias — Sistema de diseño
+ *  MR LANA Asistencias — Sistema de diseño (web)
  * ----------------------------------------------------------------------------
- *  Identidad OFICIAL según docs/identidad/GUIA_MARCA_DIGITAL.md
- *  (Manual de identidad MR LANA 2026, secciones 4–8):
- *    Verde base #A0E04E · Cian base #82DBE8 · Negro #000000 · Blanco #FFFFFF
- *    Degradado oficial #A0E04E → #82DBE8 · Superficie oscura #12302B
- *  Tonos derivados AA para texto/íconos de color sobre blanco.
+ *  Paleta institucional aprobada por RH (revisión del 23-11-2026, pantalla 19,
+ *  punto 4 — hoja membretada):
+ *    Verde institucional #225C54 · Dorado #AF8B51 · Superficie oscura #15332E
+ *  El logotipo oficial (public/brand/logo.svg) se usa tal cual.
  *
  *  Reglas:
- *  - Sobre verde/cian base el texto SIEMPRE va en negro.
  *  - Las páginas usan clases semánticas (bg-card, text-muted-foreground,
  *    bg-success-soft, text-brand-strong…), nunca colores crudos.
- *  - `accent` es el token de shadcn para hover/selección; el verde de marca es
- *    `brand` (= `primary`) y el cian es `cyan`.
- *  - El degradado (`bg-brand-gradient`) se usa con mesura: bandas, encabezados
- *    de marca, ícono. Nunca de fondo de texto largo.
+ *  - Sin degradados decorativos. El dorado es un acento: indicador activo,
+ *    etiquetas de marca, detalles; nunca fondo de texto largo.
+ *  - `accent` es el token de shadcn para hover/selección; el verde
+ *    institucional es `brand` (= `primary`) y el dorado es `gold`.
  * ============================================================================
  */
 
@@ -32,19 +30,21 @@
         'Montserrat', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
         sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
         'Noto Color Emoji';
+    /* Títulos y cifras: Montserrat (secundaria oficial), más sobria en interfaz. */
     --font-display:
-        'Baloo 2', 'Montserrat', ui-sans-serif, system-ui, sans-serif;
+        'Montserrat', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+        sans-serif;
     --font-mono:
         ui-monospace, 'SFMono-Regular', 'Cascadia Mono', 'Segoe UI Mono', Menlo,
         Consolas, monospace;
 
-    /* Radios (la marca es redondeada) */
-    --radius-xs: calc(var(--radius) - 8px);
-    --radius-sm: calc(var(--radius) - 6px);
-    --radius-md: calc(var(--radius) - 4px);
+    /* Radios sobrios (escala compacta: 2 · 4 · 6 · 8 · 10 · 12 px) */
+    --radius-xs: calc(var(--radius) - 6px);
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
     --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) + 4px);
-    --radius-2xl: calc(var(--radius) + 10px);
+    --radius-xl: calc(var(--radius) + 2px);
+    --radius-2xl: calc(var(--radius) + 4px);
 
     /* Sombras discretas en 3 niveles: shadow-elev-1 / -2 / -3 */
     --shadow-elev-1: var(--elev-1);
@@ -95,7 +95,14 @@
     --color-brand-deep: var(--brand-deep);
     --color-brand-deep-foreground: var(--brand-deep-foreground);
 
-    /* Marca: cian */
+    /* Marca: dorado (acento de la hoja membretada) */
+    --color-gold: var(--gold);
+    --color-gold-foreground: var(--gold-foreground);
+    --color-gold-strong: var(--gold-strong);
+    --color-gold-soft: var(--gold-soft);
+    --color-gold-soft-foreground: var(--gold-soft-foreground);
+
+    /* Informativo (antes «cian»; se conserva el nombre por compatibilidad) */
     --color-cyan: var(--cyan);
     --color-cyan-foreground: var(--cyan-foreground);
     --color-cyan-strong: var(--cyan-strong);
@@ -149,111 +156,122 @@
 :root {
     color-scheme: light;
 
-    --radius: 0.875rem;
+    --radius: 0.5rem;
 
-    /* Colores oficiales */
-    --mrlana-green: #a0e04e;
-    --mrlana-cyan: #82dbe8;
-    --brand-gradient: linear-gradient(100deg, #a0e04e 0%, #82dbe8 100%);
+    /* Colores institucionales (hoja membretada) */
+    --mrlana-green: #225c54;
+    --mrlana-gold: #af8b51;
 
-    /* Lienzo y superficies (blanco limpio con matiz verde muy leve) */
-    --background: #f5f8f6;
-    --foreground: #0b1411;
+    /* Lienzo y superficies (blanco cálido, como el papel membretado) */
+    --background: #f4f3ef;
+    --foreground: #14201d;
     --surface-1: #ffffff;
-    --surface-2: #f2f6f3;
-    --surface-3: #e8efea;
+    --surface-2: #f8f7f4;
+    --surface-3: #efeee9;
     --card: var(--surface-1);
     --card-foreground: var(--foreground);
     --popover: #ffffff;
     --popover-foreground: var(--foreground);
 
-    /* Primario = verde de marca con texto negro */
-    --primary: #a0e04e;
-    --primary-foreground: #000000;
-    --primary-soft: #eef8e0;
-    --primary-soft-foreground: #1f3b0b;
+    /* Primario = verde institucional con texto blanco (7.7:1) */
+    --primary: #225c54;
+    --primary-foreground: #ffffff;
+    --primary-soft: #e4eeeb;
+    --primary-soft-foreground: #18433d;
 
-    --secondary: #edf2ee;
-    --secondary-foreground: #12302b;
-    --muted: #f0f4f1;
-    --muted-foreground: #4f5d58;
-    --subtle-foreground: #75837e;
-    --accent: #edf3ef;
-    --accent-foreground: #0b1411;
+    --secondary: #eeede8;
+    --secondary-foreground: #18433d;
+    --muted: #f1f0ec;
+    --muted-foreground: #5b6b66;
+    --subtle-foreground: #6b7a75;
+    --accent: #eef1ef;
+    --accent-foreground: #14201d;
 
-    /* Marca: verde y derivados */
-    --brand: #a0e04e;
-    --brand-foreground: #000000;
-    --brand-strong: #4f8a16;
-    --brand-ink: #1f3b0b;
-    --brand-soft: #eef8e0;
-    --brand-soft-foreground: #1f3b0b;
-    --brand-deep: #12302b;
+    /* Marca: verde institucional y derivados */
+    --brand: #225c54;
+    --brand-foreground: #ffffff;
+    --brand-strong: #225c54;
+    --brand-ink: #18433d;
+    --brand-soft: #e4eeeb;
+    --brand-soft-foreground: #18433d;
+    --brand-deep: #15332e;
     --brand-deep-foreground: #ffffff;
 
-    /* Marca: cian y derivados */
-    --cyan: #82dbe8;
-    --cyan-foreground: #000000;
-    --cyan-strong: #137c8b;
-    --cyan-soft: #e4f6f9;
-    --cyan-soft-foreground: #0b4f59;
+    /* Marca: dorado */
+    --gold: #af8b51;
+    --gold-foreground: #1e1a12;
+    --gold-strong: #8a6a35;
+    --gold-soft: #f6efe3;
+    --gold-soft-foreground: #6b5124;
 
-    --brand-panel: #12302b;
+    /* Informativo (azul petróleo, distinguible del verde institucional) */
+    --cyan: #2a6f86;
+    --cyan-foreground: #ffffff;
+    --cyan-strong: #22627a;
+    --cyan-soft: #e6f0f4;
+    --cyan-soft-foreground: #1b4f62;
+
+    --brand-panel: #15332e;
     --brand-panel-foreground: #ffffff;
 
-    /* Estados (≥ 4.5:1, distinguibles del verde de marca) */
-    --success: #2f8f3a;
+    /* Estados (≥ 4.5:1, distinguibles del verde institucional) */
+    --success: #2e7d3a;
     --success-foreground: #ffffff;
-    --success-soft: #e7f4e8;
-    --success-soft-foreground: #1d6326;
-    --warning: #b26a00;
+    --success-soft: #e8f3e7;
+    --success-soft-foreground: #1d5e27;
+    --warning: #a8620a;
     --warning-foreground: #ffffff;
-    --warning-soft: #fdf1dc;
-    --warning-soft-foreground: #7a4800;
-    --danger: #c8322b;
+    --warning-soft: #fbf0dc;
+    --warning-soft-foreground: #74440a;
+    --danger: #b9372f;
     --danger-foreground: #ffffff;
-    --danger-soft: #fcebe9;
-    --danger-soft-foreground: #9a231d;
-    --info: #137c8b;
+    --danger-soft: #fbeceb;
+    --danger-soft-foreground: #902a23;
+    --info: #22627a;
     --info-foreground: #ffffff;
-    --info-soft: #e4f6f9;
-    --info-soft-foreground: #0b4f59;
-    --neutral-soft: #eef2ef;
-    --neutral-soft-foreground: #3f4c47;
+    --info-soft: #e6f0f4;
+    --info-soft-foreground: #1b4f62;
+    --neutral-soft: #efeee9;
+    --neutral-soft-foreground: #45524e;
 
     --destructive: var(--danger);
     --destructive-foreground: var(--danger-foreground);
 
     /* Bordes */
-    --border: #e0e8e3;
-    --border-strong: #c9d5cd;
-    --input: #d3ddd6;
-    --ring: #6fae2a;
+    --border: #e4e2db;
+    --border-strong: #d0cdc3;
+    --input: #d7d4cb;
+    --ring: #2f7a6d;
 
-    /* Gráficas (familia de marca + contrastes de apoyo) */
-    --chart-1: #6db33f;
-    --chart-2: #2aa9bb;
-    --chart-3: #1f5c50;
-    --chart-4: #a0e04e;
-    --chart-5: #e09a32;
-    --chart-6: #7a8aa3;
+    /* Gráficas (verde, dorado y apoyos sobrios) */
+    --chart-1: #225c54;
+    --chart-2: #af8b51;
+    --chart-3: #5f9c90;
+    --chart-4: #2a6f86;
+    --chart-5: #c97a2b;
+    --chart-6: #8b8f98;
 
-    /* Sidebar oscura verde profundo */
-    --sidebar: #12302b;
-    --sidebar-foreground: #dfeae5;
-    --sidebar-primary: #a0e04e;
-    --sidebar-primary-foreground: #000000;
-    --sidebar-accent: rgb(255 255 255 / 0.08);
+    /* Barra lateral verde profundo */
+    --sidebar: #15332e;
+    --sidebar-foreground: #dfe7e4;
+    --sidebar-primary: #af8b51;
+    --sidebar-primary-foreground: #1e1a12;
+    --sidebar-accent: rgb(255 255 255 / 0.07);
     --sidebar-accent-foreground: #ffffff;
-    --sidebar-border: rgb(255 255 255 / 0.09);
-    --sidebar-ring: #a0e04e;
+    --sidebar-border: rgb(255 255 255 / 0.08);
+    --sidebar-ring: #c9a66b;
+    --sidebar-gold: #c9a66b;
 
-    /* Elevación */
-    --elev-1: 0 1px 2px 0 rgb(18 48 43 / 0.06);
+    /* Barras de desplazamiento */
+    --scrollbar-thumb: rgb(20 32 29 / 0.2);
+    --scrollbar-thumb-hover: rgb(20 32 29 / 0.36);
+
+    /* Elevación (discreta) */
+    --elev-1: 0 1px 2px 0 rgb(21 51 46 / 0.05);
     --elev-2:
-        0 1px 2px 0 rgb(18 48 43 / 0.05), 0 8px 20px -6px rgb(18 48 43 / 0.12);
+        0 1px 2px 0 rgb(21 51 46 / 0.05), 0 6px 16px -6px rgb(21 51 46 / 0.12);
     --elev-3:
-        0 2px 4px 0 rgb(18 48 43 / 0.06), 0 24px 48px -12px rgb(18 48 43 / 0.24);
+        0 2px 4px 0 rgb(21 51 46 / 0.06), 0 20px 40px -12px rgb(21 51 46 / 0.22);
 
     /* Movimiento */
     --duration-fast: 120ms;
@@ -268,72 +286,78 @@
     --icon-xl: 1.5rem;
 
     /* Barra de progreso de navegación (Inertia) */
-    --progress: #82dbe8;
+    --progress: #af8b51;
 }
 
 /* ---------------------------------------------------------------- Oscuro -- */
 .dark {
     color-scheme: dark;
 
-    --background: #0d1715;
-    --foreground: #f2f5f3;
-    --surface-1: #13201d;
-    --surface-2: #182824;
-    --surface-3: #1f312c;
+    --background: #0e1614;
+    --foreground: #edf1ef;
+    --surface-1: #141e1c;
+    --surface-2: #192522;
+    --surface-3: #1f2d2a;
     --card: var(--surface-1);
     --card-foreground: var(--foreground);
-    --popover: #15241f;
+    --popover: #17221f;
     --popover-foreground: var(--foreground);
 
-    --primary: #a0e04e;
-    --primary-foreground: #000000;
-    --primary-soft: rgb(160 224 78 / 0.13);
-    --primary-soft-foreground: #c4ee8c;
+    --primary: #2b7366;
+    --primary-foreground: #ffffff;
+    --primary-soft: rgb(124 194 180 / 0.12);
+    --primary-soft-foreground: #9fd3c7;
 
-    --secondary: #1d2f2a;
-    --secondary-foreground: #f2f5f3;
-    --muted: #1a2a26;
-    --muted-foreground: #a9b8b2;
-    --subtle-foreground: #7f918a;
-    --accent: #1e322c;
-    --accent-foreground: #f2f5f3;
+    --secondary: #1c2926;
+    --secondary-foreground: #edf1ef;
+    --muted: #19241f;
+    --muted-foreground: #a7b5b0;
+    --subtle-foreground: #8b9a95;
+    --accent: #1e2b28;
+    --accent-foreground: #edf1ef;
 
-    --brand: #a0e04e;
-    --brand-foreground: #000000;
-    --brand-strong: #a0e04e;
-    --brand-ink: #d6f3b0;
-    --brand-soft: rgb(160 224 78 / 0.13);
-    --brand-soft-foreground: #c4ee8c;
-    --brand-deep: #0a1a17;
+    --brand: #2b7366;
+    --brand-foreground: #ffffff;
+    --brand-strong: #7cc2b4;
+    --brand-ink: #bfe3da;
+    --brand-soft: rgb(124 194 180 / 0.12);
+    --brand-soft-foreground: #9fd3c7;
+    --brand-deep: #0b1311;
     --brand-deep-foreground: #ffffff;
 
-    --cyan: #82dbe8;
-    --cyan-foreground: #000000;
-    --cyan-strong: #82dbe8;
-    --cyan-soft: rgb(130 219 232 / 0.13);
-    --cyan-soft-foreground: #aee9f1;
+    --gold: #c9a66b;
+    --gold-foreground: #1e1a12;
+    --gold-strong: #e2c792;
+    --gold-soft: rgb(201 166 107 / 0.14);
+    --gold-soft-foreground: #e2c792;
 
-    --brand-panel: #0f2622;
+    --cyan: #6fb6cc;
+    --cyan-foreground: #0b2029;
+    --cyan-strong: #8cc8da;
+    --cyan-soft: rgb(111 182 204 / 0.13);
+    --cyan-soft-foreground: #a9d6e4;
+
+    --brand-panel: #0f2420;
     --brand-panel-foreground: #ffffff;
 
-    --success: #5cc46a;
+    --success: #5cbf6b;
     --success-foreground: #04200a;
-    --success-soft: rgb(92 196 106 / 0.14);
-    --success-soft-foreground: #93dd9c;
-    --warning: #f0a84a;
+    --success-soft: rgb(92 191 107 / 0.14);
+    --success-soft-foreground: #93d99d;
+    --warning: #e8a650;
     --warning-foreground: #2a1700;
-    --warning-soft: rgb(240 168 74 / 0.14);
-    --warning-soft-foreground: #f6c88b;
-    --danger: #f0736b;
+    --warning-soft: rgb(232 166 80 / 0.14);
+    --warning-soft-foreground: #f1c88f;
+    --danger: #ec7a71;
     --danger-foreground: #2a0503;
-    --danger-soft: rgb(240 115 107 / 0.15);
-    --danger-soft-foreground: #f6a7a1;
-    --info: #82dbe8;
-    --info-foreground: #00262c;
-    --info-soft: rgb(130 219 232 / 0.13);
-    --info-soft-foreground: #aee9f1;
+    --danger-soft: rgb(236 122 113 / 0.15);
+    --danger-soft-foreground: #f4aaa4;
+    --info: #6fb6cc;
+    --info-foreground: #0b2029;
+    --info-soft: rgb(111 182 204 / 0.13);
+    --info-soft-foreground: #a9d6e4;
     --neutral-soft: rgb(255 255 255 / 0.07);
-    --neutral-soft-foreground: #c6d2cd;
+    --neutral-soft-foreground: #c5d0cc;
 
     --destructive: var(--danger);
     --destructive-foreground: var(--danger-foreground);
@@ -341,29 +365,33 @@
     --border: rgb(255 255 255 / 0.08);
     --border-strong: rgb(255 255 255 / 0.15);
     --input: rgb(255 255 255 / 0.13);
-    --ring: #a0e04e;
+    --ring: #7cc2b4;
 
-    --chart-1: #a0e04e;
-    --chart-2: #82dbe8;
-    --chart-3: #4fb59c;
-    --chart-4: #d6f3b0;
-    --chart-5: #f0a84a;
-    --chart-6: #9aa9c2;
+    --chart-1: #7cc2b4;
+    --chart-2: #c9a66b;
+    --chart-3: #4f9a8b;
+    --chart-4: #6fb6cc;
+    --chart-5: #e8a650;
+    --chart-6: #9aa3ad;
 
-    --sidebar: #0a1a17;
-    --sidebar-foreground: #d5e2dc;
-    --sidebar-primary: #a0e04e;
-    --sidebar-primary-foreground: #000000;
-    --sidebar-accent: rgb(255 255 255 / 0.07);
+    --sidebar: #0b1311;
+    --sidebar-foreground: #d3ddd9;
+    --sidebar-primary: #c9a66b;
+    --sidebar-primary-foreground: #1e1a12;
+    --sidebar-accent: rgb(255 255 255 / 0.06);
     --sidebar-accent-foreground: #ffffff;
     --sidebar-border: rgb(255 255 255 / 0.07);
-    --sidebar-ring: #a0e04e;
+    --sidebar-ring: #c9a66b;
+    --sidebar-gold: #c9a66b;
+
+    --scrollbar-thumb: rgb(255 255 255 / 0.16);
+    --scrollbar-thumb-hover: rgb(255 255 255 / 0.3);
 
     --elev-1: 0 1px 2px 0 rgb(0 0 0 / 0.35);
     --elev-2: 0 1px 2px 0 rgb(0 0 0 / 0.3), 0 8px 20px -6px rgb(0 0 0 / 0.5);
     --elev-3: 0 2px 4px 0 rgb(0 0 0 / 0.3), 0 24px 48px -12px rgb(0 0 0 / 0.65);
 
-    --progress: #a0e04e;
+    --progress: #c9a66b;
 }
 
 /* ------------------------------------------------- Gráficas (unovis) -- */
@@ -412,19 +440,6 @@
     font-feature-settings: 'tnum' 1;
 }
 
-/* Degradado oficial verde → cian (usar con mesura) */
-@utility bg-brand-gradient {
-    background-image: var(--brand-gradient);
-}
-
-/* Texto con el degradado oficial (sólo titulares cortos sobre fondo oscuro) */
-@utility text-brand-gradient {
-    background-image: var(--brand-gradient);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-}
-
 /* Transición estándar para controles interactivos */
 @utility transition-standard {
     transition-property:
@@ -433,14 +448,13 @@
     transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }
 
-/* Patrón geométrico sutil para paneles de marca (sin imágenes) */
-@utility pattern-grid {
-    background-image: radial-gradient(
-        circle at center,
-        color-mix(in oklch, currentColor 16%, transparent) 1.2px,
-        transparent 1.6px
-    );
-    background-size: 22px 22px;
+/*
+ * Barra de desplazamiento propia de un contenedor con overflow (tablas,
+ * listas, paneles). Delgada, discreta y siempre visible al desplazar.
+ */
+@utility scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 @layer base {
@@ -451,6 +465,45 @@
     html {
         -webkit-text-size-adjust: 100%;
         text-rendering: optimizeLegibility;
+        /* Reserva el canal de la barra: el contenido no «salta» al aparecer. */
+        scrollbar-gutter: stable;
+    }
+
+    /*
+     * Barras de desplazamiento delgadas y discretas en todo el sistema.
+     * Chromium ≥ 121 y Firefox usan las propiedades estándar; Safari/WebKit
+     * usa los pseudoelementos. Nunca se oculta el desplazamiento.
+     */
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--scrollbar-thumb) transparent;
+    }
+
+    ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+
+    ::-webkit-scrollbar-track,
+    ::-webkit-scrollbar-corner {
+        background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background-color: var(--scrollbar-thumb);
+        background-clip: content-box;
+        border: 3px solid transparent;
+        border-radius: 9999px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background-color: var(--scrollbar-thumb-hover);
+    }
+
+    /* La barra lateral es oscura en ambos temas. */
+    [data-sidebar='sidebar'] {
+        --scrollbar-thumb: rgb(255 255 255 / 0.16);
+        --scrollbar-thumb-hover: rgb(255 255 255 / 0.3);
     }
 
     body {
@@ -460,12 +513,12 @@
             'liga' 1;
     }
 
-    /* Títulos con Baloo 2 (secundaria oficial para títulos y cifras) */
+    /* Títulos: Montserrat seminegrita, interlineado ajustado. */
     h1,
     h2,
     [data-display] {
         font-family: var(--font-display);
-        letter-spacing: -0.005em;
+        letter-spacing: -0.015em;
     }
 
     /* Tablas, tiempos y datos numéricos usan cifras tabulares */
@@ -477,12 +530,7 @@
     }
 
     ::selection {
-        background-color: color-mix(
-            in oklch,
-            var(--mrlana-green, #a0e04e) 45%,
-            transparent
-        );
-        color: #000;
+        background-color: color-mix(in oklch, var(--gold) 35%, transparent);
     }
 
     /* Objetivos táctiles cómodos en pantallas pequeñas (≥ 40 px) */
@@ -501,8 +549,8 @@
 
     /* Barra de progreso de Inertia (nprogress) */
     #nprogress .bar {
-        background: var(--brand-gradient) !important;
-        height: 3px !important;
+        background: var(--progress) !important;
+        height: 2px !important;
     }
     #nprogress .peg {
         box-shadow:

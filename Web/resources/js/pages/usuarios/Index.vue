@@ -262,7 +262,7 @@ function revokeAuthority(): void {
         @click="authorityOpen = true"
     >
         <span
-            class="flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand-gradient text-black shadow-elev-1"
+            class="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground"
         >
             <Landmark class="size-5" aria-hidden="true" />
         </span>

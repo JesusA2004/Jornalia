@@ -15,6 +15,7 @@ void createInertiaApp({
     layout: (name) => {
         switch (true) {
             case name === 'Welcome':
+            case name.startsWith('errors/'):
                 return null;
             case name.startsWith('auth/'):
                 return AuthLayout;
@@ -35,7 +36,7 @@ void createInertiaApp({
     },
     progress: {
         // Sobrescrito por el token --progress en app.css (tema claro/oscuro).
-        color: '#A0E04E',
+        color: '#AF8B51',
         delay: 150,
     },
 });

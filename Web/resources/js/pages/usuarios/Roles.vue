@@ -351,7 +351,7 @@ const help: HelpStep[] = [
                             cn(
                                 'flex size-9 shrink-0 items-center justify-center rounded-lg',
                                 role.id === selectedId
-                                    ? 'bg-brand-gradient text-black'
+                                    ? 'bg-primary text-primary-foreground'
                                     : 'bg-surface-3 text-muted-foreground',
                             )
                         "

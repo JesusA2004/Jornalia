@@ -21,7 +21,7 @@ const { isCurrentOrParentUrl } = useCurrentUrl();
 <template>
     <SidebarGroup v-for="group in groups" :key="group.title" class="py-1.5">
         <SidebarGroupLabel
-            class="h-7 px-3 text-[0.6875rem] font-semibold tracking-[0.12em] text-sidebar-foreground/45 uppercase"
+            class="h-7 px-3 text-[0.625rem] font-semibold tracking-[0.18em] text-sidebar-foreground/45 uppercase"
         >
             {{ group.title }}
         </SidebarGroupLabel>
@@ -34,7 +34,7 @@ const { isCurrentOrParentUrl } = useCurrentUrl();
                     as-child
                     :is-active="isCurrentOrParentUrl(item.href)"
                     :tooltip="item.title"
-                    class="relative h-10 gap-3 rounded-xl px-3 text-[0.8125rem] font-medium text-sidebar-foreground/80 transition-standard before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-brand-gradient before:opacity-0 group-data-[collapsible=icon]:before:hidden hover:bg-sidebar-accent hover:text-white data-[active=true]:bg-sidebar-accent data-[active=true]:font-semibold data-[active=true]:text-white data-[active=true]:before:opacity-100 md:h-9 [&>svg]:size-[1.0625rem] [&>svg]:text-sidebar-foreground/55 data-[active=true]:[&>svg]:text-brand"
+                    class="relative h-10 gap-3 rounded-md px-3 text-[0.8125rem] font-medium text-sidebar-foreground/75 transition-standard before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-full before:bg-[var(--sidebar-gold)] before:opacity-0 group-data-[collapsible=icon]:before:hidden hover:bg-sidebar-accent hover:text-white data-[active=true]:bg-sidebar-accent data-[active=true]:font-semibold data-[active=true]:text-white data-[active=true]:before:opacity-100 md:h-9 [&>svg]:size-4 [&>svg]:text-sidebar-foreground/50 data-[active=true]:[&>svg]:text-[var(--sidebar-gold)]"
                 >
                     <Link :href="item.href">
                         <component :is="item.icon" aria-hidden="true" />

@@ -209,8 +209,8 @@ const help = [
             :class="[
                 'relative overflow-hidden rounded-2xl border p-5 shadow-elev-1 sm:p-6',
                 latest.valid
-                    ? 'border-success/30 bg-gradient-to-br from-success-soft via-card to-card'
-                    : 'border-danger/40 bg-gradient-to-br from-danger-soft via-card to-card',
+                    ? 'border-success/30 bg-card'
+                    : 'border-danger/40 bg-danger-soft/40',
             ]"
         >
             <div class="flex flex-col gap-5 lg:flex-row lg:items-center">
@@ -438,7 +438,7 @@ const help = [
                     class="h-1.5 overflow-hidden rounded-full bg-surface-3"
                 >
                     <div
-                        class="h-full rounded-full bg-gradient-to-r from-brand to-success transition-all"
+                        class="h-full rounded-full bg-brand transition-all"
                         :style="{
                             width: `${Math.min(100, (c.anchored_sequence / Math.max(1, c.head_sequence)) * 100)}%`,
                         }"

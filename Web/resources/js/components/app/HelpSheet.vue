@@ -37,7 +37,7 @@ withDefaults(
                 size="icon"
                 :class="
                     cn(
-                        'size-9 rounded-full text-muted-foreground hover:text-foreground',
+                        'size-8 rounded-full text-muted-foreground hover:text-foreground',
                         $props.class,
                     )
                 "
@@ -49,11 +49,7 @@ withDefaults(
         </SheetTrigger>
         <SheetContent side="right" class="w-full gap-0 p-0 sm:max-w-md">
             <SheetHeader class="relative border-b px-6 pt-7 pb-5">
-                <span
-                    class="absolute inset-x-0 top-0 h-1 bg-brand-gradient"
-                    aria-hidden="true"
-                />
-                <SheetTitle class="font-display text-2xl font-bold">{{
+                <SheetTitle class="font-display text-xl font-semibold">{{
                     title
                 }}</SheetTitle>
                 <SheetDescription v-if="description">{{
@@ -67,7 +63,7 @@ withDefaults(
                     class="flex gap-4"
                 >
                     <span
-                        class="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand-soft-foreground"
+                        class="relative flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand-soft-foreground"
                     >
                         <component
                             :is="step.icon"
@@ -75,12 +71,12 @@ withDefaults(
                             class="icon-md"
                             aria-hidden="true"
                         />
-                        <span v-else class="font-display text-lg font-bold">{{
+                        <span v-else class="numeric text-sm font-semibold">{{
                             index + 1
                         }}</span>
                         <span
                             v-if="step.icon"
-                            class="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-brand text-[0.6875rem] font-bold text-black"
+                            class="absolute -top-1.5 -right-1.5 flex size-[1.125rem] items-center justify-center rounded-full bg-gold text-[0.625rem] font-bold text-gold-foreground"
                             >{{ index + 1 }}</span
                         >
                     </span>

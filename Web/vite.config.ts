@@ -12,15 +12,10 @@ export default defineConfig({
             input: ['resources/css/app.css', 'resources/js/app.ts'],
             refresh: true,
             fonts: [
-                // Tipografías secundarias oficiales del manual MR LANA (OFL):
-                // Montserrat para la interfaz y Baloo 2 para títulos y cifras.
+                // Tipografía secundaria oficial del manual MR LANA (OFL):
+                // Montserrat para interfaz, títulos y cifras.
                 bunny('Montserrat', {
                     weights: [400, 500, 600, 700],
-                    subsets: ['latin', 'latin-ext'],
-                    display: 'swap',
-                }),
-                bunny('Baloo 2', {
-                    weights: [500, 600, 700, 800],
                     subsets: ['latin', 'latin-ext'],
                     display: 'swap',
                 }),

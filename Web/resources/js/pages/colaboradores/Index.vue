@@ -76,7 +76,12 @@ const columns: DataTableColumn<EmployeeListRow>[] = [
     { key: 'schedule', label: 'Horario', hideBelow: 'xl' },
     { key: 'starts_on', label: 'Ingreso', hideBelow: 'lg', class: 'w-32' },
     { key: 'app', label: 'App', hideBelow: 'md', class: 'w-28' },
-    { key: 'agreement', label: 'Convenio de registro', hideBelow: 'md', class: 'w-36' },
+    {
+        key: 'agreement',
+        label: 'Convenio de registro',
+        hideBelow: 'md',
+        class: 'w-36',
+    },
     { key: 'status', label: 'Estado', sortable: true, class: 'w-32' },
 ];
 

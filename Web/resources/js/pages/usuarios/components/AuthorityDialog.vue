@@ -62,7 +62,7 @@ function submit(): void {
         <DialogContent class="sm:max-w-lg">
             <DialogHeader>
                 <div
-                    class="mb-1 flex size-11 items-center justify-center rounded-2xl bg-brand-gradient text-black shadow-elev-1"
+                    class="mb-1 flex size-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground"
                 >
                     <Landmark class="size-5" aria-hidden="true" />
                 </div>

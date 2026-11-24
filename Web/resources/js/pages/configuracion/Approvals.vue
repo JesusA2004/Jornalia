@@ -181,7 +181,7 @@ const help = [
                 >
                     <div class="flex flex-col items-center">
                         <span
-                            class="flex size-8 items-center justify-center rounded-full bg-brand-gradient text-sm font-bold text-black shadow-elev-1"
+                            class="flex size-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground"
                         >
                             {{ index + 1 }}
                         </span>
