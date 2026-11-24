@@ -9,6 +9,10 @@ enum PunchSource: string
     case Web = 'web';
     case Kiosk = 'kiosk';
     case Import = 'import';
+    /**
+     * Sólo histórico: marcajes generados por la extinta salida automática. Ningún
+     * proceso actual crea marcajes con este origen; se conservan intactos.
+     */
     case System = 'system';
 
     public function label(): string
@@ -19,7 +23,7 @@ enum PunchSource: string
             self::Web => 'Web',
             self::Kiosk => 'Kiosco',
             self::Import => 'Importación',
-            self::System => 'Sistema (cierre automático)',
+            self::System => 'Generado por sistema (histórico)',
         };
     }
 

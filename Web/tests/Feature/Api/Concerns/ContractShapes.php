@@ -43,11 +43,12 @@ final class ContractShapes
                 'hire_date' => 'date', 'supervisor' => '?string', 'timezone' => 'string',
             ]],
             'pending_acknowledgements' => ['list', $ackDoc],
+            'signature_pin_set' => 'bool',
         ];
         $location = ['latitude' => 'number', 'longitude' => 'number', 'accuracy_meters' => '?number', 'captured_at' => 'datetime', 'is_mocked' => '?bool'];
         $punch = [
             'uuid' => 'uuid', 'type' => 'enum:'.self::PUNCH_TYPES, 'status' => 'enum:accepted|flagged',
-            'source' => 'enum:mobile|mobile_offline|web|kiosk|import|system', 'server_time' => 'datetime', 'device_time' => '?datetime',
+            'source' => 'enum:mobile|mobile_offline|web|kiosk|import|system', 'server_time' => 'datetime', 'device_time' => '?datetime', 'received_at' => '?datetime', 'synced_at' => '?datetime',
             'clock_skew_seconds' => '?int', 'timezone' => 'string', 'auth_method' => 'enum:'.self::AUTH_METHODS,
             'captured_offline' => 'bool', 'anomalies' => 'list:enum:'.self::ANOMALIES, 'location' => ['?', $location],
             'hash' => 'string', 'sequence' => 'int', 'rectified' => 'bool',
@@ -68,6 +69,8 @@ final class ContractShapes
             'location_mode' => 'enum:free|record|required|geofence|device_only', 'allowed_auth_methods' => 'list:enum:'.self::AUTH_METHODS,
             'require_strong_biometric' => 'bool', 'allow_offline' => 'bool', 'offline_max_hours' => 'int',
             'geofences' => ['list', $geofence], 'face_verification_enabled' => 'bool',
+            'location_tracking' => 'enum:on_punch|during_shift', 'tracking_paused_states' => 'list:enum:break|meal',
+            'location_contingency_minutes' => ['optional', 'int'],
         ];
         $week = [
             'week_start' => 'date', 'worked_minutes' => 'int', 'scheduled_minutes' => 'int', 'legal_max_minutes' => 'int', 'overtime_minutes' => 'int',
@@ -77,10 +80,22 @@ final class ContractShapes
             'id' => 'int', 'date' => 'date', 'punch_uuid' => '?uuid', 'kind' => 'enum:missing_punch|wrong_type|time_clarification|other',
             'proposed_type' => '?enum:'.self::PUNCH_TYPES, 'proposed_time' => '?datetime', 'reason' => 'string', 'status' => 'enum:'.self::APPROVAL,
             'reviewer' => '?string', 'review_comment' => '?string', 'reviewed_at' => '?datetime', 'created_at' => 'datetime',
+            // Flujo de 5 pasos con firma del colaborador (A2).
+            'stage' => 'enum:por_autorizar|por_firmar|por_validar|aplicada|rechazada', 'stage_label' => 'string',
+            'original' => ['summary' => 'string', 'punch_uuid' => '?uuid', 'type' => '?enum:'.self::PUNCH_TYPES, 'time' => '?datetime'],
+            'proposal' => ['summary' => 'string', 'type' => '?enum:'.self::PUNCH_TYPES, 'time' => '?datetime'],
+            'evidences' => ['list', ['id' => 'int', 'name' => 'string', 'mime' => 'string', 'size' => 'int', 'sha256' => 'string', 'url' => 'string']],
+            'is_late' => 'bool', 'authorized_at' => '?datetime', 'signature_due_at' => '?datetime',
+            'signature' => ['?', ['signed_at' => 'datetime', 'method' => 'enum:pin|biometric', 'hash' => 'string']],
+            'signature_statement' => '?string', 'signature_payload_sha256' => '?string', 'can_sign' => 'bool',
+            'rejection_stage' => '?enum:por_autorizar|por_firmar|por_validar|vencida|declinada|cancelada', 'rejection_reason' => '?string',
+            'applied_at' => '?datetime',
         ];
         $incidenceType = [
             'id' => 'int', 'code' => 'string', 'name' => 'string', 'category' => 'enum:absence|leave|disability|vacation|time|other',
             'requires_evidence' => 'bool', 'requires_approval' => 'bool', 'employee_requestable' => 'bool',
+            'evidence_kind' => '?enum:imss_certificate|authorized_form|death_certificate|proof', 'evidence_label' => '?string',
+            'requires_folio' => 'bool', 'omission_punch_type' => '?enum:clock_in|clock_out',
         ];
         $apiError = ['message' => 'string', 'code' => 'string', 'errors' => ['optional', 'array']];
         $locationSettings = [
@@ -90,6 +105,9 @@ final class ContractShapes
             ],
             'interval_s' => ['foreground' => 'int', 'background' => 'int'],
             'distance_m' => ['foreground' => 'int', 'background' => 'int'],
+            'mode' => ['optional', 'enum:on_punch|during_shift'],
+            'phase' => ['optional', 'enum:active|paused|off'],
+            'paused_states' => ['optional', 'list:enum:break|meal'],
         ];
         $locationPoint = [
             'uuid' => 'uuid', 'latitude' => 'number', 'longitude' => 'number', 'accuracy_m' => '?number', 'heading' => '?number',
@@ -119,6 +137,18 @@ final class ContractShapes
             'Incidence' => [
                 'id' => 'int', 'type' => $incidenceType, 'starts_on' => 'date', 'ends_on' => 'date', 'reason' => '?string',
                 'status' => 'enum:'.self::APPROVAL, 'has_evidence' => 'bool', 'reviewer' => '?string', 'review_comment' => '?string', 'created_at' => 'datetime',
+                'folio' => '?string', 'rectification_id' => '?int', 'cancellation_reason' => '?string',
+            ],
+            'PendingDocument' => [
+                'id' => 'int', 'code' => 'enum:CONVENIO_REGISTRO|AVISO_PRIVACIDAD', 'purpose' => 'enum:registration_agreement|privacy_notice',
+                'title' => 'string', 'version' => 'string', 'body_markdown' => 'string', 'sha256' => 'string', 'published_at' => 'datetime',
+                'pdf_url' => 'string', 'signature_statement' => 'string', 'signature_payload_sha256' => 'string',
+            ],
+            'DocumentSignature' => ['document_id' => 'int', 'code' => 'string', 'signed_at' => 'datetime', 'method' => 'enum:pin|biometric', 'hash' => 'string'],
+            'SignaturePinStatus' => ['has_pin' => 'bool', 'set_at' => '?datetime'],
+            'SignedDocument' => [
+                'id' => 'int', 'code' => 'enum:CONVENIO_REGISTRO|AVISO_PRIVACIDAD', 'title' => 'string', 'version' => 'string',
+                'body_markdown' => '?string', 'pdf_url' => 'string', 'signed_at' => 'datetime', 'signature_method' => 'enum:pin|biometric', 'hash' => 'string',
             ],
             'VacationBalance' => [
                 'service_year' => 'int', 'period_starts_on' => 'date', 'period_ends_on' => 'date', 'legal_days' => 'int', 'extra_days' => 'int',

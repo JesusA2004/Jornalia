@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
+use Laravel\Fortify\TwoFactorAuthenticatable;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -27,16 +28,23 @@ use Spatie\Permission\Traits\HasRoles;
  * @property string $status
  * @property bool $is_super_admin
  * @property Carbon|null $last_login_at
+ * @property string|null $signature_pin_hash
+ * @property Carbon|null $signature_pin_set_at
+ * @property int $signature_pin_failed_attempts
+ * @property Carbon|null $signature_pin_locked_until
+ * @property string|null $two_factor_secret
+ * @property string|null $two_factor_recovery_codes
+ * @property Carbon|null $two_factor_confirmed_at
  * @property string|null $remember_token
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
 #[Fillable(['name', 'email', 'password', 'status', 'current_organization_id'])]
-#[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
+#[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token', 'signature_pin_hash'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, HasRoles, Notifiable, SoftDeletes;
+    use HasApiTokens, HasFactory, HasRoles, Notifiable, SoftDeletes, TwoFactorAuthenticatable;
 
     /**
      * @return array<string, string>
@@ -47,6 +55,10 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
             'is_super_admin' => 'boolean',
+            'two_factor_confirmed_at' => 'datetime',
+            'signature_pin_set_at' => 'datetime',
+            'signature_pin_locked_until' => 'datetime',
+            'signature_pin_failed_attempts' => 'integer',
             'password' => 'hashed',
         ];
     }

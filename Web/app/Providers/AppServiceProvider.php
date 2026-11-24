@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Domain\Biometrics\FaceProviderFactory;
 use App\Domain\Biometrics\FaceVerificationProvider;
+use App\Domain\Security\PermissionCatalog;
 use App\Models\User;
 use App\Support\NoPhysicalDeletes;
 use App\Support\Tenancy\CurrentOrganization;
@@ -72,7 +73,9 @@ class AppServiceProvider extends ServiceProvider
 
     protected function configureAuthorization(): void
     {
-        Gate::before(fn (User $user) => $user->is_super_admin ? true : null);
+        // El superadministrador NO obtiene autorización operativa sobre asistencia
+        // (aprobar, validar, aplicar, rectificar): regla dura de separación de funciones.
+        Gate::before(fn (User $user, string $ability) => $user->is_super_admin && ! PermissionCatalog::isOperational($ability) ? true : null);
     }
 
     protected function configureRateLimiting(): void

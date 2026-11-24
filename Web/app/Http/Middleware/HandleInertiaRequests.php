@@ -49,7 +49,7 @@ class HandleInertiaRequests extends Middleware
                         ->map(fn ($o) => ['id' => $o->id, 'name' => $o->name])->values()
                     : [],
                 'permissions' => fn () => $user && $organization
-                    ? ($user->is_super_admin ? PermissionCatalog::all() : $user->getAllPermissions()->pluck('name')->values()->all())
+                    ? ($user->is_super_admin ? array_values(array_diff(PermissionCatalog::all(), PermissionCatalog::OPERATIONAL)) : $user->getAllPermissions()->pluck('name')->values()->all())
                     : [],
                 'roles' => fn () => $user && $organization ? $user->getRoleNames()->values()->all() : [],
                 'is_super_admin' => (bool) $user?->is_super_admin,

@@ -25,6 +25,7 @@ final class SyncPunchesRequest extends FormRequest
         return [
             'punches' => ['required', 'array', 'min:1', 'max:'.self::MAX_ITEMS],
             'punches.*' => ['array'],
+            'synced_at' => ['nullable', 'string', 'max:40', 'date'],
         ];
     }
 }

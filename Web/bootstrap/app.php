@@ -4,6 +4,7 @@ use App\Domain\Attendance\AttendanceException;
 use App\Exceptions\ImmutableRecordException;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RequireTwoFactor;
 use App\Http\Middleware\SetCurrentOrganization;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
@@ -28,7 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->alias(['organization' => SetCurrentOrganization::class]);
+        $middleware->alias(['organization' => SetCurrentOrganization::class, 'two-factor.admin' => RequireTwoFactor::class]);
 
         // La organización activa debe fijarse ANTES de resolver modelos de la URL
         // (route model binding); si no, el scope multiempresa no se aplicaría y

@@ -56,12 +56,29 @@ export type ApiErrorCode =
     | 'face_not_enrolled'
     | 'face_locked'
     | 'face_challenge_invalid'
-    | 'face_challenge_expired';
+    | 'face_challenge_expired'
+    // Kiosco de sucursal (B1)
+    | 'kiosk_unauthenticated'
+    | 'kiosk_activation_invalid'
+    | 'kiosk_invalid_credentials'
+    | 'kiosk_wrong_branch'
+    | 'kiosk_employee_inactive'
+    | 'pin_locked'
+    | 'pin_not_set'
+    /**
+     * Kiosco: la política exige verificación facial y el marcaje no trae una vigente
+     * (`POST /kiosk/punches` y elementos de `POST /kiosk/sync`). HTTP 422. Antes se
+     * respondía `policy_violation`; el cuerpo trae `legacy_code: 'policy_violation'`
+     * y el mismo mensaje por compatibilidad. Obtén una con `POST /kiosk/face/*`.
+     */
+    | 'face_verification_required';
 
 export interface ApiError {
     message: string;
     code: ApiErrorCode;
     errors?: Record<string, string[]>;
+    /** Código anterior equivalente, sólo cuando `code` sustituyó a uno previo (compatibilidad). */
+    legacy_code?: ApiErrorCode;
 }
 
 /* ───────────────────────────── Autenticación ───────────────────────────── */
@@ -83,7 +100,18 @@ export interface DeviceInfo {
     model: string | null;
     /** true si el SO reporta hardware biométrico enrolado. */
     biometric_available: boolean;
+    /**
+     * Señales de integridad detectadas por la app (opcional). Generan alerta en
+     * Cumplimiento; no bloquean. La detección no es infalible.
+     */
+    integrity?: DeviceIntegritySignal[];
 }
+
+/**
+ * Señales de integridad del teléfono. También pueden enviarse en cada marcaje en la
+ * cabecera `X-Device-Integrity` (lista separada por comas).
+ */
+export type DeviceIntegritySignal = 'rooted' | 'jailbroken' | 'emulator' | 'mock_location';
 
 /** POST /api/v1/auth/login */
 export interface LoginRequest {
@@ -160,6 +188,8 @@ export interface Profile {
     } | null;
     /** Documentos del sistema de registro pendientes de acuse por el colaborador. */
     pending_acknowledgements: AcknowledgementDocument[];
+    /** true si el colaborador ya configuró su NIP de firma electrónica (A2). Siempre presente en servidores actuales. */
+    signature_pin_set?: boolean;
 }
 
 export interface AcknowledgementDocument {
@@ -210,7 +240,20 @@ export interface AttendancePolicy {
     offline_max_hours: number;
     geofences: Geofence[];
     face_verification_enabled: boolean;
+    /**
+     * Parámetro por PUESTO (B2): 'on_punch' = sólo ubicación al marcar;
+     * 'during_shift' = seguimiento desde la entrada hasta la salida.
+     */
+    location_tracking: LocationTracking;
+    /** Estados en los que el seguimiento se pausa (descanso / comida registrados). */
+    tracking_paused_states: TrackingPausedState[];
+    /** Minutos después del fin de turno en que se corta el seguimiento si la salida se omite. */
+    location_contingency_minutes?: number;
 }
+
+export type LocationTracking = 'on_punch' | 'during_shift';
+
+export type TrackingPausedState = 'break' | 'meal';
 
 /* ──────────────────────────────── Marcajes ──────────────────────────────── */
 
@@ -221,6 +264,7 @@ export type PunchStatus =
     | 'flagged'         // aceptado con anomalías: requiere revisión (nunca se descarta)
     | 'pending_sync';   // sólo existe en el cliente (nunca lo emite el servidor)
 
+/** `system` sólo aparece en marcajes históricos («Generado por sistema (histórico)»). */
 export type PunchSource = 'mobile' | 'mobile_offline' | 'web' | 'kiosk' | 'import' | 'system';
 
 export interface LocationEvidence {
@@ -257,6 +301,11 @@ export interface PunchRequest {
     location: LocationEvidence | null;
     /** Id de verificación facial previa (FaceVerificationResult.id) si aplica. */
     face_verification_id: Uuid | null;
+    /**
+     * Hora de envío/sincronización según el reloj del dispositivo (opcional).
+     * Permite distinguir sincronización sin conexión tardía de reloj alterado.
+     */
+    synced_at?: IsoDateTime | null;
 }
 
 export interface Punch {
@@ -268,6 +317,10 @@ export interface Punch {
     server_time: IsoDateTime;
     /** Hora declarada por el dispositivo (no certificada). */
     device_time: IsoDateTime | null;
+    /** Recepción en servidor (igual a server_time; null en registros anteriores). */
+    received_at?: IsoDateTime | null;
+    /** Hora de envío/sincronización declarada por el dispositivo. */
+    synced_at?: IsoDateTime | null;
     clock_skew_seconds: number | null;
     timezone: string;
     auth_method: AuthMethod;
@@ -292,7 +345,11 @@ export type PunchAnomaly =
     | 'outside_schedule'
     | 'rest_day'
     | 'holiday'
-    | 'offline_not_allowed';
+    | 'offline_not_allowed'
+    | 'missing_clock_out'
+    | 'missing_clock_in'
+    /** Sólo histórico: salida generada por la extinta salida automática. */
+    | 'auto_clock_out';
 
 export interface PunchReceipt {
     punch: Punch;
@@ -304,6 +361,8 @@ export interface PunchReceipt {
 /** POST /api/v1/sync/punches */
 export interface SyncRequest {
     punches: PunchRequest[];
+    /** Hora de envío del lote según el reloj del dispositivo (opcional). */
+    synced_at?: IsoDateTime | null;
 }
 
 export type SyncItemResult =
@@ -354,10 +413,13 @@ export interface Workday {
     late_minutes: number;
     /** Minutos que exceden la jornada programada (no implica horas extra autorizadas). */
     excess_minutes: number;
-    /** Hora máxima de salida aplicada (cierre automático), si está configurada. */
-    auto_clock_out_at: IsoDateTime | null;
-    /** Tiempo registrado después del cierre automático: se conserva, no cuenta como extra. */
-    after_cutoff_minutes: number;
+    /**
+     * @deprecated La salida automática se eliminó (Revisión RH 2026-11). Siempre null;
+     * se conserva opcional para apps instaladas.
+     */
+    auto_clock_out_at?: IsoDateTime | null;
+    /** @deprecated Siempre 0: ningún tiempo registrado se descarta. */
+    after_cutoff_minutes?: number;
     incidences: IncidenceSummary[];
 }
 
@@ -392,6 +454,38 @@ export interface HistoryDay {
 
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 
+/**
+ * Etapa del flujo de 5 pasos (Revisión RH, pantalla 05): solicitud con evidencia →
+ * autorización del jefe → firma del colaborador (app) → validación RH → aplicada.
+ * `status` se conserva: pending mientras está en curso; approved = aplicada.
+ */
+export type RectificationStage = 'por_autorizar' | 'por_firmar' | 'por_validar' | 'aplicada' | 'rechazada';
+
+/** Motivo de cierre de una rectificación rechazada. */
+export type RectificationRejectionStage = 'por_autorizar' | 'por_firmar' | 'por_validar' | 'vencida' | 'declinada' | 'cancelada';
+
+/** Evidencia adjunta (metadatos verificables + URL firmada temporal, 10 min, sin Bearer). */
+export interface RectificationEvidence {
+    id: number;
+    name: string;
+    mime: string;
+    size: number;
+    sha256: string;
+    url: string;
+}
+
+/** «Registro original» / «Propuesta». */
+export interface RectificationSide {
+    /** Resumen que arma el servidor (p. ej. «Sin salida», «Salida 18:00»). */
+    summary?: string | null;
+    /** Sólo en `original`. */
+    punch_uuid?: Uuid | null;
+    type: PunchType | null;
+    time: IsoDateTime | null;
+}
+
+export type SignatureMethod = 'pin' | 'biometric';
+
 export interface Rectification {
     id: number;
     date: IsoDate;
@@ -405,9 +499,33 @@ export interface Rectification {
     review_comment: string | null;
     reviewed_at: IsoDateTime | null;
     created_at: IsoDateTime;
+    /* ── Revisión RH (A2). El servidor siempre los envía; opcionales sólo por tolerancia con servidores anteriores. ── */
+    stage?: RectificationStage;
+    stage_label?: string;
+    original?: RectificationSide;
+    proposal?: RectificationSide;
+    evidences?: RectificationEvidence[];
+    /** Extemporánea: fecha posterior al cierre de nómina (sólo RH la aplica). */
+    is_late?: boolean;
+    authorized_at?: IsoDateTime | null;
+    /** Fin del plazo de firma (3 días hábiles configurables); vencido ⇒ rechazada. */
+    signature_due_at?: IsoDateTime | null;
+    signature?: { signed_at: IsoDateTime; method: SignatureMethod; hash: string } | null;
+    /** Texto exacto a firmar (sólo en «por_firmar»). */
+    signature_statement?: string | null;
+    /** SHA-256 del contenido firmado; entra en la firma HMAC biométrica (sólo en «por_firmar»). */
+    signature_payload_sha256?: string | null;
+    can_sign?: boolean;
+    rejection_stage?: RectificationRejectionStage | null;
+    rejection_reason?: string | null;
+    applied_at?: IsoDateTime | null;
 }
 
-/** POST /api/v1/rectifications (multipart si incluye `evidence`) */
+/**
+ * POST /api/v1/rectifications (multipart). `evidence[]` OBLIGATORIA: 1 a 5 archivos
+ * JPG/PNG/WEBP/HEIC/PDF de hasta 10 MB (se acepta `evidence` único por compatibilidad).
+ * Duplicado abierto del mismo día y marcaje ⇒ 422 en `date`.
+ */
 export interface RectificationRequest {
     date: IsoDate;
     punch_uuid: Uuid | null;
@@ -417,8 +535,88 @@ export interface RectificationRequest {
     reason: string;
 }
 
+/**
+ * Firma electrónica (rectificación o documento). Con `method='biometric'` la app
+ * desbloquea el secreto del dispositivo con la biometría del SO y envía
+ *   device_signature = hex(HMAC_SHA256(base64decode(device_secret),
+ *     "sign|{purpose}|{signable_id}|{signature_payload_sha256}|{device_uuid}"))
+ * purpose: rectification | registration_agreement | privacy_notice. El dispositivo
+ * lo toma el servidor del token. NIP: 5 fallos ⇒ bloqueo 15 min.
+ */
+export interface SignRequest {
+    method: SignatureMethod;
+    pin?: string;
+    device_signature?: string;
+    /** Informativos (el servidor usa el dispositivo del token). */
+    device_uuid?: Uuid;
+    device_time?: IsoDateTime;
+}
+
+/** POST /api/v1/rectifications/{id}/decline — el colaborador no acepta la corrección. */
+export interface DeclineRequest {
+    reason: string;
+}
+
+/** POST /api/v1/profile/signature-pin — 4 a 6 dígitos; `current_pin` obligatorio para cambiarlo. */
+export interface SignaturePinRequest {
+    pin: string;
+    current_pin?: string;
+}
+
+export interface SignaturePinStatus {
+    has_pin: boolean;
+    set_at: IsoDateTime | null;
+}
+
+/* ─────────────── Convenio de registro y aviso de privacidad (A2) ─────────────── */
+
+export type LegalDocumentCode = 'CONVENIO_REGISTRO' | 'AVISO_PRIVACIDAD';
+
+/** GET /api/v1/documents/pending — versión vigente sin firmar. */
+export interface PendingDocument {
+    id: number;
+    code: LegalDocumentCode;
+    purpose: 'registration_agreement' | 'privacy_notice';
+    title: string;
+    version: string;
+    body_markdown: string;
+    sha256: string;
+    published_at: IsoDateTime;
+    /** URL firmada temporal (10 min) del PDF; se abre sin Bearer. */
+    pdf_url: string;
+    signature_statement: string;
+    signature_payload_sha256: string;
+}
+
+/** POST /api/v1/documents/{id}/sign (SignRequest) → constancia. Idempotente. */
+export interface DocumentSignResult {
+    document_id: number;
+    code: LegalDocumentCode;
+    signed_at: IsoDateTime;
+    method: SignatureMethod;
+    hash: string;
+}
+
+/** GET /api/v1/documents — documentos firmados por el colaborador (todas las versiones). */
+export interface SignedDocument {
+    id: number;
+    code: LegalDocumentCode;
+    title: string;
+    version: string;
+    body_markdown: string | null;
+    pdf_url: string;
+    signed_at: IsoDateTime;
+    signature_method: SignatureMethod;
+    hash: string;
+}
+
 /* ──────────────────────────── Incidencias ──────────────────────────── */
 
+/**
+ * Catálogo CERRADO (Revisión RH, pantalla 06): PERMISO_CON_GOCE, PERMISO_SIN_GOCE,
+ * FALTA_JUSTIFICADA, INCAPACIDAD_EG, INCAPACIDAD_RT, INCAPACIDAD_MAT, PATERNIDAD, LUTO,
+ * OMISION_ENTRADA, OMISION_SALIDA. La falta injustificada no se captura.
+ */
 export interface IncidenceType {
     id: number;
     code: string;
@@ -427,6 +625,12 @@ export interface IncidenceType {
     requires_evidence: boolean;
     requires_approval: boolean;
     employee_requestable: boolean;
+    evidence_kind: 'imss_certificate' | 'authorized_form' | 'death_certificate' | 'proof' | null;
+    evidence_label: string | null;
+    /** Incapacidades: folio IMSS obligatorio. */
+    requires_folio: boolean;
+    /** Omisión de checada: genera una rectificación para firma (pedir `proposed_time`). */
+    omission_punch_type: 'clock_in' | 'clock_out' | null;
 }
 
 export interface IncidenceSummary {
@@ -447,14 +651,23 @@ export interface Incidence {
     reviewer: string | null;
     review_comment: string | null;
     created_at: IsoDateTime;
+    folio: string | null;
+    /** Omisión de checada: rectificación generada. */
+    rectification_id: number | null;
+    cancellation_reason: string | null;
 }
 
-/** POST /api/v1/incidences (multipart si incluye `evidence`) */
+/**
+ * POST /api/v1/incidences (multipart). `evidence[]` según el tipo (1 a 5 archivos);
+ * `folio` para incapacidades; `proposed_time` (HH:mm) para omisiones de checada.
+ */
 export interface IncidenceRequest {
     incidence_type_id: number;
     starts_on: IsoDate;
     ends_on: IsoDate;
     reason: string;
+    folio?: string | null;
+    proposed_time?: string | null;
 }
 
 /* ──────────────────────────── Vacaciones ──────────────────────────── */
@@ -528,12 +741,12 @@ export type NotificationCategory = 'message' | 'reminder' | 'request' | 'attenda
 /**
  * Aviso de la bandeja (GET /notifications). Los comunicados retirados no aparecen.
  * `data` trae sólo identificadores en texto para abrir el detalle, p. ej.
- * `{announcement_id}`, `{subject, subject_id, status}`, `{date, action}`,
+ * `{announcement_id, requires_confirmation}`, `{punch_uuid, date, type, receipt_code}` (acuse obligatorio de marcaje, kind `attendance.punch_receipt`), `{subject, subject_id, status}`, `{date, action}`,
  * `{punch_uuid, date}`, `{device_uuid, status}`.
  */
 export interface AppNotification {
     id: Uuid;
-    /** p. ej. `announcement`, `reminder.late_clock_in`, `reminder.clock_out`, `attendance.auto_clock_out`, `request.approved`, `device.revoked`. */
+    /** p. ej. `announcement`, `reminder.late_clock_in`, `reminder.clock_out`, `request.approved` (`attendance.auto_clock_out` sólo en avisos históricos), `device.revoked`. */
     kind: string;
     category: NotificationCategory;
     priority: 'normal' | 'high';
@@ -542,6 +755,17 @@ export interface AppNotification {
     data: Record<string, string>;
     read_at: IsoDateTime | null;
     created_at: IsoDateTime;
+}
+
+/**
+ * POST /api/v1/announcements/{id}/read — confirmación de lectura de un comunicado
+ * importante (`data.requires_confirmation === '1'`). `id` = `data.announcement_id`.
+ * Idempotente. 404 si el comunicado no existe, fue retirado o no te fue enviado.
+ */
+export interface AnnouncementReadReceipt {
+    announcement_id: Uuid;
+    confirmed_at: IsoDateTime;
+    read_at: IsoDateTime;
 }
 
 /**
@@ -680,6 +904,11 @@ export interface LocationWindow {
 
 export interface LocationSettings {
     window: LocationWindow;
+    /** Modo del puesto (B2). */
+    mode?: LocationTracking;
+    /** Fase actual del seguimiento. */
+    phase?: 'active' | 'paused' | 'off';
+    paused_states?: TrackingPausedState[];
     /** Intervalos sugeridos en segundos. */
     interval_s: { foreground: number; background: number };
     /** Distancia mínima en metros para registrar un cambio. */
@@ -697,7 +926,10 @@ export type LocationRejectCode =
     | 'invalid_accuracy'
     | 'future_time'
     | 'too_old'
-    | 'outside_window';
+    | 'outside_window'       // sin jornada abierta (antes de la entrada o después de la salida)
+    | 'tracking_disabled'    // el puesto sólo registra ubicación al marcar
+    | 'on_break'             // descanso o comida registrados: seguimiento en pausa
+    | 'contingency_cutoff';  // salida omitida: se superó fin de turno + margen
 
 export interface LocationBatchResponse {
     accepted: number;
@@ -730,8 +962,18 @@ export interface LocationState {
  * GET    /attendance/punches/{uuid}     → PunchReceipt
  * GET    /attendance/history            → HistoryDay[] + PaginationMeta
  * POST   /sync/punches                  SyncRequest → SyncResponse
- * GET    /rectifications                → Rectification[] + PaginationMeta
- * POST   /rectifications                RectificationRequest → Rectification (201)
+ * GET    /rectifications                → Rectification[] + PaginationMeta (?stage=)
+ * POST   /rectifications                RectificationRequest (multipart, evidence[]) → Rectification (201)
+ * GET    /rectifications/{id}           → Rectification (sólo propias)
+ * POST   /rectifications/{id}/sign      SignRequest → Rectification
+ * POST   /rectifications/{id}/decline   DeclineRequest → Rectification
+ * POST   /profile/signature-pin         SignaturePinRequest → SignaturePinStatus
+ * GET    /documents/pending             → PendingDocument[]
+ * GET    /documents                     → SignedDocument[]
+ * POST   /documents/{id}/sign           SignRequest → DocumentSignResult
+ * GET    /documents/{id}/pdf            → PDF (Bearer)
+ * GET    /files/documents/{id}?signature=…  → PDF (URL firmada temporal, sin Bearer)
+ * GET    /files/evidence/{id}?signature=…   → evidencia propia (URL firmada temporal, sin Bearer)
  * GET    /incidence-types               → IncidenceType[]
  * GET    /incidences                    → Incidence[] + PaginationMeta
  * POST   /incidences                    IncidenceRequest → Incidence (201)
@@ -748,8 +990,95 @@ export interface LocationState {
  * GET    /face-verification/status      → FaceVerificationStatus
  * POST   /face-verification/challenge   → FaceChallenge (201; límite 20/min, bloqueo 5 fallos/15 min)
  * POST   /face-verification/verify      multipart FaceVerifyRequestFields → FaceVerificationResult (200)
+ * POST   /announcements/{id}/read       → AnnouncementReadReceipt
  * POST   /location/points               LocationBatchRequest → LocationBatchResponse (200)
  * GET    /location/state                → LocationState
  * GET    /health                        → { status: 'ok', time: IsoDateTime } (público)
  */
 export const API_VERSION = 'v1' as const;
+
+/* ───────────────────────────── Kiosco de sucursal (B1) ───────────────────────────── */
+// Autenticación: `Authorization: Bearer <token del kiosco>` (no es token de usuario).
+// El colaborador se identifica en cada marcaje con número de empleado + NIP de firma
+// (5 intentos fallidos ⇒ NIP bloqueado 15 min, 423 `pin_locked`).
+
+export type KioskStatusValue = 'pending' | 'active' | 'revoked';
+
+/** POST /api/v1/kiosk/activate — el código es de un solo uso y vence en 48 h. */
+export interface KioskActivateRequest {
+    activation_code: string;
+    device: Pick<DeviceInfo, 'device_uuid' | 'platform' | 'os_version' | 'app_version' | 'model'>;
+}
+
+/** GET /api/v1/kiosk/status */
+export interface KioskStatus {
+    id: Uuid;
+    name: string;
+    status: KioskStatusValue;
+    branch: { id: number; name: string } | null;
+    organization: { id: number; name: string | null; timezone: string | null };
+    activated_at: IsoDateTime | null;
+    last_seen_at: IsoDateTime | null;
+    server_time: IsoDateTime;
+}
+
+export interface KioskActivation {
+    /** Token del kiosco. Se entrega una sola vez: guardarlo en SecureStore. */
+    token: string;
+    kiosk: KioskStatus;
+}
+
+/** POST /api/v1/kiosk/punches (idempotente por `client_uuid`; 201, o 200 si duplicado). */
+export interface KioskPunchRequest {
+    employee_number: string;
+    pin: string;
+    type: PunchType;
+    client_uuid: Uuid;
+    device_time: IsoDateTime;
+    timezone?: string | null;
+    /** Obligatorio si la política exige verificación facial (ver /kiosk/face/*). */
+    face_verification_id?: Uuid | null;
+    location?: {
+        latitude: number;
+        longitude: number;
+        accuracy_meters?: number | null;
+        captured_at?: IsoDateTime | null;
+        is_mocked?: boolean | null;
+    } | null;
+}
+
+export interface KioskPunchReceipt {
+    id: Uuid;
+    client_uuid: Uuid;
+    type: PunchType;
+    server_time: IsoDateTime;
+    status: string;
+    captured_offline: boolean;
+    employee_name: string;
+    duplicate: boolean;
+}
+
+/** POST /api/v1/kiosk/sync — cola offline; sin conexión no hay verificación facial. */
+export interface KioskSyncRequest {
+    punches: KioskPunchRequest[];
+}
+
+export interface KioskSyncResult {
+    client_uuid: Uuid;
+    result: 'created' | 'duplicate' | 'rejected';
+    punch?: KioskPunchReceipt;
+    error?: { message: string; code: ApiErrorCode | string; errors?: Record<string, string[]>; legacy_code?: ApiErrorCode };
+}
+
+export interface KioskSyncResponse {
+    results: KioskSyncResult[];
+}
+
+/**
+ * POST /api/v1/kiosk/face/challenge {employee_number, pin} → FaceChallenge.
+ * POST /api/v1/kiosk/face/verify (multipart de FaceVerifyRequest + employee_number y pin).
+ */
+export interface KioskIdentifyRequest {
+    employee_number: string;
+    pin: string;
+}

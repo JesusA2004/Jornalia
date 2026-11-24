@@ -29,6 +29,8 @@ final class PunchResource extends JsonResource
             'source' => $p->source->value,
             'server_time' => ApiFormat::dateTime($p->server_time),
             'device_time' => ApiFormat::dateTime($p->device_time),
+            'received_at' => ApiFormat::dateTime($p->received_at ?? $p->server_time),
+            'synced_at' => ApiFormat::dateTime($p->synced_at),
             'clock_skew_seconds' => $p->clock_skew_seconds === null ? null : (int) $p->clock_skew_seconds,
             'timezone' => $p->timezone,
             'auth_method' => $p->auth_method->value,

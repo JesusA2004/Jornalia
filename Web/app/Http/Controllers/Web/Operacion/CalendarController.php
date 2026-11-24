@@ -61,10 +61,16 @@ final class CalendarController extends Controller
             $page = (clone $employeesQuery)->orderBy('first_name')->orderBy('last_name')->paginate($perPage)->withQueryString();
             $rosterIds = $page->getCollection()->pluck('id');
             $cards = $this->scope->employeeCards($rosterIds);
-            $page->through(fn (Employee $e) => [
-                'employee' => $cards[$e->id] ?? null,
-                'days' => $this->employeeDays($e, $start, $end),
-            ]);
+            $page->through(function (Employee $e) use ($cards, $start, $end) {
+                $days = $this->employeeDays($e, $start, $end);
+
+                return [
+                    'employee' => $cards[$e->id] ?? null,
+                    'days' => $days,
+                    // Descanso semanal del colaborador según su horario vigente (LFT art. 69).
+                    'rest_days' => $this->restDays($e, $start),
+                ];
+            });
             $roster = $page;
         }
 
@@ -144,7 +150,7 @@ final class CalendarController extends Controller
                 ] : null,
                 'rest_day' => $assignment !== null && $shift === null && $assignment->schedule_id !== null,
                 'no_schedule' => $assignment !== null && $assignment->schedule_id === null,
-                'holiday' => $holiday ? ['name' => $holiday->name, 'legal_basis' => $holiday->legal_basis] : null,
+                'holiday' => $holiday ? ['name' => $holiday->name, 'legal_basis' => $holiday->legal_basis, 'is_mandatory_rest' => (bool) $holiday->is_mandatory_rest] : null,
                 'vacation' => $vacation ? ['id' => $vacation->id, 'status' => $vacation->status->value, 'status_label' => $vacation->status->label()] : null,
                 'incidence' => $incidence ? [
                     'id' => $incidence->id,
@@ -160,6 +166,27 @@ final class CalendarController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Días de descanso semanal (nombres en español) de la semana que contiene `$from`.
+     *
+     * @return list<string>
+     */
+    private function restDays(Employee $employee, CarbonImmutable $from): array
+    {
+        $monday = $from->startOfWeek(CarbonImmutable::MONDAY);
+        $names = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+        $rest = [];
+        foreach (range(0, 6) as $i) {
+            $date = $monday->addDays($i)->toDateString();
+            $assignment = $employee->assignmentOn($date);
+            if ($assignment?->schedule_id !== null && $this->schedules->shiftFor($employee, $date, $assignment) === null) {
+                $rest[] = $names[$i];
+            }
+        }
+
+        return $rest;
     }
 
     /**
@@ -235,6 +262,7 @@ final class CalendarController extends Controller
             ->map(fn (Holiday $h) => [
                 'id' => $h->id,
                 'date' => $h->date->toDateString(),
+                'code' => $h->code,
                 'name' => $h->name,
                 'kind' => $h->kind,
                 'kind_label' => match ($h->kind) {

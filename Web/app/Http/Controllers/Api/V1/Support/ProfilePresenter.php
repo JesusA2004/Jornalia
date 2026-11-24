@@ -33,6 +33,8 @@ final class ProfilePresenter
             'organization' => ['id' => $organization->id, 'name' => $organization->name, 'timezone' => (string) $organization->timezone],
             'employee' => $employee ? $this->employee($employee) : null,
             'pending_acknowledgements' => $employee ? $this->pendingAcknowledgements($employee) : [],
+            // NIP de firma electrónica configurado (A2).
+            'signature_pin_set' => filled($user->signature_pin_hash),
         ];
     }
 

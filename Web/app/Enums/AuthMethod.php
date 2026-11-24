@@ -8,6 +8,7 @@ enum AuthMethod: string
     case DeviceCredential = 'device_credential';
     case FaceVerification = 'face_verification';
     case WebSession = 'web_session';
+    case KioskPin = 'kiosk_pin';
     case System = 'system';
 
     public function label(): string
@@ -17,7 +18,8 @@ enum AuthMethod: string
             self::DeviceCredential => 'Credencial del dispositivo',
             self::FaceVerification => 'Verificación facial',
             self::WebSession => 'Sesión web',
-            self::System => 'Automático por política',
+            self::KioskPin => 'Kiosco (número de empleado y NIP)',
+            self::System => 'Generado por sistema (histórico)',
         };
     }
 

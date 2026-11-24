@@ -4,6 +4,7 @@ use App\Domain\Reports\ReportCatalog;
 use App\Enums\PunchType;
 use App\Models\ReportExport;
 use Carbon\CarbonImmutable;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsWorkforce;
@@ -13,7 +14,11 @@ uses(BuildsWorkforce::class);
 beforeEach(function () {
     $this->withoutVite();
     $this->seedLegal();
-    Storage::fake('local');
+    // Disco propio por proceso: otras suites en paralelo limpian el disco «fake» compartido.
+    $root = storage_path('framework/testing/disks/reports-dash-'.getmypid());
+    (new Filesystem)->cleanDirectory($root);
+    config(['filesystems.disks.local.root' => $root]);
+    Storage::forgetDisk('local');
     $this->org = $this->organization('Comercial Lana');
     $this->admin = $this->userIn($this->org, 'Administrador de empresa', allBranches: true);
     $this->employee = $this->employee($this->org, schedule: $this->schedule());
@@ -86,9 +91,12 @@ it('genera un CSV con encabezados y filas', function () {
     $export = ReportExport::query()->sole();
     $content = Storage::disk('local')->get($export->path);
     $lines = array_values(array_filter(explode("\n", trim($content))));
+    // Encabezado institucional, encabezados de columna y una fila por marcaje.
+    $table = array_values(array_filter($lines, fn ($l) => str_contains($l, ',Entrada,') || str_contains($l, ',Salida,')));
     expect(str_starts_with($content, "\xEF\xBB\xBF"))->toBeTrue()
-        ->and($lines[0])->toContain('Secuencia')
-        ->and(count($lines))->toBe(4);
+        ->and($content)->toContain('Razón social')->toContain('Secuencia')
+        ->and($table)->toHaveCount(3)
+        ->and($export->row_count)->toBe(3);
 });
 
 it('no permite descargar exportaciones de otro usuario', function () {

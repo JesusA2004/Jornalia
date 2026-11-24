@@ -10,7 +10,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/dashboard')->name('home');
 
-Route::middleware(['auth', 'verified', 'organization'])->group(function () {
+// two-factor.admin: doble factor obligatorio para roles administrativos (pantalla 18).
+Route::middleware(['auth', 'verified', 'organization', 'two-factor.admin'])->group(function () {
     foreach (glob(__DIR__.'/web/*.php') ?: [] as $file) {
         require $file;
     }

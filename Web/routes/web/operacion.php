@@ -12,6 +12,7 @@ use App\Http\Controllers\Web\Operacion\OvertimeController;
 use App\Http\Controllers\Web\Operacion\RectificationController;
 use App\Http\Controllers\Web\Operacion\ReportController;
 use App\Http\Controllers\Web\Operacion\VacationController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -34,6 +35,9 @@ Route::post('asistencias/marcar', [AttendanceController::class, 'punch'])
 
 Route::middleware('can:punches.view')->group(function () {
     Route::get('asistencias', [AttendanceController::class, 'index'])->name('asistencias.index');
+    // Marcajes originales: sólo consulta y exportación (ningún rol edita ni borra).
+    Route::get('asistencias/marcajes/exportar', [AttendanceController::class, 'exportPunches'])
+        ->middleware('throttle:20,1')->name('asistencias.export');
     Route::get('asistencias/{employee}/{date}', [AttendanceController::class, 'show'])
         ->whereNumber('employee')->where('date', '\d{4}-\d{2}-\d{2}')->name('asistencias.show');
 });
@@ -45,8 +49,10 @@ Route::middleware('can:rectifications.view')->prefix('rectificaciones')->name('r
     Route::post('/', [RectificationController::class, 'store'])->name('store');
     Route::get('marcajes-del-dia', [RectificationController::class, 'punches'])->name('punches');
     Route::get('{rectification}', [RectificationController::class, 'show'])->whereNumber('rectification')->name('show');
+    // Autorización (jefe, rectifications.approve) o validación RH (rectifications.validate):
+    // la etapa y el permiso se verifican en el dominio.
     Route::post('{rectification}/decision', [RectificationController::class, 'decide'])->whereNumber('rectification')
-        ->middleware('can:rectifications.approve')->name('decide');
+        ->middleware('throttle:30,1')->name('decide');
     Route::post('{rectification}/cancelar', [RectificationController::class, 'cancel'])->whereNumber('rectification')->name('cancel');
     Route::get('{rectification}/evidencias/{attachment}', [RectificationController::class, 'evidence'])
         ->whereNumber(['rectification', 'attachment'])->name('evidence');
@@ -87,16 +93,26 @@ Route::middleware('can:reports.view')->prefix('reportes')->name('reportes.')->gr
     Route::get('{report}', [ReportController::class, 'show'])->where('report', '[a-z_]+')->name('show');
 });
 
-Route::middleware('can:compliance.view')->prefix('cumplimiento')->name('cumplimiento.')->group(function () {
-    Route::get('/', [ComplianceController::class, 'index'])->name('index');
-    Route::post('alertas/{alert}', [ComplianceController::class, 'resolve'])->whereNumber('alert')
-        ->middleware('can:compliance.resolve')->name('resolve');
+// Cumplimiento: un módulo con tres pestañas (Alertas legales, Integridad del registro,
+// Bitácora de cambios). Cada pestaña conserva su propio permiso.
+Route::prefix('cumplimiento')->name('cumplimiento.')->group(function () {
+    Route::middleware('can:compliance.view')->group(function () {
+        Route::get('/', [ComplianceController::class, 'index'])->name('index');
+        Route::post('alertas/{alert}', [ComplianceController::class, 'resolve'])->whereNumber('alert')
+            ->middleware('can:compliance.resolve')->name('resolve');
+    });
+
+    Route::middleware('can:integrity.view')->prefix('integridad')->name('integridad.')->group(function () {
+        Route::get('/', [IntegrityController::class, 'index'])->name('index');
+        Route::post('verificar', [IntegrityController::class, 'verify'])->middleware(['can:integrity.verify', 'throttle:6,1'])->name('verify');
+        Route::post('anclar', [IntegrityController::class, 'anchor'])->middleware(['can:integrity.verify', 'throttle:6,1'])->name('anchor');
+    });
+
+    Route::get('bitacora', AuditController::class)->middleware('can:audit.view')->name('bitacora');
 });
 
-Route::middleware('can:integrity.view')->prefix('integridad')->name('integridad.')->group(function () {
-    Route::get('/', [IntegrityController::class, 'index'])->name('index');
-    Route::post('verificar', [IntegrityController::class, 'verify'])->middleware(['can:integrity.verify', 'throttle:6,1'])->name('verify');
-    Route::post('anclar', [IntegrityController::class, 'anchor'])->middleware(['can:integrity.verify', 'throttle:6,1'])->name('anchor');
-});
-
-Route::get('auditoria', AuditController::class)->middleware('can:audit.view')->name('auditoria.index');
+// Rutas anteriores: redirigen a la pestaña correspondiente para no romper enlaces.
+Route::get('integridad', fn (Request $request) => redirect('/cumplimiento/integridad'.($request->getQueryString() ? '?'.$request->getQueryString() : '')))
+    ->name('integridad.index');
+Route::get('auditoria', fn (Request $request) => redirect('/cumplimiento/bitacora'.($request->getQueryString() ? '?'.$request->getQueryString() : '')))
+    ->name('auditoria.index');

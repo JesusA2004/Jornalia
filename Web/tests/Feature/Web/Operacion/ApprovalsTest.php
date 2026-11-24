@@ -1,8 +1,8 @@
 <?php
 
-use App\Enums\AdjustmentAction;
 use App\Enums\ApprovalStatus;
 use App\Enums\PunchType;
+use App\Enums\RectificationStage;
 use App\Models\ApprovalDecision;
 use App\Models\ApprovalFlow;
 use App\Models\AttendanceAdjustment;
@@ -30,7 +30,7 @@ beforeEach(function () {
     $this->employee = $this->employee($this->org, schedule: $this->schedule(), hiredOn: '2023-01-10');
 });
 
-it('registra una rectificación a nombre del colaborador y la aprueba generando un ajuste', function () {
+it('registra una rectificación a nombre del colaborador y la autoriza otro responsable sin aplicar nada antes de la firma', function () {
     $this->punchAt($this->employee, PunchType::ClockIn, '2026-11-17 15:00:00');
     $this->travelTo(CarbonImmutable::parse('2026-11-18 18:00:00', 'UTC'));
 
@@ -46,21 +46,27 @@ it('registra una rectificación a nombre del colaborador y la aprueba generando 
 
     $request = RectificationRequest::query()->sole();
     expect($request->attachments()->count())->toBe(1)
+        ->and($request->stage)->toBe(RectificationStage::ToAuthorize)
         ->and($request->proposed_time->utc()->format('Y-m-d H:i'))->toBe('2026-11-18 00:00');
 
     $this->actingAs($this->hr)->get("/rectificaciones/{$request->id}")->assertOk();
     $attachment = $request->attachments()->first();
     $this->actingAs($this->hr)->get("/rectificaciones/{$request->id}/evidencias/{$attachment->id}")->assertOk();
 
-    // Rechazo sin comentario: error de validación.
-    $this->actingAs($this->hr)->post("/rectificaciones/{$request->id}/decision", ['decision' => 'reject'])
-        ->assertSessionHasErrors('comment');
+    // Quien capturó no autoriza su propia captura.
+    $this->actingAs($this->hr)->post("/rectificaciones/{$request->id}/decision", ['decision' => 'approve'])->assertForbidden();
 
-    $this->actingAs($this->hr)->post("/rectificaciones/{$request->id}/decision", ['decision' => 'approve', 'comment' => 'Validado'])
+    $reviewer = $this->userIn($this->org, 'Recursos Humanos', allBranches: true);
+    // Rechazo sin comentario: error de validación.
+    $this->actingAs($reviewer)->post("/rectificaciones/{$request->id}/decision", ['decision' => 'reject'])
+        ->assertSessionHasErrors('comment');
+    $this->actingAs($reviewer)->post("/rectificaciones/{$request->id}/decision", ['decision' => 'approve', 'comment' => 'Autorizado'])
         ->assertSessionHasNoErrors();
 
-    expect($request->refresh()->status)->toBe(ApprovalStatus::Approved)
-        ->and(AttendanceAdjustment::query()->sole()->action)->toBe(AdjustmentAction::Add)
+    // Autorizada: queda por firmar; sin firma del colaborador no hay ajuste.
+    expect($request->refresh()->stage)->toBe(RectificationStage::ToSign)
+        ->and($request->status)->toBe(ApprovalStatus::Pending)
+        ->and(AttendanceAdjustment::query()->count())->toBe(0)
         ->and($request->decisions()->count())->toBe(1);
 });
 
@@ -70,6 +76,7 @@ it('impide que un responsable apruebe su propia solicitud', function () {
     $this->travelTo(CarbonImmutable::parse('2026-11-18 18:00:00', 'UTC'));
     $this->actingAs($this->hr)->post('/rectificaciones', [
         'employee_id' => $own->id, 'date' => '2026-11-17', 'kind' => 'other', 'reason' => 'Aclaración propia de la jornada.',
+        'evidence' => UploadedFile::fake()->image('foto.jpg'),
     ])->assertRedirect();
 
     $request = RectificationRequest::query()->sole();
@@ -82,28 +89,31 @@ it('rechaza una rectificación con comentario y conserva el marcaje original', f
     $this->actingAs($this->hr)->post('/rectificaciones', [
         'employee_id' => $this->employee->id, 'date' => '2026-11-17', 'kind' => 'time_clarification',
         'punch_uuid' => $punch->uuid, 'proposed_time' => '08:30', 'reason' => 'La entrada real fue antes.',
+        'evidence' => UploadedFile::fake()->image('foto.jpg'),
     ])->assertRedirect();
     $request = RectificationRequest::query()->sole();
 
-    $this->actingAs($this->hr)->post("/rectificaciones/{$request->id}/decision", ['decision' => 'reject', 'comment' => 'Sin evidencia suficiente'])
+    $reviewer = $this->userIn($this->org, 'Recursos Humanos', allBranches: true);
+    $this->actingAs($reviewer)->post("/rectificaciones/{$request->id}/decision", ['decision' => 'reject', 'comment' => 'Sin evidencia suficiente'])
         ->assertSessionHasNoErrors();
 
     expect($request->refresh()->status)->toBe(ApprovalStatus::Rejected)
+        ->and($request->stage)->toBe(RectificationStage::Rejected)
         ->and(AttendanceAdjustment::query()->count())->toBe(0)
         ->and(Punch::query()->find($punch->id)->server_time->format('H:i'))->toBe('15:00');
 });
 
 it('registra y aprueba una incidencia con evidencia obligatoria', function () {
-    $type = IncidenceType::query()->where('code', 'INCAPACIDAD')->firstOrFail();
+    $type = IncidenceType::query()->where('code', 'INCAPACIDAD_EG')->firstOrFail();
 
     $this->actingAs($this->hr)->post('/incidencias', [
         'employee_id' => $this->employee->id, 'incidence_type_id' => $type->id,
-        'starts_on' => '2026-11-19', 'ends_on' => '2026-11-20', 'reason' => 'Incapacidad IMSS',
+        'starts_on' => '2026-11-19', 'ends_on' => '2026-11-20', 'reason' => 'Incapacidad IMSS', 'folio' => 'LT123456',
     ])->assertSessionHasErrors('evidence');
 
     $this->actingAs($this->hr)->post('/incidencias', [
         'employee_id' => $this->employee->id, 'incidence_type_id' => $type->id,
-        'starts_on' => '2026-11-19', 'ends_on' => '2026-11-20', 'reason' => 'Incapacidad IMSS',
+        'starts_on' => '2026-11-19', 'ends_on' => '2026-11-20', 'reason' => 'Incapacidad IMSS', 'folio' => 'LT123456',
         'evidence' => UploadedFile::fake()->image('incapacidad.jpg'),
     ])->assertRedirect();
 
@@ -111,7 +121,12 @@ it('registra y aprueba una incidencia con evidencia obligatoria', function () {
     expect($incidence->source)->toBe('manager')->and($incidence->status)->toBe(ApprovalStatus::Pending);
 
     $this->actingAs($this->hr)->get('/incidencias')->assertOk();
-    $this->actingAs($this->hr)->post("/incidencias/{$incidence->id}/decision", ['decision' => 'approve'])->assertSessionHasNoErrors();
+    // Nadie autoriza su propia captura; jefe inmediato y RH (dos niveles) la autorizan.
+    $this->actingAs($this->hr)->post("/incidencias/{$incidence->id}/decision", ['decision' => 'approve'])->assertForbidden();
+    $reviewer = $this->userIn($this->org, 'Recursos Humanos', allBranches: true);
+    $this->actingAs($reviewer)->post("/incidencias/{$incidence->id}/decision", ['decision' => 'approve'])->assertSessionHasNoErrors();
+    expect($incidence->refresh()->current_level)->toBe(2);
+    $this->actingAs($reviewer)->post("/incidencias/{$incidence->id}/decision", ['decision' => 'approve'])->assertSessionHasNoErrors();
     expect($incidence->refresh()->status)->toBe(ApprovalStatus::Approved);
 });
 
@@ -158,9 +173,10 @@ it('autoriza horas extra sin exceder el excedente registrado y nunca lo oculta',
         ->and($record->authorized_by)->toBe($this->hr->id);
 
     $this->actingAs($this->hr)->get('/horas-extra?week=2026-11-16')->assertOk()
-        ->assertInertia(fn ($page) => $page->where('totals.recorded_excess_minutes', 120)
+        ->assertInertia(fn ($page) => $page->where('totals.recorded_minutes', 120)
             ->where('totals.authorized_minutes', 90)
-            ->where('rows.data.0.totals.recorded_excess_minutes', 120));
+            ->where('totals.justified_minutes', 30)
+            ->where('rows.data.0.totals.recorded_minutes', 120));
 });
 
 it('atiende y resuelve alertas de cumplimiento con nota', function () {
@@ -183,19 +199,20 @@ it('ejecuta la verificación de integridad y la registra en la bitácora', funct
     $this->travelTo(CarbonImmutable::parse('2026-11-18 18:00:00', 'UTC'));
     $admin = $this->userIn($this->org, 'Administrador de empresa', allBranches: true);
 
-    $this->actingAs($admin)->post('/integridad/anclar')->assertSessionHasNoErrors();
-    $this->actingAs($admin)->post('/integridad/verificar')->assertRedirect();
+    $this->actingAs($admin)->post('/cumplimiento/integridad/anclar')->assertSessionHasNoErrors();
+    $this->actingAs($admin)->post('/cumplimiento/integridad/verificar')->assertRedirect();
 
-    $this->actingAs($admin)->get('/integridad')->assertOk()
+    $this->actingAs($admin)->get('/cumplimiento/integridad')->assertOk()
         ->assertInertia(fn ($page) => $page->where('latest.valid', true)
             ->where('chains.0.records', 1)
             ->where('anchors.total', 1));
 
-    $this->actingAs($admin)->get('/auditoria?module=integrity')->assertOk()
+    $this->actingAs($admin)->get('/cumplimiento/bitacora?module=integrity')->assertOk()
         ->assertInertia(fn ($page) => $page->where('logs.total', 2));
 
-    // RH no tiene integrity.verify.
-    $this->actingAs($this->hr)->post('/integridad/verificar')->assertForbidden();
+    // Un gerente de sucursal no verifica integridad.
+    $manager = $this->userIn($this->org, 'Gerente de sucursal');
+    $this->actingAs($manager)->post('/cumplimiento/integridad/verificar')->assertForbidden();
 });
 
 it('autoriza horas extra en dos niveles configurados y fija minutos sólo al final', function () {

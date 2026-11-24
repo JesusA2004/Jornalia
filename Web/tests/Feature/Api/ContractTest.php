@@ -2,6 +2,8 @@
 
 use App\Models\IncidenceType;
 use App\Models\PolicyDocument;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\Feature\Api\Concerns\ContractShapes;
 use Tests\Feature\Api\Concerns\MobileApi;
@@ -14,6 +16,7 @@ use Tests\Feature\Api\Concerns\MobileApi;
 uses(MobileApi::class);
 
 beforeEach(function () {
+    Storage::fake('local');
     $this->setUpMobile();
 });
 
@@ -79,10 +82,12 @@ it('cumple el contrato en marcajes, jornada, historial y sincronización', funct
 });
 
 it('cumple el contrato en solicitudes, calendario, notificaciones y verificación facial', function () {
-    $rect = $this->mobile('POST', '/rectifications', [
-        'date' => '2026-11-16', 'punch_uuid' => null, 'kind' => 'missing_punch', 'proposed_type' => 'clock_in',
+    $this->app['auth']->forgetGuards();
+    $rect = $this->withToken($this->token)->post('/api/v1/rectifications', [
+        'date' => '2026-11-16', 'kind' => 'missing_punch', 'proposed_type' => 'clock_in',
         'proposed_time' => '2026-11-16T15:00:00Z', 'reason' => 'Olvidé marcar la entrada',
-    ])->assertCreated()->json('data');
+        'evidence' => [UploadedFile::fake()->image('bitacora.jpg')],
+    ], ['Accept' => 'application/json'])->assertCreated()->json('data');
     ContractShapes::assert($rect, 'Rectification');
 
     $list = $this->mobile('GET', '/rectifications')->assertOk();
@@ -93,9 +98,11 @@ it('cumple el contrato en solicitudes, calendario, notificaciones y verificació
     ContractShapes::check($types, ['list', ContractShapes::shapes()['IncidenceType']], 'IncidenceType[]');
 
     $type = IncidenceType::query()->where('code', 'PERMISO_CON_GOCE')->firstOrFail();
-    $incidence = $this->mobile('POST', '/incidences', [
+    $this->app['auth']->forgetGuards();
+    $incidence = $this->withToken($this->token)->post('/api/v1/incidences', [
         'incidence_type_id' => $type->id, 'starts_on' => '2026-11-20', 'ends_on' => '2026-11-20', 'reason' => 'Trámite personal',
-    ])->assertCreated()->json('data');
+        'evidence' => [UploadedFile::fake()->create('formato.pdf', 20, 'application/pdf')],
+    ], ['Accept' => 'application/json'])->assertCreated()->json('data');
     ContractShapes::assert($incidence, 'Incidence');
     ContractShapes::check($this->mobile('GET', '/incidences')->assertOk()->json('data'), ['list', ContractShapes::shapes()['Incidence']], 'Incidence[]');
 
@@ -127,4 +134,39 @@ it('cumple el contrato de ApiError', function () {
     ContractShapes::assert($this->mobile('POST', '/rectifications', [])->assertStatus(422)->json(), 'ApiError');
     $this->app['auth']->forgetGuards();
     ContractShapes::assert($this->withoutToken()->getJson('/api/v1/profile')->assertUnauthorized()->json(), 'ApiError');
+});
+
+it('cumple el contrato de firma electrónica: NIP, documentos y firma de rectificaciones', function () {
+    ContractShapes::assert($this->mobile('POST', '/profile/signature-pin', ['pin' => '4826'])->assertOk()->json('data'), 'SignaturePinStatus');
+
+    $doc = PolicyDocument::query()->create([
+        'code' => 'CONVENIO_REGISTRO', 'title' => 'Convenio de registro electrónico', 'version' => '1.0', 'body_markdown' => '# Convenio',
+        'sha256' => hash('sha256', '# Convenio'), 'requires_acknowledgement' => true, 'published_at' => now()->subDay(),
+    ]);
+    $pending = $this->mobile('GET', '/documents/pending')->assertOk()->json('data');
+    ContractShapes::check($pending, ['list', ContractShapes::shapes()['PendingDocument']], 'PendingDocument[]');
+    ContractShapes::assert($this->mobile('POST', "/documents/{$doc->id}/sign", ['method' => 'pin', 'pin' => '4826'])->assertOk()->json('data'), 'DocumentSignature');
+    $signed = $this->mobile('GET', '/documents')->assertOk()->assertJsonCount(1, 'data')->json('data');
+    ContractShapes::check($signed, ['list', ContractShapes::shapes()['SignedDocument']], 'SignedDocument[]');
+    expect($this->mobile('GET', '/profile')->json('data.signature_pin_set'))->toBeTrue();
+
+    // URL firmada temporal del PDF: abre sin token y caduca a los 10 minutos.
+    $this->app['auth']->forgetGuards();
+    $this->withoutToken()->get($pending[0]['pdf_url'])->assertOk()->assertHeader('content-type', 'application/pdf');
+    $this->withoutToken()->get(route('api.v1.files.document', $doc->id))->assertForbidden();
+
+    $this->app['auth']->forgetGuards();
+    $rect = $this->withToken($this->token)->post('/api/v1/rectifications', [
+        'date' => '2026-11-16', 'kind' => 'other', 'reason' => 'Aclaración de jornada',
+        'evidence' => [UploadedFile::fake()->create('constancia.pdf', 10, 'application/pdf')],
+    ], ['Accept' => 'application/json'])->assertCreated()->json('data');
+    ContractShapes::assert($rect, 'Rectification');
+    ContractShapes::assert($this->mobile('GET', "/rectifications/{$rect['id']}")->assertOk()->json('data'), 'Rectification');
+    $this->app['auth']->forgetGuards();
+    $this->withoutToken()->get($rect['evidences'][0]['url'])->assertOk();
+    $this->travel(11)->minutes();
+    $this->withoutToken()->get($rect['evidences'][0]['url'])->assertForbidden();
+    // Aún no autorizada: firmar o declinar responde ApiError (etapa incorrecta).
+    ContractShapes::assert($this->mobile('POST', "/rectifications/{$rect['id']}/sign", ['method' => 'pin', 'pin' => '4826'])->assertStatus(422)->json(), 'ApiError');
+    ContractShapes::assert($this->mobile('POST', "/rectifications/{$rect['id']}/decline", ['reason' => 'No corresponde'])->assertStatus(422)->json(), 'ApiError');
 });

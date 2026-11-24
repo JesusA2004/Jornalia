@@ -4,6 +4,7 @@ use App\Domain\Attendance\AttendanceException;
 use App\Domain\Attendance\IntegrityAnchorService;
 use App\Domain\Attendance\IntegrityVerifier;
 use App\Domain\Attendance\RectificationService;
+use App\Domain\Signatures\SignaturePinService;
 use App\Enums\ApprovalStatus;
 use App\Enums\PunchType;
 use App\Enums\ShiftKind;
@@ -13,7 +14,9 @@ use App\Models\Punch;
 use App\Models\WorkdaySummary;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\QueryException;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\BuildsWorkforce;
 
 uses(BuildsWorkforce::class);
@@ -103,14 +106,20 @@ it('rectifica un marcaje omitido conservando el original y recalculando', functi
     // Omitió la salida. Al día siguiente solicita rectificación.
     $this->travelTo('2026-11-18 16:00:00');
 
+    Storage::fake('local');
     $service = app(RectificationService::class);
     $request = $service->submit($this->employee->user, $this->employee, [
         'date' => '2026-11-17', 'punch_uuid' => null, 'kind' => 'missing_punch',
         'proposed_type' => 'clock_out', 'proposed_time' => '2026-11-18T00:00:00Z', 'reason' => 'Olvidé marcar la salida.',
-    ]);
+    ], [UploadedFile::fake()->image('bitacora.jpg')]);
 
+    // Jefe autoriza → colaborador firma con NIP → RH valida y aplica.
     $manager = $this->userIn($this->org, 'Recursos Humanos', allBranches: true);
-    $service->decide($manager, $request, true, 'Validado con supervisor.');
+    $service->authorize($manager, $request, true, 'Confirmado con supervisor.');
+    app(SignaturePinService::class)->set($this->employee->user, '4826');
+    $service->sign($this->employee->user, $request->refresh(), 'pin', '4826', null);
+    $hr = $this->userIn($this->org, 'Recursos Humanos', allBranches: true);
+    $service->validate($hr, $request->refresh(), true, 'Validado.');
 
     expect($request->refresh()->status)->toBe(ApprovalStatus::Approved)
         ->and(Punch::query()->count())->toBe(1);
@@ -123,12 +132,13 @@ it('rectifica un marcaje omitido conservando el original y recalculando', functi
 it('no permite autoaprobar una rectificación', function () {
     $this->punchAt($this->employee, PunchType::ClockIn, '2026-11-17 15:00:00');
     $this->travelTo('2026-11-18 16:00:00');
+    Storage::fake('local');
     $service = app(RectificationService::class);
     $request = $service->submit($this->employee->user, $this->employee, [
         'date' => '2026-11-17', 'punch_uuid' => null, 'kind' => 'missing_punch',
         'proposed_type' => 'clock_out', 'proposed_time' => '2026-11-18T00:00:00Z', 'reason' => 'x',
-    ]);
-    $service->decide($this->employee->user, $request, true, null);
+    ], [UploadedFile::fake()->image('bitacora.jpg')]);
+    $service->authorize($this->employee->user, $request, true, null);
 })->throws(AuthorizationException::class);
 
 it('atribuye turnos nocturnos que cruzan medianoche al día de inicio', function () {

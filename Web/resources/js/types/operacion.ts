@@ -50,19 +50,30 @@ export type PeriodTotals = {
     late_days: number;
     absent_days: number;
     incomplete_days: number;
+    /** Jornadas con omisión de checada (entrada o salida). */
+    omission_days: number;
     worked_minutes: number;
+    /** Tiempo extra registrado (posterior al horario; nunca se descarta). */
     excess_minutes: number;
     late_minutes: number;
     night_minutes: number;
-    /** Tiempo posterior a salidas automáticas (conservado, no reconocido). */
-    after_cutoff_minutes: number;
-    /** Salidas automáticas por política registradas en el periodo. */
-    auto_clock_outs: number;
     punctuality_rate: number | null;
     attendance_rate: number | null;
     punches: number;
     flagged_punches: number;
+    /** Marcajes sin conexión (hora del dispositivo y del servidor). */
     offline_punches: number;
+    /** Rectificaciones autorizadas que esperan la firma del colaborador. */
+    to_sign: number;
+};
+
+/** Presentes contra programados de hoy por sucursal. */
+export type BranchToday = {
+    branch_id: number | null;
+    name: string;
+    scheduled: number;
+    present: number;
+    rate: number | null;
 };
 
 export type AlertSummary = {
@@ -89,9 +100,12 @@ export type DashboardMetrics = {
         pending_arrival: number;
         late: number;
         open_sessions: number;
+        /** Jornadas abiertas cuyo horario ya terminó (omisión en curso). */
+        missing_out: number;
         on_break: number;
         flagged_punches: number;
         punches: number;
+        branches: BranchToday[];
     };
     totals: PeriodTotals;
     previous: PeriodTotals;
@@ -106,18 +120,32 @@ export type DashboardMetrics = {
         punctuality_rate: number | null;
         attendance_rate: number | null;
     };
+    /** Horas extra de la semana, calculadas por colaborador y por semana. */
     overtime: {
-        records: number;
+        week_start: CivilDate;
+        week_end: CivilDate;
         recorded_minutes: number;
         authorized_minutes: number;
+        justified_minutes: number;
+        pending_minutes: number;
         double_minutes: number;
         triple_minutes: number;
         over_limit_minutes: number;
         pending: number;
+        employees: number;
+        minors: number;
+        legal_label: string;
+        legal_verified: boolean;
     };
     pending: {
-        incidences: number;
+        /** Rectificaciones por autorizar (jefe inmediato). */
         rectifications: number;
+        /** Firmas del colaborador pendientes. */
+        signatures: number;
+        to_validate: number;
+        /** Omisiones de checada sin rectificar. */
+        omissions: number;
+        incidences: number;
         vacations: number;
         overtime: number;
     };
@@ -248,11 +276,13 @@ export type Workday = {
     early_leave_minutes: number;
     excess_minutes: number;
     night_minutes: number;
-    /** Hora límite aplicada por salida automática (null si no hubo). */
-    auto_clock_out_at: Iso | null;
-    /** Minutos después del cierre: se conservan, no cuentan como jornada ni extra. */
-    after_cutoff_minutes: number;
     has_rectifications: boolean;
+    /** Omisión de checada del día (el sistema nunca completa marcajes). */
+    omission: 'missing_clock_out' | 'missing_clock_in' | null;
+    /** Origen del marcaje (PunchOrigin). */
+    origin: PunchOrigin | null;
+    /** Rectificación aplicada (firmada por el colaborador) del día. */
+    rectification: { id: number; url: string | null } | null;
     anomalies: Anomaly[];
     legal_version_code: string | null;
     computed_at: Iso | null;
@@ -280,10 +310,31 @@ export type PunchRow = {
     anomalies: Anomaly[];
     has_location: boolean;
     sequence: number;
-    /** Registrado por el sistema (salida automática por política). */
+    /** Histórico generado por el sistema: se conserva, no se reconoce. */
     is_system: boolean;
-    /** Hora reconocida por el dominio (en salida automática = hora límite). */
-    recognized_time: Iso;
+    /** Hora reconocida por el dominio (null en históricos de sistema). */
+    recognized_time: Iso | null;
+    origin: PunchOrigin;
+    /** Recepción en servidor (hora oficial). */
+    received_at: Iso | null;
+    /** Envío/sincronización según el reloj del dispositivo. */
+    synced_at: Iso | null;
+};
+
+/** Origen del marcaje (Revisión RH, pantalla 03). */
+export type PunchOrigin = {
+    code:
+        | 'app_inside'
+        | 'app_outside'
+        | 'app'
+        | 'offline'
+        | 'kiosk'
+        | 'web'
+        | 'import'
+        | 'rectified'
+        | 'omission'
+        | 'system_historic';
+    label: string;
 };
 
 export type PunchDetail = PunchRow & {
@@ -357,17 +408,6 @@ export type DayDetail = {
     punches: PunchDetail[];
     adjustments: AdjustmentRow[];
     recognized: RecognizedEvent[];
-    auto_clock_out: {
-        punch_uuid: string;
-        /** Hora límite reconocida. */
-        cutoff_at: Iso | null;
-        /** Cuándo lo registró el sistema. */
-        registered_at: Iso | null;
-        /** Salida real del colaborador posterior al límite (si existe). */
-        real_out_at: Iso | null;
-        real_out_uuid: string | null;
-        after_cutoff_minutes: number;
-    } | null;
 };
 
 export type AttendanceIndexProps = {
@@ -375,7 +415,8 @@ export type AttendanceIndexProps = {
     filters: ListFilters & {
         sort: string | null;
         direction: string | null;
-        auto: boolean;
+        /** «Sólo omisiones de checada» (combinable). */
+        omisiones: boolean;
     };
     options: ScopeOptions & {
         workday_statuses: SelectOption[];
@@ -392,8 +433,7 @@ export type AttendanceIndexProps = {
         excess_minutes?: number;
         absent_days?: number;
         late_days?: number;
-        auto_clock_outs?: number;
-        after_cutoff_minutes?: number;
+        omissions?: number;
         punches?: number;
         flagged?: number;
         offline?: number;
@@ -462,41 +502,94 @@ export type InboxCounts = { pending: number; resolved: number; all: number };
 
 /* ───────────────────────── Rectificaciones ───────────────────────── */
 
+/** Etapas del flujo de 5 pasos (pestañas). */
+export type RectificationStage =
+    | 'por_autorizar'
+    | 'por_firmar'
+    | 'por_validar'
+    | 'aplicada'
+    | 'rechazada';
+
+/** Pestañas de la bandeja (`?tab=`). */
+export type RectificationTab =
+    | 'por_autorizar'
+    | 'por_firmar'
+    | 'por_validar'
+    | 'aplicadas'
+    | 'rechazadas';
+
+export type RectificationSignatureStatus =
+    | 'firmada'
+    | 'no_requerida'
+    | 'pendiente'
+    | 'vencida'
+    | 'no_aceptada'
+    | 'en_espera';
+
 export type RectificationRow = {
     id: number;
     employee: EmployeeCard | null;
     date: CivilDate;
     kind: 'missing_punch' | 'wrong_type' | 'time_clarification' | 'other';
     kind_label: string;
+    stage: RectificationStage;
+    stage_label: string;
     status: ApprovalStatus;
     status_label: string;
     punch_uuid: string | null;
+    original_summary: string;
+    proposal_summary: string;
     proposed_type_label: string | null;
     proposed_time: Iso | null;
     reason_excerpt: string;
-    current_level: number;
-    current_level_label: string | null;
+    signature_status: RectificationSignatureStatus;
+    rejection_stage: string | null;
+    signature_due_at: Iso | null;
+    signed_at: Iso | null;
+    is_late: boolean;
     requested_by: string | null;
+    authorized_by: string | null;
     reviewed_by: string | null;
     reviewed_at: Iso | null;
     attachments_count: number;
     created_at: Iso;
-    can_decide: boolean;
+    can_authorize: boolean;
+    can_validate: boolean;
+    can_apply_late: boolean;
     can_cancel: boolean;
 };
 
+export type RectificationSettings = {
+    business_days: number;
+    confirmed_by_hr: boolean;
+    closed_through: CivilDate | null;
+};
+
 export type RectificationIndexProps = {
-    tab: InboxTab;
+    tab: RectificationTab;
     requests: LaravelPaginator<RectificationRow>;
-    counts: InboxCounts;
+    counts: Record<RectificationTab, number>;
     filters: ListFilters;
     options: ScopeOptions & {
         kinds: SelectOption[];
         punch_types: SelectOption[];
-        statuses: SelectOption[];
+        stages: SelectOption[];
     };
+    settings: RectificationSettings;
     can: { create: boolean };
     timezone: string;
+};
+
+export type RectificationSignature = {
+    method: 'pin' | 'biometric';
+    method_label: string;
+    signed_at: Iso | null;
+    device: string | null;
+    ip: string | null;
+    hash: string;
+    payload_sha256: string;
+    statement: string;
+    sealed: boolean;
 };
 
 export type RectificationShowProps = {
@@ -504,11 +597,23 @@ export type RectificationShowProps = {
         reason: string;
         review_comment: string | null;
         proposed_type: PunchType | null;
+        authorization_comment: string | null;
+        validation_comment: string | null;
+        rejection_reason: string | null;
+        rejected_by: string | null;
+        rejected_at: Iso | null;
+        validated_by: string | null;
+        validated_at: Iso | null;
+        authorized_at: Iso | null;
+        applied_at: Iso | null;
+        legacy_without_signature: boolean;
+        origin: 'employee' | 'manager' | 'incidence';
+        incidence_id: number | null;
     };
+    signature: RectificationSignature | null;
     target_punch: PunchDetail | null;
     attachments: AttachmentRow[];
     decisions: DecisionRow[];
-    levels: ApprovalLevel[];
     adjustments: AdjustmentRow[];
     day: DayDetail;
     timezone: string;
@@ -527,6 +632,12 @@ export type IncidenceTypeOption = SelectOption & {
     affects_payroll: boolean;
     employee_requestable: boolean;
     description: string | null;
+    evidence_kind: string | null;
+    evidence_label: string | null;
+    requires_folio: boolean;
+    approval_route: string | null;
+    approval_route_label: string | null;
+    omission_punch_type: 'clock_in' | 'clock_out' | null;
 };
 
 export type IncidenceRow = {
@@ -540,7 +651,7 @@ export type IncidenceRow = {
     ends_on: CivilDate;
     days: number;
     minutes: number | null;
-    source: 'employee' | 'manager' | 'system';
+    source: 'employee' | 'manager' | 'system' | 'people';
     source_label: string;
     status: ApprovalStatus;
     status_label: string;
@@ -552,6 +663,9 @@ export type IncidenceRow = {
     reviewed_at: Iso | null;
     attachments_count: number;
     created_at: Iso;
+    folio: string | null;
+    is_omission: boolean;
+    rectification_request_id: number | null;
     can_decide: boolean;
     can_cancel: boolean;
 };
@@ -565,6 +679,7 @@ export type IncidenceIndexProps = {
         types: IncidenceTypeOption[];
         statuses: SelectOption[];
     };
+    evidence_kinds: Record<string, string>;
     can: { create: boolean };
     timezone: string;
 };
@@ -576,6 +691,10 @@ export type IncidenceShowProps = {
         type:
             | Omit<IncidenceTypeOption, 'value' | 'label'>
             | Record<string, never>;
+        cancelled_by: string | null;
+        cancelled_at: Iso | null;
+        cancellation_reason: string | null;
+        external_source: string | null;
     };
     attachments: AttachmentRow[];
     decisions: DecisionRow[];
@@ -685,6 +804,9 @@ export type OvertimeRecordCell = {
     date: CivilDate;
     recorded_excess_minutes: number;
     authorized_minutes: number;
+    /** Revisado y no autorizado como extra (el tiempo se conserva). */
+    justified_minutes: number;
+    pending_minutes: number;
     double_minutes: number;
     triple_minutes: number;
     over_limit_minutes: number;
@@ -697,32 +819,48 @@ export type OvertimeRecordCell = {
     /** Nivel de aprobación pendiente (flujos multinivel). */
     current_level_label: string | null;
     can_decide: boolean;
+    /** false para menores de 18: sólo puede justificarse. */
+    can_authorize: boolean;
+};
+
+/** Totales semanales por colaborador (WeeklyOvertime::totals). */
+export type OvertimeTotals = {
+    worked_minutes: number;
+    ordinary_minutes: number;
+    recorded_minutes: number;
+    double_minutes: number;
+    triple_minutes: number;
+    over_limit_minutes: number;
+    authorized_minutes: number;
+    justified_minutes: number;
+    pending_minutes: number;
+    overtime_days: number;
+};
+
+export type OvertimeDayCell = {
+    date: CivilDate;
+    worked_minutes: number;
+    ordinary_minutes: number;
+    recorded_minutes: number;
+    double_minutes: number;
+    triple_minutes: number;
+    over_limit_minutes: number;
+    authorized_minutes: number;
+    justified_minutes: number;
+    pending_minutes: number;
+    minor: boolean;
+    status: ApprovalStatus | null;
+    record_id: number | null;
+    status_label: string | null;
+    record: OvertimeRecordCell | null;
 };
 
 export type OvertimeWeekRow = {
     employee: EmployeeCard;
-    days: Array<{
-        date: CivilDate;
-        worked_minutes: number;
-        ordinary_minutes: number;
-        /** Después del cierre automático: no reconocido, no es extra. */
-        after_cutoff_minutes: number;
-        auto_clock_out_at: Iso | null;
-        status_label: string | null;
-        record: OvertimeRecordCell | null;
-    }>;
-    totals: {
-        worked_minutes: number;
-        ordinary_minutes: number;
-        recorded_excess_minutes: number;
-        authorized_minutes: number;
-        double_minutes: number;
-        triple_minutes: number;
-        over_limit_minutes: number;
-        pending: number;
-        excess_days: number;
-        after_cutoff_minutes: number;
-    };
+    /** Menor de 18 años (null sin fecha de nacimiento). */
+    minor: boolean | null;
+    days: OvertimeDayCell[];
+    totals: OvertimeTotals & { pending: number };
 };
 
 export type OvertimeIndexProps = {
@@ -735,23 +873,34 @@ export type OvertimeIndexProps = {
     };
     rows: LaravelPaginator<OvertimeWeekRow>;
     totals: {
-        records: number;
-        recorded_excess_minutes: number;
+        employees: number;
+        overtime_days: number;
+        recorded_minutes: number;
         authorized_minutes: number;
+        justified_minutes: number;
+        pending_minutes: number;
         double_minutes: number;
         triple_minutes: number;
         over_limit_minutes: number;
         pending: number;
-        after_cutoff_minutes: number;
+        minors: number;
     };
+    /** Topes de la tabla normativa vigente (Configuración › Normativa). */
     limits: {
         version: string;
-        verification_status: string;
+        name: string | null;
+        verified: boolean;
+        verification_label: string;
+        verified_at: Iso | null;
+        weekly_ordinary_max_minutes: number;
         daily_max_minutes: number;
         weekly_max_minutes: number;
         max_days_per_week: number;
+        excess_weekly_max_minutes: number;
+        daily_total_max_minutes: number | null;
         double_multiplier: string;
         excess_multiplier: string;
+        minors_allowed: boolean;
     };
     filters: Omit<ListFilters, 'from' | 'to'> & {
         week: CivilDate;
@@ -780,7 +929,11 @@ export type CalendarDayCell = {
     } | null;
     rest_day: boolean;
     no_schedule: boolean;
-    holiday: { name: string; legal_basis: string | null } | null;
+    holiday: {
+        name: string;
+        legal_basis: string | null;
+        is_mandatory_rest?: boolean;
+    } | null;
     vacation: {
         id: number;
         status: ApprovalStatus;
@@ -814,6 +967,7 @@ export type CalendarEvent = {
 export type CalendarHoliday = {
     id: number;
     date: CivilDate;
+    code?: string;
     name: string;
     kind: string;
     kind_label: string;
@@ -836,6 +990,8 @@ export type CalendarProps = {
     roster: LaravelPaginator<{
         employee: EmployeeCard | null;
         days: CalendarDayCell[];
+        /** Descanso semanal según horario vigente (p. ej. ['domingo']). */
+        rest_days?: string[];
     }> | null;
     events: CalendarEvent[];
     holidays: CalendarHoliday[];
@@ -858,7 +1014,8 @@ export type ReportColumnType =
     | 'number'
     | 'percent'
     | 'status'
-    | 'hash';
+    | 'hash'
+    | 'decimal';
 
 export type ReportColumn = {
     key: string;
@@ -876,6 +1033,10 @@ export type ReportDefinition = {
     landscape: boolean;
     columns: ReportColumn[];
     status_options?: SelectOption[];
+    requires_employee?: boolean;
+    /** Filtros aplicables: branch, department, position, region, employee, status, period_unit. */
+    filters?: string[];
+    max_days?: number | null;
 };
 
 export type ReportCatalogItem = {
@@ -886,11 +1047,13 @@ export type ReportCatalogItem = {
     category_label: string;
     columns: number;
     featured: boolean;
+    requires_employee?: boolean;
 };
 
 export type ReportExportRow = {
     id: number;
     uuid: string;
+    folio?: string | null;
     report: string;
     title: string;
     format: 'xlsx' | 'pdf' | 'csv';
@@ -915,9 +1078,22 @@ export type ReportShowProps = {
     report: ReportDefinition;
     rows: LaravelPaginator<Record<string, string | number | null>>;
     /** Totales de columnas `sum` (vacío si el volumen es muy grande). */
-    totals: Record<string, number>;
-    filters: Omit<ListFilters, 'search'>;
-    options: ScopeOptions & { statuses: SelectOption[] };
+    totals: Record<string, number | null>;
+    /** La vista previa se detuvo en el límite de filas: totales sólo en el archivo. */
+    capped?: boolean;
+    /** El reporte exige elegir un colaborador. */
+    needs_employee?: boolean;
+    filters: Omit<ListFilters, 'search'> & {
+        position_id?: string | null;
+        region?: string | null;
+        period_unit?: string | null;
+    };
+    options: ScopeOptions & {
+        statuses: SelectOption[];
+        positions?: SelectOption[];
+        regions?: SelectOption[];
+        period_units?: SelectOption[];
+    };
     exports: ReportExportRow[];
     can: { export: boolean };
     timezone: string;
@@ -952,9 +1128,13 @@ export type LegalSummary = {
     valid_to: CivilDate | null;
     verification_status: string;
     verified: boolean;
+    verified_by: string | null;
+    verified_at: Iso | null;
     notes: string | null;
     sources: Array<{ title: string; url?: string; published_on?: string }>;
     parameters: {
+        overtime_excess_weekly_max: number;
+        daily_total_max: number | null;
         weekly_ordinary_max_minutes: number;
         daily_max_day: number;
         daily_max_night: number;
@@ -981,6 +1161,14 @@ export type ComplianceIndexProps = {
         by_rule: Array<{ rule: string; label: string; total: number }>;
     };
     legal: LegalSummary | null;
+    /** Resumen de integridad (sólo con `integrity.view`). */
+    integrity: {
+        valid: boolean | null;
+        last_verification_at: Iso | null;
+        last_anchor_at: Iso | null;
+        punches: number;
+        adjustments: number;
+    } | null;
     filters: {
         search: string;
         branch_id: string | null;
@@ -1042,6 +1230,18 @@ export type IntegrityIndexProps = {
     }>;
     latest: IntegrityVerificationLog | null;
     history: IntegrityVerificationLog[];
+    /** Verificación y anclaje automáticos diarios. */
+    automation: {
+        schedule: string;
+        last_anchor: {
+            at: Iso;
+            ok: boolean;
+            automatic: boolean;
+            error: string | null;
+        } | null;
+        anchor_key_configured: boolean;
+        anchor_storage: { disk: string; driver: string; external: boolean };
+    };
     can: { verify: boolean };
     timezone: string;
 };
@@ -1050,6 +1250,7 @@ export type IntegrityVerificationLog = {
     id: number;
     at: Iso;
     by: string | null;
+    automatic: boolean;
     valid: boolean;
     chains: ChainVerification[];
 };
@@ -1065,6 +1266,10 @@ export type AuditLogRow = {
     subject_type: string | null;
     subject_id: number | null;
     context: Record<string, unknown> | null;
+    old_values: Record<string, unknown> | null;
+    new_values: Record<string, unknown> | null;
+    device_id: number | null;
+    device: string | null;
     user: { id: number; name: string; email: string } | null;
     ip_address: string | null;
     user_agent: string | null;
@@ -1085,6 +1290,13 @@ export type AuditIndexProps = {
 };
 
 /* ─────────────────────────── Ubicación ─────────────────────────── */
+
+/** Reglas de uso de la ubicación (Configuración › Ubicación). */
+export type LocationTrackingSettings = {
+    retention_days: number;
+    contingency_minutes: number;
+    retention_confirmed: boolean;
+};
 
 export type LiveMarker = {
     employee: EmployeeCard | null;
@@ -1161,6 +1373,7 @@ export type LocationIndexProps = {
         statuses: SelectOption[];
     };
     stale_minutes: number;
+    tracking: LocationTrackingSettings;
     server_time: Iso;
     timezone: string;
 };

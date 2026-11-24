@@ -86,14 +86,22 @@ final class NotificationController extends Controller
             'kind' => $kind,
             'tone' => match (true) {
                 $kind !== null && str_ends_with($kind, 'approved') => 'success',
-                $kind !== null && str_ends_with($kind, 'rejected') => 'danger',
+                $kind !== null && (str_ends_with($kind, 'rejected') || str_ends_with($kind, '_failed')) => 'danger',
                 default => 'info',
             },
             'url' => $subject !== null && $subjectId !== null && isset(self::SUBJECT_URLS[$subject])
                 ? sprintf(self::SUBJECT_URLS[$subject], $subjectId)
-                : null,
+                : $this->internalUrl($data['url'] ?? null),
             'created_at' => $notification->created_at?->toIso8601String(),
             'read_at' => $notification->read_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * Sólo rutas internas de la web (evita redirecciones abiertas).
+     */
+    private function internalUrl(mixed $url): ?string
+    {
+        return is_string($url) && preg_match('#^/[a-z0-9\-/]*$#', $url) === 1 ? $url : null;
     }
 }

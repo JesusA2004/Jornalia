@@ -30,8 +30,8 @@ dataset('protected pages', [
     'reportes' => ['/reportes'],
     'reporte' => ['/reportes/asistencia_diaria'],
     'cumplimiento' => ['/cumplimiento'],
-    'integridad' => ['/integridad'],
-    'auditoria' => ['/auditoria'],
+    'integridad' => ['/cumplimiento/integridad'],
+    'bitacora' => ['/cumplimiento/bitacora'],
     'ubicacion' => ['/ubicacion'],
 ]);
 
@@ -59,7 +59,9 @@ it('la autoridad laboral consulta y exporta pero no resuelve ni aprueba', functi
 
     $this->actingAs($authority)->get('/dashboard')->assertRedirect('/asistencias');
     $this->actingAs($authority)->get('/reportes/inspeccion_laboral')->assertOk();
-    $this->actingAs($authority)->get('/integridad')->assertOk();
+    $this->actingAs($authority)->get('/cumplimiento/integridad')->assertOk();
+    $this->actingAs($authority)->get('/cumplimiento/bitacora')->assertOk();
+    $this->actingAs($authority)->post('/cumplimiento/integridad/verificar')->assertForbidden();
     $this->actingAs($authority)->get('/cumplimiento')->assertOk();
     $this->actingAs($authority)->post('/reportes/exportar', ['report' => 'inspeccion_laboral', 'format' => 'csv', 'from' => '2026-11-01', 'to' => '2026-11-18'])->assertRedirect();
     $this->actingAs($authority)->post('/cumplimiento/alertas/1', ['status' => 'resolved', 'note' => 'nota larga'])->assertForbidden();

@@ -32,6 +32,7 @@ it('registra una rectificación con evidencia sin tocar el marcaje original', fu
     ], ['Accept' => 'application/json'])->assertCreated();
 
     $response->assertJsonPath('data.status', 'pending')
+        ->assertJsonPath('data.stage', 'por_autorizar')
         ->assertJsonPath('data.punch_uuid', $uuid)
         ->assertJsonPath('data.proposed_time', '2026-11-17T15:00:00Z');
 
@@ -44,22 +45,30 @@ it('registra una rectificación con evidencia sin tocar el marcaje original', fu
 });
 
 it('valida rectificaciones según el dominio', function () {
-    $this->mobile('POST', '/rectifications', ['date' => '2026-11-17', 'kind' => 'missing_punch', 'reason' => 'Sin datos de hora'])
+    $this->mobile('POST', '/rectifications', ['date' => '2026-11-17', 'kind' => 'other', 'reason' => 'Sin evidencia adjunta'])
+        ->assertStatus(422)->assertJsonPath('code', 'validation_failed')->assertJsonValidationErrors(['evidence']);
+
+    $post = function (array $data) {
+        $this->app['auth']->forgetGuards();
+
+        return $this->withToken($this->token)->post('/api/v1/rectifications', $data + ['evidence' => [UploadedFile::fake()->image('foto.jpg')]], ['Accept' => 'application/json']);
+    };
+    $post(['date' => '2026-11-17', 'kind' => 'missing_punch', 'reason' => 'Sin datos de hora'])
         ->assertStatus(422)->assertJsonPath('code', 'validation_failed')->assertJsonValidationErrors(['proposed_time']);
 
-    $this->mobile('POST', '/rectifications', ['date' => '2026-12-17', 'kind' => 'other', 'reason' => 'Fecha futura'])
+    $post(['date' => '2026-12-17', 'kind' => 'other', 'reason' => 'Fecha futura'])
         ->assertStatus(422)->assertJsonValidationErrors(['date']);
 });
 
 it('sólo ofrece tipos de incidencia solicitables por el colaborador', function () {
     $codes = collect($this->mobile('GET', '/incidence-types')->assertOk()->json('data'))->pluck('code');
 
-    expect($codes)->toContain('INCAPACIDAD', 'PERMISO_CON_GOCE')->not->toContain('RETARDO', 'FALTA_INJUSTIFICADA');
+    expect($codes)->toContain('INCAPACIDAD_EG', 'PERMISO_CON_GOCE', 'OMISION_SALIDA')->not->toContain('RETARDO', 'FALTA_INJUSTIFICADA', 'INCAPACIDAD');
 });
 
 it('registra incidencias exigiendo evidencia cuando el tipo la requiere', function () {
-    $type = IncidenceType::query()->where('code', 'INCAPACIDAD')->firstOrFail();
-    $body = ['incidence_type_id' => $type->id, 'starts_on' => '2026-11-18', 'ends_on' => '2026-11-19', 'reason' => 'Incapacidad IMSS'];
+    $type = IncidenceType::query()->where('code', 'INCAPACIDAD_EG')->firstOrFail();
+    $body = ['incidence_type_id' => $type->id, 'starts_on' => '2026-11-18', 'ends_on' => '2026-11-19', 'reason' => 'Incapacidad IMSS', 'folio' => 'LT123456'];
 
     $this->mobile('POST', '/incidences', $body)->assertStatus(422)->assertJsonValidationErrors(['evidence']);
 
@@ -70,13 +79,15 @@ it('registra incidencias exigiendo evidencia cuando el tipo la requiere', functi
 
     $created->assertJsonPath('data.has_evidence', true)
         ->assertJsonPath('data.status', 'pending')
-        ->assertJsonPath('data.type.code', 'INCAPACIDAD');
+        ->assertJsonPath('data.type.code', 'INCAPACIDAD_EG')
+        ->assertJsonPath('data.folio', 'LT123456');
 
     $this->mobile('GET', '/incidences')->assertOk()->assertJsonPath('data.0.id', $created->json('data.id'))->assertJsonPath('meta.total', 1);
 });
 
 it('rechaza tipos de incidencia no solicitables o de otra organización', function () {
-    $retardo = IncidenceType::query()->where('code', 'RETARDO')->firstOrFail();
+    // Tipo fuera del catálogo cerrado (desactivado): no se acepta.
+    $retardo = IncidenceType::query()->create(['code' => 'RETARDO', 'name' => 'Retardo', 'category' => 'time', 'operational_effect' => 'informative', 'active' => false, 'employee_requestable' => false]);
     $this->mobile('POST', '/incidences', ['incidence_type_id' => $retardo->id, 'starts_on' => '2026-11-18', 'ends_on' => '2026-11-18', 'reason' => 'Prueba'])
         ->assertStatus(422)->assertJsonValidationErrors(['incidence_type_id']);
 

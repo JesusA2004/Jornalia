@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Web\Operacion\Support;
 
 use App\Domain\Approvals\ApprovalWorkflow;
+use App\Domain\Legal\WeeklyOvertimeCalculator;
 use App\Enums\ApprovalStatus;
 use App\Models\OvertimeRecord;
 use App\Models\User;
@@ -23,6 +24,12 @@ final class OvertimeAuthorizer
     public function decide(User $user, OvertimeRecord $record, bool $approve, ?int $minutes, string $justification): OvertimeRecord
     {
         $minutes = $approve ? (int) $minutes : 0;
+        // CPEUM art. 123-A fr. XI y LFT art. 178: prohibido el tiempo extra de menores
+        // de 18 años. La salida real queda registrada; sólo se bloquea autorizarlo.
+        $employee = $record->employee()->withoutGlobalScopes()->first();
+        if ($approve && $employee !== null && WeeklyOvertimeCalculator::isMinorOn($employee, $record->date) === true) {
+            throw ValidationException::withMessages(['authorized_minutes' => 'Prohibido autorizar tiempo extra a menores de 18 años. Sólo puede justificarse.']);
+        }
         if ($minutes > (int) $record->recorded_excess_minutes) {
             throw ValidationException::withMessages(['authorized_minutes' => 'No puedes autorizar más minutos que el excedente registrado ('.$record->recorded_excess_minutes.' min).']);
         }

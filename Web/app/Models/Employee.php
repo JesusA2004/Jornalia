@@ -144,4 +144,21 @@ class Employee extends Model
     {
         return $this->employmentOn($date)?->assignmentOn($date);
     }
+
+    /**
+     * Convenio de registro electrónico firmado: versión vigente publicada aceptada y
+     * firmada en la app, o convenio en papel adjunto al expediente.
+     */
+    public function hasSignedRegistrationAgreement(): bool
+    {
+        return app(\App\Domain\Signatures\RegistrationDocuments::class)->hasSigned($this, \App\Domain\Signatures\RegistrationDocuments::AGREEMENT);
+    }
+
+    /**
+     * Aviso de privacidad (versión vigente publicada) aceptado en la app.
+     */
+    public function hasAcceptedPrivacyNotice(): bool
+    {
+        return app(\App\Domain\Signatures\RegistrationDocuments::class)->hasSigned($this, \App\Domain\Signatures\RegistrationDocuments::PRIVACY);
+    }
 }

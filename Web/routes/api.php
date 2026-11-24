@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\AnnouncementController;
 use App\Http\Controllers\Api\V1\AttendanceController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CalendarController;
@@ -7,13 +8,16 @@ use App\Http\Controllers\Api\V1\DeviceController;
 use App\Http\Controllers\Api\V1\FaceVerificationController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\IncidenceController;
+use App\Http\Controllers\Api\V1\KioskController;
 use App\Http\Controllers\Api\V1\LocationController;
 use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\PunchController;
 use App\Http\Controllers\Api\V1\PushTokenController;
 use App\Http\Controllers\Api\V1\RectificationController;
+use App\Http\Controllers\Api\V1\SignatureController;
 use App\Http\Controllers\Api\V1\VacationController;
+use App\Http\Middleware\AuthenticateKiosk;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -26,12 +30,35 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
     Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:auth')->name('auth.login');
 
+    // Archivos con URL firmada temporal (A2): el navegador del teléfono no envía el token Bearer.
+    Route::middleware(['signed', 'throttle:60,1'])->prefix('files')->name('files.')->group(function () {
+        Route::get('documents/{document}', [SignatureController::class, 'signedPdf'])->whereNumber('document')->name('document');
+        Route::get('evidence/{attachment}', [RectificationController::class, 'evidence'])->whereNumber('attachment')->name('evidence');
+    });
+
+    // Kiosco de sucursal (B1): token propio del kiosco, no de usuario.
+    Route::post('kiosk/activate', [KioskController::class, 'activate'])->middleware('throttle:10,1')->name('kiosk.activate');
+    Route::middleware([AuthenticateKiosk::class, 'throttle:120,1'])->prefix('kiosk')->name('kiosk.')->group(function () {
+        Route::get('status', [KioskController::class, 'status'])->name('status');
+        Route::post('punches', [KioskController::class, 'punch'])->name('punches.store');
+        Route::post('sync', [KioskController::class, 'sync'])->name('sync');
+        Route::post('face/challenge', [KioskController::class, 'faceChallenge'])->name('face.challenge');
+        Route::post('face/verify', [KioskController::class, 'faceVerify'])->name('face.verify');
+    });
+
     Route::middleware(['auth:sanctum', 'organization', 'throttle:api'])->group(function () {
         Route::post('auth/refresh', [AuthController::class, 'refresh'])->name('auth.refresh');
         Route::post('auth/logout', [AuthController::class, 'logout'])->name('auth.logout');
 
         Route::get('profile', [ProfileController::class, 'show'])->name('profile');
         Route::post('acknowledgements/{document}', [ProfileController::class, 'acknowledge'])->whereNumber('document')->name('acknowledgements.store');
+
+        // Firma electrónica (A2): NIP, convenio de registro y aviso de privacidad.
+        Route::post('profile/signature-pin', [SignatureController::class, 'pin'])->middleware('throttle:10,1')->name('profile.signature-pin');
+        Route::get('documents', [SignatureController::class, 'index'])->name('documents.index');
+        Route::get('documents/pending', [SignatureController::class, 'pending'])->name('documents.pending');
+        Route::get('documents/{document}/pdf', [SignatureController::class, 'pdf'])->whereNumber('document')->name('documents.pdf');
+        Route::post('documents/{document}/sign', [SignatureController::class, 'sign'])->whereNumber('document')->middleware('throttle:20,1')->name('documents.sign');
 
         Route::get('attendance/today', [AttendanceController::class, 'today'])->name('attendance.today');
         Route::get('attendance/policy', [AttendanceController::class, 'policy'])->name('attendance.policy');
@@ -46,6 +73,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::get('rectifications', [RectificationController::class, 'index'])->name('rectifications.index');
         Route::post('rectifications', [RectificationController::class, 'store'])->name('rectifications.store');
+        Route::get('rectifications/{rectification}', [RectificationController::class, 'show'])->whereNumber('rectification')->name('rectifications.show');
+        Route::post('rectifications/{rectification}/sign', [RectificationController::class, 'sign'])->whereNumber('rectification')->middleware('throttle:20,1')->name('rectifications.sign');
+        Route::post('rectifications/{rectification}/decline', [RectificationController::class, 'decline'])->whereNumber('rectification')->name('rectifications.decline');
 
         Route::get('incidence-types', [IncidenceController::class, 'types'])->name('incidence-types.index');
         Route::get('incidences', [IncidenceController::class, 'index'])->name('incidences.index');
@@ -61,6 +91,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
         Route::post('notifications/read-all', [NotificationController::class, 'readAll'])->name('notifications.read-all');
         Route::post('notifications/{notification}/read', [NotificationController::class, 'read'])->whereUuid('notification')->name('notifications.read');
+        // Confirmación de lectura de comunicados importantes (B2).
+        Route::post('announcements/{announcement}/read', [AnnouncementController::class, 'read'])->where('announcement', '[0-9a-fA-F-]{1,36}')->name('announcements.read');
 
         Route::get('devices', [DeviceController::class, 'index'])->name('devices.index');
         Route::post('devices/push-token', PushTokenController::class)->name('devices.push-token');
