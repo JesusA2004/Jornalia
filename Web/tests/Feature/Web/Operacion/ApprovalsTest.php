@@ -126,7 +126,10 @@ it('registra y aprueba una incidencia con evidencia obligatoria', function () {
     $reviewer = $this->userIn($this->org, 'Recursos Humanos', allBranches: true);
     $this->actingAs($reviewer)->post("/incidencias/{$incidence->id}/decision", ['decision' => 'approve'])->assertSessionHasNoErrors();
     expect($incidence->refresh()->current_level)->toBe(2);
-    $this->actingAs($reviewer)->post("/incidencias/{$incidence->id}/decision", ['decision' => 'approve'])->assertSessionHasNoErrors();
+    // Quien ya resolvió un nivel no resuelve el siguiente (separación de funciones).
+    $this->actingAs($reviewer)->post("/incidencias/{$incidence->id}/decision", ['decision' => 'approve'])->assertForbidden();
+    $secondReviewer = $this->userIn($this->org, 'Recursos Humanos', allBranches: true);
+    $this->actingAs($secondReviewer)->post("/incidencias/{$incidence->id}/decision", ['decision' => 'approve'])->assertSessionHasNoErrors();
     expect($incidence->refresh()->status)->toBe(ApprovalStatus::Approved);
 });
 
@@ -144,7 +147,10 @@ it('solicita, aprueba y cancela vacaciones respetando el saldo legal', function 
     $this->actingAs($this->hr)->get('/vacaciones?tab=calendario&month=2026-12')->assertOk()
         ->assertInertia(fn ($page) => $page->where('calendar.total_requests', 1));
 
-    $this->actingAs($this->hr)->post("/vacaciones/{$vacation->id}/decision", ['decision' => 'approve'])->assertSessionHasNoErrors();
+    // Quien capturó la solicitud a nombre del colaborador no la aprueba.
+    $this->actingAs($this->hr)->post("/vacaciones/{$vacation->id}/decision", ['decision' => 'approve'])->assertForbidden();
+    $approver = $this->userIn($this->org, 'Recursos Humanos', allBranches: true);
+    $this->actingAs($approver)->post("/vacaciones/{$vacation->id}/decision", ['decision' => 'approve'])->assertSessionHasNoErrors();
     expect($vacation->refresh()->status)->toBe(ApprovalStatus::Approved);
 
     $this->actingAs($this->hr)->post("/vacaciones/{$vacation->id}/cancelar")->assertSessionHasNoErrors();
