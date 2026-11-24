@@ -783,6 +783,7 @@ paths:
             application/json:
               schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/KioskPunchReceipt' } } }
         '401': { description: '`kiosk_unauthenticated`', content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
+        '409': { description: '`documents_pending` (convenio o aviso de privacidad vigentes sin firmar), `invalid_sequence`', content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
         '422': { description: '`kiosk_invalid_credentials`, `kiosk_wrong_branch`, `kiosk_employee_inactive`, `pin_not_set`, `face_verification_required`, validación', content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
         '423': { description: '`pin_locked`', content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -884,7 +885,7 @@ components:
                  outside_geofence, policy_violation, no_employment, rate_limited, immutable_record, server_error,
                  device_in_use, face_unavailable, face_not_enrolled, face_locked, face_challenge_invalid, face_challenge_expired,
                  kiosk_unauthenticated, kiosk_activation_invalid, kiosk_invalid_credentials, kiosk_wrong_branch,
-                 kiosk_employee_inactive, pin_locked, pin_not_set, face_verification_required]
+                 kiosk_employee_inactive, pin_locked, pin_not_set, face_verification_required, documents_pending]
         legacy_code: { type: string, description: 'Código anterior equivalente (compatibilidad), sólo si `code` sustituyó a uno previo' }
         errors: { type: object, additionalProperties: { type: array, items: { type: string } } }
 

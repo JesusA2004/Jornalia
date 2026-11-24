@@ -177,6 +177,7 @@ Migraciones nuevas (en orden) y su efecto sobre los datos existentes:
 | `2026_11_24_130400_announcements_read_confirmation` | Confirmación de lectura de comunicados. | Comunicados previos sin confirmación requerida. |
 | `2026_11_24_130500_institutional_brand_and_privacy_contact` | Color institucional y limpieza de correos de ejemplo. | Color fuera de la paleta → #225C54; correos `@empresa.mx`, `@example.*`, `@ejemplo.*` → vacío. Sin reversa. |
 | `2026_11_24_140000_add_folio_to_report_exports` | Folio `REP-AAAA-NNNNNN`. | Las exportaciones previas reciben folio a partir de su id. |
+| `2026_11_25_100000_add_rh_adjustments_to_holidays` | Ajustes de RH a festivos: `replaces_holiday_id`, `change_reason`, `notes`, `updated_by` e índice único. | Sólo columnas nulas; los festivos existentes no cambian. |
 
 Si la versión final incluye migraciones posteriores de la fase 2 (bloques `2026_11_24_15xxxx` y `2026_11_24_16xxxx`), revíselas en [Base de datos](../arquitectura/BASE_DE_DATOS.md) y en `php artisan migrate:status` antes de ejecutar.
 
@@ -277,5 +278,7 @@ Si algo falla y los datos están íntegros, corrija hacia adelante (fix-forward)
 No use `php artisan migrate:rollback` en producción: `120000` y `130500` no tienen reversa, `110100` eliminaría el estado del flujo de firmas, `127000` falla si ya existen dos cambios para el mismo colaborador y fecha, y `100000` sólo recrea columnas vacías. Además, el código de `f26d36f` volvería a crear salidas automáticas.
 
 ## 10. Tareas de RH después de la actualización
+
+> **Importante: documentos exigidos para marcar.** En cuanto RH publique el convenio de registro (`CONVENIO_REGISTRO`) o el aviso de privacidad (`AVISO_PRIVACIDAD`), el servidor rechazará los marcajes **en línea** de quien no los haya firmado o aceptado (código `documents_pending`). Los marcajes sin conexión se registran y generan una alerta. En el kiosco sólo bloquea el convenio, que puede adjuntarse en papel. Publique esos documentos únicamente cuando el personal ya pueda firmarlos en la app (versión con la pantalla «Documentos»), o adjunte el convenio en papel a quien use kiosco. Mientras no estén publicados no se exige nada y se muestra una alerta de configuración en Cumplimiento.
 
 Ver [Cierre técnico › Aprobaciones](../cierre/CIERRE_TECNICO.md#4-aprobaciones-necesarias-de-rh-y-jurídico): validar la normativa 2027, capturar el correo de privacidad, publicar el aviso y el convenio, confirmar el plazo de firma y el cierre de nómina, elegir los puestos con seguimiento, confirmar la conservación de recorridos, capturar las claves NOI y definir la pausa de comida.

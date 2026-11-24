@@ -258,7 +258,7 @@ final class CalendarController extends Controller
     {
         $holidays = Holiday::query()
             ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
-            ->where(fn ($q) => $q->whereNull('organization_id')->orWhere('organization_id', app(CurrentOrganization::class)->id()))
+            ->effectiveFor(app(CurrentOrganization::class)->id())
             ->orderBy('date')->get()
             ->map(fn (Holiday $h) => [
                 'id' => $h->id,
@@ -274,6 +274,8 @@ final class CalendarController extends Controller
                 },
                 'is_mandatory_rest' => (bool) $h->is_mandatory_rest,
                 'legal_basis' => $h->legal_basis,
+                // Anotación de RH (p. ej. motivo del día movido por la ley).
+                'notes' => $h->notes,
             ]);
 
         return array_values($holidays->all());

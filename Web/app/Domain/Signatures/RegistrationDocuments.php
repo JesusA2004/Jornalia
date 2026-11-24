@@ -13,6 +13,7 @@ use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -43,14 +44,18 @@ final class RegistrationDocuments
     public function __construct(
         private readonly ElectronicSignatureService $signatures,
         private readonly AuditLogger $audit,
+        private readonly SignaturePinService $pins,
     ) {}
 
     /**
      * Versión vigente publicada del documento (o null si no se ha publicado).
+     * Con `$organizationId` se consulta esa organización de forma explícita (no
+     * depende de la organización activa; lo usa la validación del marcaje).
      */
-    public function current(string $code): ?PolicyDocument
+    public function current(string $code, ?int $organizationId = null): ?PolicyDocument
     {
         return PolicyDocument::query()
+            ->when($organizationId !== null, fn ($q) => $q->withoutGlobalScope('organization')->where('organization_id', $organizationId))
             ->where('code', $code)
             ->whereNotNull('published_at')
             ->where('published_at', '<=', now())
@@ -151,7 +156,22 @@ final class RegistrationDocuments
             return $existing;
         }
 
-        $signature = $this->signatures->sign($user, $doc, self::PURPOSES[$doc->code], $method, $pin, $device, self::statement($doc), $request, $deviceSignature);
+        // El NIP se verifica FUERA de la transacción: un intento fallido debe persistir
+        // (bloqueo tras 5 intentos) aunque la firma no se complete.
+        if ($method === ElectronicSignature::METHOD_PIN && ($pin === null || $pin === '' || ! $this->pins->verify($user, $pin))) {
+            throw ValidationException::withMessages(['pin' => 'NIP incorrecto.']);
+        }
+
+        // Doble toque o dos peticiones simultáneas: el bloqueo del expediente serializa la
+        // firma y la segunda devuelve la existente (una sola firma por versión vigente).
+        $signature = DB::transaction(function () use ($user, $employee, $doc, $method, $pin, $device, $request, $deviceSignature) {
+            Employee::query()->whereKey($employee->id)->lockForUpdate()->first(['id']);
+            if ($existing = $this->signatureFor($employee, $doc)) {
+                return $existing;
+            }
+
+            return $this->signatures->sign($user, $doc, self::PURPOSES[$doc->code], $method, $pin, $device, self::statement($doc), $request, $deviceSignature);
+        });
 
         $exists = DocumentAcknowledgement::query()->where('policy_document_id', $doc->id)->where('employee_id', $employee->id)->exists();
         if (! $exists) {

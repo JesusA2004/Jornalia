@@ -5,6 +5,7 @@ import {
     Building,
     CalendarHeart,
     Check,
+    Gavel,
     Landmark,
     Lock,
     MapPin,
@@ -39,7 +40,7 @@ import InactiveToggle from './components/InactiveToggle.vue';
 import SettingsNav from './components/SettingsNav.vue';
 import ToggleRow from './components/ToggleRow.vue';
 import { civilDate } from './format';
-import type { HolidayRow, ManageCan, Option } from './types';
+import type { HolidayCan, HolidayRow, Option } from './types';
 
 defineOptions({
     layout: {
@@ -56,7 +57,7 @@ const props = defineProps<{
     years: number[];
     holidays: HolidayRow[];
     work_centers: Option[];
-    can: ManageCan;
+    can: HolidayCan;
 }>();
 
 const yearOptions = computed<Option[]>(() =>
@@ -84,14 +85,28 @@ const inactiveCount = computed(
     () => props.holidays.filter((h) => h.deleted).length,
 );
 
-const KIND: Record<
-    HolidayRow['kind'],
+const ORIGIN: Record<
+    HolidayRow['origin'],
     { label: string; tone: Tone; icon: typeof Landmark }
 > = {
-    official: { label: 'Oficial', tone: 'brand', icon: Landmark },
+    preloaded: { label: 'Oficial', tone: 'brand', icon: Landmark },
+    adjusted: { label: 'Oficial ajustado', tone: 'brand', icon: Landmark },
+    variable: { label: 'Obligatorio', tone: 'brand', icon: Gavel },
     company: { label: 'Empresa', tone: 'info', icon: Building },
     local: { label: 'Local', tone: 'primary', icon: MapPin },
 };
+
+/** Los días obligatorios (art. 74) los administra RH con permiso de normativa. */
+function canManage(h: HolidayRow): boolean {
+    return h.kind === 'official'
+        ? props.can.manage_mandatory
+        : props.can.manage;
+}
+
+/** Precargado o ajustado del art. 74: se edita, nunca se desactiva. */
+function isFixedOfficial(h: HolidayRow): boolean {
+    return h.origin === 'preloaded' || h.origin === 'adjusted';
+}
 
 const months = computed(() => {
     const groups = new Map<number, HolidayRow[]>();
@@ -123,31 +138,54 @@ const months = computed(() => {
 const counts = computed(() => ({
     official: props.holidays.filter((h) => h.kind === 'official' && !h.deleted)
         .length,
-    company: props.holidays.filter((h) => h.kind !== 'official' && !h.deleted)
-        .length,
 }));
+
+type HolidayKind = HolidayRow['kind'];
 
 type HolidayForm = {
     date: string | null;
     name: string;
-    kind: 'company' | 'local';
+    kind: HolidayKind;
     work_center_id: string | null;
     is_mandatory_rest: boolean;
     legal_basis: string;
+    notes: string;
+    change_reason: string;
 };
 
 const blank = (): HolidayForm => ({
     date: null,
     name: '',
-    kind: 'company',
+    kind: props.can.manage ? 'company' : 'official',
     work_center_id: null,
     is_mandatory_rest: true,
     legal_basis: '',
+    notes: '',
+    change_reason: '',
 });
 
 const open = ref(false);
 const editing = ref<HolidayRow | null>(null);
 const form = useForm<HolidayForm>(blank());
+
+/** Edición de un precargado del art. 74: sólo nombre, anotación y día movido. */
+const adjusting = computed(
+    () => editing.value !== null && isFixedOfficial(editing.value),
+);
+
+const kindOptions = computed(() => {
+    // Un registro existente no cambia entre obligatorio y empresa/local.
+    if (editing.value) {
+        return editing.value.kind === 'official'
+            ? (['official'] as HolidayKind[])
+            : (['company', 'local'] as HolidayKind[]);
+    }
+
+    return [
+        ...(props.can.manage_mandatory ? (['official'] as HolidayKind[]) : []),
+        ...(props.can.manage ? (['company', 'local'] as HolidayKind[]) : []),
+    ];
+});
 
 function create(): void {
     editing.value = null;
@@ -162,10 +200,12 @@ function edit(h: HolidayRow): void {
     form.defaults({
         date: h.date,
         name: h.name,
-        kind: h.kind === 'local' ? 'local' : 'company',
+        kind: h.kind,
         work_center_id: h.work_center_id ? String(h.work_center_id) : null,
         is_mandatory_rest: h.is_mandatory_rest,
         legal_basis: h.legal_basis ?? '',
+        notes: h.notes ?? '',
+        change_reason: '',
     });
     form.reset();
     form.clearErrors();
@@ -177,11 +217,23 @@ function submit(): void {
         preserveScroll: true,
         onSuccess: () => (open.value = false),
     };
-    const payload = form.transform((data) => ({
-        ...data,
-        work_center_id: data.kind === 'local' ? data.work_center_id : null,
-        legal_basis: data.legal_basis || null,
-    }));
+    const payload = form.transform((data) =>
+        adjusting.value
+            ? {
+                  date: data.date,
+                  name: data.name,
+                  notes: data.notes || null,
+                  change_reason: data.change_reason,
+              }
+            : {
+                  ...data,
+                  work_center_id:
+                      data.kind === 'company' ? null : data.work_center_id,
+                  legal_basis: data.legal_basis || null,
+                  notes: data.notes || null,
+                  change_reason: data.change_reason || null,
+              },
+    );
 
     if (editing.value) {
         payload.put(HolidayController.update.url(editing.value.id), options);
@@ -193,27 +245,38 @@ function submit(): void {
 const kindModel = computed<string>({
     get: () => form.kind,
     set: (v) => {
-        if (v === 'company' || v === 'local') {
+        if (v === 'official' || v === 'company' || v === 'local') {
             form.kind = v;
+            if (v === 'official' && !form.legal_basis) {
+                form.legal_basis = 'LFT art. 74 fr. IX';
+            }
         }
     },
 });
 
+const KIND_LABEL: Record<HolidayKind, string> = {
+    official: 'Obligatorio',
+    company: 'Empresa',
+    local: 'Local',
+};
+
 const target = ref<HolidayRow | null>(null);
 const confirmOpen = ref(false);
+const deactivateForm = useForm({ reason: '' });
 
 function askDeactivate(h: HolidayRow): void {
     target.value = h;
+    deactivateForm.reset();
+    deactivateForm.clearErrors();
     confirmOpen.value = true;
 }
 
 function deactivate(): void {
     if (target.value) {
-        router.post(
-            HolidayController.deactivate.url(target.value.id),
-            {},
-            { preserveScroll: true },
-        );
+        deactivateForm.post(HolidayController.deactivate.url(target.value.id), {
+            preserveScroll: true,
+            onSuccess: () => (confirmOpen.value = false),
+        });
     }
 }
 
@@ -228,8 +291,13 @@ function restore(h: HolidayRow): void {
 const help = [
     {
         title: 'Oficiales',
-        text: 'Los de la LFT art. 74 se generan solos y no se modifican.',
+        text: 'Los del art. 74 LFT se cargan solos. No se borran ni se desactivan; RH puede anotarlos o registrar el día movido por la ley.',
         icon: Landmark,
+    },
+    {
+        title: 'Obligatorios variables',
+        text: 'Jornada electoral u otro que ordene la ley: RH los agrega por año, con fundamento y motivo.',
+        icon: Gavel,
     },
     {
         title: 'De empresa',
@@ -271,14 +339,14 @@ const help = [
         >
             <ToggleGroupItem value="all">Todos</ToggleGroupItem>
             <ToggleGroupItem value="official"
-                >Oficiales · {{ counts.official }}</ToggleGroupItem
+                >Obligatorios · {{ counts.official }}</ToggleGroupItem
             >
             <ToggleGroupItem value="company">Empresa</ToggleGroupItem>
             <ToggleGroupItem value="local">Locales</ToggleGroupItem>
         </ToggleGroup>
         <div class="ml-auto flex items-center gap-2">
             <InactiveToggle v-model="showInactive" :count="inactiveCount" />
-            <Button v-if="can.manage" @click="create">
+            <Button v-if="can.manage || can.manage_mandatory" @click="create">
                 <Plus class="icon-sm" />
                 Agregar festivo
             </Button>
@@ -332,9 +400,9 @@ const help = [
                         <p class="leading-tight font-medium">{{ h.name }}</p>
                         <div class="flex flex-wrap items-center gap-1.5">
                             <StatusBadge
-                                :status="h.kind"
-                                :label="KIND[h.kind].label"
-                                :tone="KIND[h.kind].tone"
+                                :status="h.origin"
+                                :label="ORIGIN[h.origin].label"
+                                :tone="ORIGIN[h.origin].tone"
                                 size="sm"
                             />
                             <span
@@ -350,6 +418,12 @@ const help = [
                             />
                         </div>
                         <p
+                            v-if="h.original && h.original.date !== h.date"
+                            class="text-xs text-muted-foreground"
+                        >
+                            Movido del {{ civilDate(h.original.date) }}
+                        </p>
+                        <p
                             v-if="h.work_center"
                             class="text-xs text-muted-foreground"
                         >
@@ -362,15 +436,13 @@ const help = [
                             v-if="h.legal_basis"
                             class="flex items-center gap-1 text-xs text-muted-foreground"
                         >
-                            <Lock
-                                v-if="h.kind === 'official'"
-                                class="icon-xs"
-                            />
+                            <Lock v-if="isFixedOfficial(h)" class="icon-xs" />
                             {{ h.legal_basis }}
                         </p>
+                        <p v-if="h.notes" class="text-xs">{{ h.notes }}</p>
                     </div>
                     <div
-                        v-if="can.manage && h.editable"
+                        v-if="canManage(h) && h.editable"
                         class="flex shrink-0 flex-col gap-1"
                     >
                         <Button
@@ -392,6 +464,7 @@ const help = [
                                 <Pencil class="icon-sm" />
                             </Button>
                             <Button
+                                v-if="h.can_deactivate"
                                 variant="ghost"
                                 size="icon-sm"
                                 aria-label="Desactivar"
@@ -410,39 +483,56 @@ const help = [
         <SheetContent class="flex w-full flex-col gap-0 sm:max-w-md">
             <SheetHeader class="border-b">
                 <SheetTitle>{{
-                    editing ? 'Editar festivo' : 'Agregar festivo'
+                    adjusting
+                        ? 'Ajustar día oficial'
+                        : editing
+                          ? 'Editar festivo'
+                          : 'Agregar festivo'
                 }}</SheetTitle>
-                <SheetDescription
-                    >Se excluye del cálculo de faltas y
-                    vacaciones.</SheetDescription
-                >
+                <SheetDescription>{{
+                    adjusting
+                        ? 'Sigue siendo descanso obligatorio.'
+                        : 'Se excluye del cálculo de faltas y vacaciones.'
+                }}</SheetDescription>
             </SheetHeader>
             <form
                 id="holiday-form"
                 class="grid flex-1 content-start gap-5 overflow-y-auto p-5"
                 @submit.prevent="submit"
             >
-                <FormField label="Tipo" required>
+                <FormField
+                    v-if="!adjusting && kindOptions.length > 1"
+                    label="Tipo"
+                    required
+                >
                     <ToggleGroup
                         v-model="kindModel"
                         type="single"
                         variant="outline"
                         class="w-full"
                     >
-                        <ToggleGroupItem value="company" class="flex-1"
-                            ><Building class="icon-sm" />
-                            Empresa</ToggleGroupItem
+                        <ToggleGroupItem
+                            v-for="k in kindOptions"
+                            :key="k"
+                            :value="k"
+                            class="flex-1"
                         >
-                        <ToggleGroupItem value="local" class="flex-1"
-                            ><MapPin class="icon-sm" /> Local</ToggleGroupItem
-                        >
+                            <Gavel v-if="k === 'official'" class="icon-sm" />
+                            <Building
+                                v-else-if="k === 'company'"
+                                class="icon-sm"
+                            />
+                            <MapPin v-else class="icon-sm" />
+                            {{ KIND_LABEL[k] }}
+                        </ToggleGroupItem>
                     </ToggleGroup>
                 </FormField>
                 <FormField
-                    v-if="form.kind === 'local'"
+                    v-if="!adjusting && form.kind !== 'company'"
                     label="Centro de trabajo"
                     :error="form.errors.work_center_id"
-                    required
+                    :required="form.kind === 'local'"
+                    :hint="form.kind === 'official' ? 'Opcional' : undefined"
                     v-slot="{ id }"
                 >
                     <SelectField
@@ -475,22 +565,58 @@ const help = [
                     <Input
                         :id="id"
                         v-model="form.name"
-                        placeholder="Aniversario de la empresa"
+                        :placeholder="
+                            form.kind === 'official'
+                                ? 'Jornada electoral'
+                                : 'Aniversario de la empresa'
+                        "
                     />
                 </FormField>
                 <FormField
+                    v-if="!adjusting"
                     label="Fundamento"
                     :error="form.errors.legal_basis"
-                    hint="Opcional"
+                    :required="form.kind === 'official'"
+                    :hint="form.kind === 'official' ? undefined : 'Opcional'"
                     v-slot="{ id }"
                 >
                     <Input
                         :id="id"
                         v-model="form.legal_basis"
-                        placeholder="Contrato colectivo, cláusula 12"
+                        :placeholder="
+                            form.kind === 'official'
+                                ? 'LFT art. 74 fr. IX'
+                                : 'Contrato colectivo, cláusula 12'
+                        "
+                    />
+                </FormField>
+                <FormField
+                    label="Anotación"
+                    :error="form.errors.notes"
+                    hint="Opcional"
+                    v-slot="{ id }"
+                >
+                    <Input
+                        :id="id"
+                        v-model="form.notes"
+                        placeholder="Visible en Calendario"
+                    />
+                </FormField>
+                <FormField
+                    v-if="adjusting || form.kind === 'official'"
+                    label="Motivo del cambio"
+                    :error="form.errors.change_reason"
+                    required
+                    v-slot="{ id }"
+                >
+                    <Input
+                        :id="id"
+                        v-model="form.change_reason"
+                        placeholder="Decreto publicado en el DOF"
                     />
                 </FormField>
                 <ToggleRow
+                    v-if="!adjusting && form.kind !== 'official'"
                     v-model="form.is_mandatory_rest"
                     label="Descanso obligatorio"
                     description="Trabajarlo genera pago adicional."
@@ -516,6 +642,18 @@ const help = [
         :title="`¿Desactivar «${target?.name ?? ''}»?`"
         description="Dejará de considerarse festivo; podrás reactivarlo."
         confirm-label="Desactivar"
+        :loading="deactivateForm.processing"
+        :close-on-confirm="false"
         @confirm="deactivate"
-    />
+    >
+        <FormField
+            label="Motivo"
+            :error="deactivateForm.errors.reason"
+            :required="target?.kind === 'official'"
+            :hint="target?.kind === 'official' ? undefined : 'Opcional'"
+            v-slot="{ id }"
+        >
+            <Input :id="id" v-model="deactivateForm.reason" />
+        </FormField>
+    </ConfirmDialog>
 </template>

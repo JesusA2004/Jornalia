@@ -135,6 +135,7 @@ Los marcajes son **append-only**: no hay rutas `PUT`/`PATCH`/`DELETE` (responden
 | 404 | `not_found` | Recurso inexistente o de otro usuario u organización |
 | 409 | `challenge_used`, `challenge_expired`, `invalid_sequence`, `device_in_use` | Desafío, secuencia o teléfono ajeno |
 | 409 | `immutable_record` | Intento de alterar un registro inmutable |
+| 409 | `documents_pending` | Marcaje en línea sin convenio de registro o aviso de privacidad vigentes firmados (`legacy_code: policy_violation`). Los marcajes sin conexión no se rechazan por esta causa: se registran con alerta `punch_without_agreement` |
 | 422 | `validation_failed` | Validación (incluye `errors`) |
 | 422 | `location_required`, `outside_geofence`, `policy_violation`, `face_verification_required` | Política de asistencia |
 | 423 | `device_pending`, `pin_locked` | Dispositivo aún no autorizado; NIP bloqueado (kiosco) |

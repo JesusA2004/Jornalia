@@ -112,7 +112,8 @@ final class ScheduleResolver
         return Holiday::query()
             ->whereDate('date', $date)
             ->where('is_mandatory_rest', true)
-            ->where(fn ($q) => $q->whereNull('organization_id')->orWhere('organization_id', $employee->organization_id))
+            // Oficiales globales salvo los que la organización ajustó, más los propios.
+            ->effectiveFor($employee->organization_id)
             ->where(fn ($q) => $q->whereNull('work_center_id')->when($workCenterId, fn ($q2) => $q2->orWhere('work_center_id', $workCenterId)))
             ->orderByRaw('organization_id is null')
             ->first();

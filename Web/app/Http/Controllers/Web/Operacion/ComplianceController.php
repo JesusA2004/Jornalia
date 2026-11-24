@@ -44,6 +44,8 @@ final class ComplianceController extends Controller
         'overtime_near_limit' => 'Tiempo extra cerca del tope semanal',
         'unrectified_omission' => 'Omisión sin rectificar (más de 2 días)',
         'clock_skew' => 'Diferencia de hora del dispositivo',
+        'punch_without_agreement' => 'Marcaje sin conexión sin convenio o aviso firmado',
+        'registration_documents_unpublished' => 'Convenio o aviso de privacidad sin publicar',
         'integrity_failed' => 'Integridad: alteración detectada',
         'integrity_anchor_failed' => 'Integridad: falló el anclaje externo',
     ];

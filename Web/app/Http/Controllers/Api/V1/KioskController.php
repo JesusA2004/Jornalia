@@ -119,6 +119,8 @@ final class KioskController extends ApiController
                 $error = ['message' => $e->getMessage(), 'code' => $e->errorCode];
                 if ($e->errorCode === KioskService::FACE_REQUIRED) {
                     $error['legacy_code'] = 'policy_violation';
+                } elseif ($e->legacyCode !== null) {
+                    $error['legacy_code'] = $e->legacyCode;
                 }
                 $results[] = ['client_uuid' => $clientUuid, 'result' => 'rejected', 'error' => $error];
             } catch (ValidationException $e) {

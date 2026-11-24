@@ -59,7 +59,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->render(function (AttendanceException $e, Request $request) use ($isApi, $error) {
             if ($isApi($request)) {
-                return $error($e->errorCode, $e->getMessage(), $e->status);
+                return $error($e->errorCode, $e->getMessage(), $e->status, $e->legacyCode !== null ? ['legacy_code' => $e->legacyCode] : []);
             }
 
             return back()->withErrors(['punch' => $e->getMessage()]);

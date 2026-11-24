@@ -80,7 +80,11 @@ final class PunchController extends ApiController
                     'punch' => (new PunchResource(PunchQuery::fresh($result['punch'])))->resolve($request),
                 ];
             } catch (AttendanceException $e) {
-                $results[] = ['client_uuid' => $clientUuid, 'result' => 'rejected', 'error' => ['message' => $e->getMessage(), 'code' => $e->errorCode]];
+                $error = ['message' => $e->getMessage(), 'code' => $e->errorCode];
+                if ($e->legacyCode !== null) {
+                    $error['legacy_code'] = $e->legacyCode;
+                }
+                $results[] = ['client_uuid' => $clientUuid, 'result' => 'rejected', 'error' => $error];
             } catch (ValidationException $e) {
                 $results[] = ['client_uuid' => $clientUuid, 'result' => 'rejected', 'error' => ['message' => $e->getMessage(), 'code' => 'validation_failed', 'errors' => $e->errors()]];
             }

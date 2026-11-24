@@ -39,7 +39,8 @@ export function toKioskError(e: unknown): KioskPunchError {
       return new KioskPunchError('Demasiados intentos. Espera 15 minutos o acude con RH.', 'idle');
     }
     if (isFaceRequired(e)) return new KioskPunchError('Falta verificar tu rostro.', 'face');
-    if (e.code === 'kiosk_employee_inactive' || e.code === 'kiosk_wrong_branch' || e.code === 'pin_not_set') {
+    // Convenio o aviso de privacidad pendientes: el colaborador regulariza con RH.
+    if (e.code === 'kiosk_employee_inactive' || e.code === 'kiosk_wrong_branch' || e.code === 'pin_not_set' || e.code === 'documents_pending') {
       return new KioskPunchError(e.message, 'idle');
     }
     if (e.code === 'invalid_sequence' || e.code === 'duplicate_punch' || e.code === 'policy_violation' || e.code === 'no_employment') {

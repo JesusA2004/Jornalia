@@ -600,7 +600,12 @@ const help = [
                     size="sm"
                     class="w-44"
                 />
-                <Button variant="outline" size="sm" as-child>
+                <Button
+                    v-if="props.can_export"
+                    variant="outline"
+                    size="sm"
+                    as-child
+                >
                     <a :href="exportHref" download>
                         <Download class="size-4" aria-hidden="true" />
                         Exportar

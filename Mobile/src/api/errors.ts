@@ -34,6 +34,7 @@ const KNOWN_CODES: readonly ApiErrorCode[] = [
   'pin_locked',
   'pin_not_set',
   'face_verification_required',
+  'documents_pending',
 ];
 
 /** Error devuelto por el servidor con forma `ApiError`. */
@@ -152,6 +153,7 @@ export function defaultMessage(code: ApiErrorCode): string {
     pin_locked: 'NIP bloqueado 15 minutos por intentos fallidos.',
     pin_not_set: 'Primero crea tu NIP de firma.',
     face_verification_required: 'Falta verificar tu rostro.',
+    documents_pending: 'Firma tu convenio y acepta el aviso de privacidad para marcar.',
   };
   return map[code];
 }

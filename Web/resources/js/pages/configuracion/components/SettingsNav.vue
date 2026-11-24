@@ -3,6 +3,7 @@ import { Link, usePage } from '@inertiajs/vue3';
 import {
     BookOpenCheck,
     Building2,
+    Calculator,
     CalendarHeart,
     FileSignature,
     GitBranch,
@@ -20,6 +21,7 @@ import CompanySettingsController from '@/actions/App/Http/Controllers/Web/Admin/
 import HolidayController from '@/actions/App/Http/Controllers/Web/Admin/HolidayController';
 import IncidenceTypeController from '@/actions/App/Http/Controllers/Web/Admin/IncidenceTypeController';
 import LegalVersionController from '@/actions/App/Http/Controllers/Web/Admin/LegalVersionController';
+import PayrollSettingsController from '@/actions/App/Http/Controllers/Web/Admin/PayrollSettingsController';
 import PlatformSettingsController from '@/actions/App/Http/Controllers/Web/Admin/PlatformSettingsController';
 import PolicyDocumentController from '@/actions/App/Http/Controllers/Web/Admin/PolicyDocumentController';
 import VacationPolicyController from '@/actions/App/Http/Controllers/Web/Admin/VacationPolicyController';
@@ -72,6 +74,12 @@ const tabs = computed<Tab[]>(() =>
             label: 'Festivos',
             href: HolidayController.index.url(),
             icon: CalendarHeart,
+            permission: 'settings.view',
+        },
+        {
+            label: 'Nómina',
+            href: PayrollSettingsController.edit.url(),
+            icon: Calculator,
             permission: 'settings.view',
         },
         {

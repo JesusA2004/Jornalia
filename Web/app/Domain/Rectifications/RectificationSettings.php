@@ -70,7 +70,7 @@ final class RectificationSettings
         $remaining = $this->all()['business_days'];
 
         $holidays = Holiday::query()
-            ->where(fn ($q) => $q->whereNull('organization_id')->orWhere('organization_id', $organization->id))
+            ->effectiveFor($organization->id)
             ->whereNull('work_center_id')
             ->where('is_mandatory_rest', true)
             ->whereBetween('date', [$day->toDateString(), $day->addDays($remaining * 3 + 14)->toDateString()])

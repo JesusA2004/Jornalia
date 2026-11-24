@@ -22,6 +22,7 @@ import {
 } from '@/components/app';
 import { Button } from '@/components/ui/button';
 import { useFilters } from '@/composables/useFilters';
+import { incidenceLegendKey, legendDotClass } from '@/lib/attendance-status';
 import { formatDate } from '@/lib/format';
 import { toPaginationMeta } from '@/lib/pagination';
 import type { DataTableColumn, HelpStep } from '@/types';
@@ -81,14 +82,9 @@ const columns: DataTableColumn<IncidenceRow>[] = [
     },
 ];
 
-const CATEGORY_DOT: Record<string, string> = {
-    absence: 'bg-danger',
-    leave: 'bg-info',
-    disability: 'bg-cyan',
-    vacation: 'bg-success',
-    time: 'bg-warning',
-    other: 'bg-muted-foreground',
-};
+/** Misma leyenda que Asistencias, Calendario y Reportes (lib/attendance-status). */
+const categoryDot = (category: string | null | undefined) =>
+    legendDotClass(incidenceLegendKey(category));
 
 const sheetOpen = ref(false);
 
@@ -227,10 +223,7 @@ const help: HelpStep[] = [
                 <span class="flex items-center gap-2 text-sm font-medium">
                     <span
                         class="size-2 shrink-0 rounded-full"
-                        :class="
-                            CATEGORY_DOT[row.category ?? 'other'] ??
-                            'bg-muted-foreground'
-                        "
+                        :class="categoryDot(row.category)"
                         aria-hidden="true"
                     />
                     {{ row.type_name }}

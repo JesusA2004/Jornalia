@@ -36,8 +36,9 @@ Route::post('asistencias/marcar', [AttendanceController::class, 'punch'])
 Route::middleware('can:punches.view')->group(function () {
     Route::get('asistencias', [AttendanceController::class, 'index'])->name('asistencias.index');
     // Marcajes originales: sólo consulta y exportación (ningún rol edita ni borra).
+    // La exportación incluye coordenadas: exige `punches.export` (no basta con consultar).
     Route::get('asistencias/marcajes/exportar', [AttendanceController::class, 'exportPunches'])
-        ->middleware('throttle:20,1')->name('asistencias.export');
+        ->middleware(['can:punches.export', 'throttle:20,1'])->name('asistencias.export');
     Route::get('asistencias/{employee}/{date}', [AttendanceController::class, 'show'])
         ->whereNumber('employee')->where('date', '\d{4}-\d{2}-\d{2}')->name('asistencias.show');
 });

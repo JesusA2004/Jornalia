@@ -8,6 +8,7 @@ use App\Domain\Reports\Dataset\ReportDataset;
 use App\Domain\Reports\Dataset\ReportHeaderFactory;
 use App\Domain\Reports\Definition\ReportDefinition;
 use App\Domain\Reports\Layouts\ReportLayoutRegistry;
+use App\Domain\Reports\Noi\NoiConfig;
 use App\Domain\Reports\Rendering\CsvRenderer;
 use App\Domain\Reports\Rendering\PdfRenderer;
 use App\Domain\Reports\Rendering\ReportRenderer;
@@ -40,10 +41,13 @@ final class ReportExporter
     {
         $notes = [];
         if ($definition->builder === 'noi') {
-            $notes[] = 'Layout de movimientos para captura en NOI; las claves de concepto se configuran en config/reports.php o en el ajuste «reports.noi» de la organización. Este archivo no modifica NOI.';
+            $notes[] = 'Layout de movimientos para captura en NOI; RH configura las claves de concepto y columnas en Configuración › Nómina. Este archivo no modifica NOI.';
+            if (NoiConfig::pendingConcepts(NoiConfig::current()) !== []) {
+                $notes[] = 'Claves de concepto NOI pendientes de RH: siguen los marcadores iniciales.';
+            }
         }
         if (in_array($definition->key, ['asistencia_detallada', 'asistencia_individual', 'descansos'], true)) {
-            if ((int) config('reports.meal_pause', 0) === 0) {
+            if (MealPause::current($organization->id) === 0) {
                 $notes[] = 'La organización no ha definido qué pausa corresponde a la comida: las pausas registradas se muestran como descanso.';
             }
         }

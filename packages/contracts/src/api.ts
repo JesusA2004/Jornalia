@@ -71,7 +71,18 @@ export type ApiErrorCode =
      * respondía `policy_violation`; el cuerpo trae `legacy_code: 'policy_violation'`
      * y el mismo mensaje por compatibilidad. Obtén una con `POST /kiosk/face/*`.
      */
-    | 'face_verification_required';
+    | 'face_verification_required'
+    /**
+     * Marcaje EN LÍNEA (`POST /attendance/punches`, `POST /kiosk/punches` y marcaje web)
+     * con el convenio de registro electrónico (`CONVENIO_REGISTRO`) o el aviso de
+     * privacidad (`AVISO_PRIVACIDAD`) vigentes sin firmar. HTTP 409. El cuerpo trae
+     * `legacy_code: 'policy_violation'` para apps anteriores. La app debe abrir el flujo
+     * de documentos (`GET /documents/pending`). Los marcajes sin conexión de
+     * `/sync/punches` y `/kiosk/sync` con `device_time` anterior a la recepción NO se
+     * rechazan por esta causa: se registran y RH recibe la alerta `punch_without_agreement`.
+     * Si la organización no ha publicado el documento, no se exige.
+     */
+    | 'documents_pending';
 
 export interface ApiError {
     message: string;

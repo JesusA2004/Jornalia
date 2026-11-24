@@ -822,6 +822,9 @@ const isToday = (d: string) => d === props.range.today;
                         <p class="text-sm text-muted-foreground">
                             {{ h.legal_basis ?? 'Sin fundamento registrado' }}
                         </p>
+                        <p v-if="h.notes" class="mt-1 text-sm">
+                            {{ h.notes }}
+                        </p>
                         <p
                             v-if="h.is_mandatory_rest"
                             class="mt-1 text-xs text-brand-soft-foreground"

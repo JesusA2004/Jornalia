@@ -412,6 +412,8 @@ export type DayDetail = {
 
 export type AttendanceIndexProps = {
     tab: 'jornadas' | 'marcajes';
+    /** Permiso `punches.export` (la exportación incluye coordenadas). */
+    can_export: boolean;
     filters: ListFilters & {
         sort: string | null;
         direction: string | null;
@@ -973,6 +975,8 @@ export type CalendarHoliday = {
     kind_label: string;
     is_mandatory_rest: boolean;
     legal_basis: string | null;
+    /** Anotación de RH (día ajustado o movido). */
+    notes?: string | null;
 };
 
 export type CalendarProps = {

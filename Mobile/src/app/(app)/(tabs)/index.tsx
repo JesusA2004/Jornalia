@@ -20,6 +20,7 @@ import { captureLocation, locationWanted } from '@/features/attendance/location'
 import { performPunch } from '@/features/attendance/punchFlow';
 import { initialPunchUiState, punchUiReducer, STEP_LABELS } from '@/features/attendance/punchReducer';
 import { useToday } from '@/features/attendance/TodayProvider';
+import { useDocuments } from '@/features/documents/DocumentsProvider';
 import { faceStore, useFaceOutcome } from '@/features/face/faceStore';
 import { useFaceStatus } from '@/features/face/useFaceStatus';
 import { useWorkLocation } from '@/features/location/LocationProvider';
@@ -73,6 +74,7 @@ export default function HomeScreen() {
   const session = useSignedIn();
   const today = useToday();
   const sync = useSync();
+  const documents = useDocuments();
   const loc = useWorkLocation();
   const { colors } = useTheme();
   const now = useNow(1000);
@@ -133,6 +135,9 @@ export default function HomeScreen() {
       void sync.reload();
     } catch (e) {
       const cancelled = e instanceof PunchFlowError && e.code === 'auth_cancelled';
+      // El servidor también exige convenio y aviso vigentes: se recarga el bloqueo y
+      // la app muestra el flujo de documentos.
+      if (e instanceof ApiRequestError && e.code === 'documents_pending') void documents.refresh();
       dispatch({ type: 'failure', message: e instanceof PunchFlowError || e instanceof ApiRequestError ? e.message : describeError(e), cancelled });
     }
   };

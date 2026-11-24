@@ -47,14 +47,17 @@ it('el catálogo de incidencias es cerrado: RH ajusta tipos, no crea ni borra', 
     expect($type->fresh()->active)->toBeTrue();
 });
 
-it('los festivos oficiales son de sólo lectura', function () {
+it('los festivos oficiales precargados no se desactivan ni cambian sin motivo', function () {
     $org = $this->organization();
     $admin = $this->userIn($org, 'Administrador de empresa', allBranches: true);
     $official = Holiday::query()->whereNull('organization_id')->where('kind', 'official')->first();
 
     $this->actingAs($admin)->get('/configuracion/festivos?year=2026')->assertOk();
     if ($official !== null) {
-        $this->actingAs($admin)->put("/configuracion/festivos/{$official->id}", ['date' => '2026-12-26', 'name' => 'X', 'kind' => 'company', 'is_mandatory_rest' => true])->assertNotFound();
+        // Revisión RH pantalla 08: RH puede ajustarlos (ver HolidaysManagementTest), nunca desactivarlos.
+        $this->actingAs($admin)->post("/configuracion/festivos/{$official->id}/desactivar")->assertSessionHasErrors('holiday');
+        $this->actingAs($admin)->put("/configuracion/festivos/{$official->id}", ['date' => $official->date->toDateString(), 'name' => 'X', 'kind' => 'company', 'is_mandatory_rest' => false])->assertSessionHasErrors('change_reason');
+        expect($official->fresh()->name)->not->toBe('X')->and($official->fresh()->trashed())->toBeFalse();
     }
 
     $this->actingAs($admin)->post('/configuracion/festivos', ['date' => '2026-12-24', 'name' => 'Nochebuena', 'kind' => 'company', 'is_mandatory_rest' => true])->assertSessionHasNoErrors();

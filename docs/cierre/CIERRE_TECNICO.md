@@ -25,11 +25,11 @@ Conteo de la [matriz de trazabilidad](TRAZABILIDAD_REVISION_RH.md), verificado c
 
 | Grupo | Total | Implementado | Parcial | Configurable · pendiente RH/Jurídico | Requiere infraestructura externa |
 |---|---|---|---|---|---|
-| Instrucciones de las 19 pantallas | 87 | 76 | 3 | 5 | 3 |
+| Instrucciones de las 19 pantallas | 87 | 79 | 0 | 5 | 3 |
 | Reglas generales | 12 | 9 | — | 2 | 1 |
 | Decisiones pendientes de RH | 6 | — | — | 6 | — |
 
-Parciales: 01.3 (etiqueta «Excedente» en el resumen personal del Panel), 08.1 (los festivos oficiales no se editan desde la web) y 08.3 (leyenda común no aplicada en Incidencias). Detalle y pruebas faltantes en la matriz, sección «Requerimientos no implementados o parciales».
+Parciales: ninguno. 01.3 (etiqueta del resumen personal), 08.1 (festivos administrables por RH preservando los obligatorios) y 08.3 (leyenda común en Incidencias) se completaron en la ronda de estabilización. Detalle en la matriz.
 
 ## 2. Cambios realizados (por commit)
 
@@ -71,12 +71,12 @@ La fase 2 (integración, calidad, Playwright, Android, CI y documentación) se r
 | Conservación de recorridos de ubicación | 90 días, sin confirmar | Configuración › Ubicación | Jurídico |
 | Conservación del registro de asistencia | Sin purga; referencia de 5 años (mínimo legal: 1 año después de la baja) | Decisión documental | Jurídico |
 | Normativa 2027 y disposiciones de la STPS | Todas las versiones «Sin verificar» | Configuración › Normativa | RH con Jurídico |
-| Claves de concepto de NOI | Marcadores (`FALTA`, `HORAS_EXTRA_DOBLES`, …) | `config/reports.php` o ajuste `reports.noi` (sin pantalla) | RH + Nómina |
-| Pausa de comida en reportes | `0`: todas las pausas se reportan como descanso | `REPORTS_MEAL_PAUSE` en `Web/.env` (global; sin pantalla ni ajuste por organización) | RH (lo aplica Sistemas) |
+| Claves de concepto de NOI | Marcadores (`FALTA`, `HORAS_EXTRA_DOBLES`, …) | Configuración › Nómina (marcadores señalados «Pendiente de RH») | RH + Nómina |
+| Pausa de comida en reportes | `0`: todas las pausas se reportan como descanso | Configuración › Nómina (ajuste por organización `reports.meal_pause`; `REPORTS_MEAL_PAUSE` sólo es el valor inicial) | RH |
 | Puestos con seguimiento durante la jornada | Ninguno («Solo ubicación al marcar») | Configuración › Ubicación | RH |
 | Nombre definitivo del sistema | «MR LANA Asistencias» | `APP_NAME` y `Mobile/app.config.ts` (requiere compilar la app) | RH / Dirección |
 | Datos de sucursales (domicilio, registro patronal, coordenadas y geocerca de 100–150 m) | Sin capturar (no se inventan) | Organización | RH |
-| Edición de días oficiales del art. 74 (p. ej. jornada electoral) | Sólo lectura; RH agrega días de empresa o locales | Configuración › Festivos | RH (decidir si se requiere) |
+| Edición de días oficiales del art. 74 (p. ej. jornada electoral) | No se eliminan ni desactivan; RH los anota o registra el día movido con motivo y agrega obligatorios variables (jornada electoral) | Configuración › Festivos | RH |
 
 ## 5. Contradicciones abiertas
 

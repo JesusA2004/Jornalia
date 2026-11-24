@@ -45,6 +45,21 @@ Reglas duras (dominio, `App\Domain\Attendance\RectificationService`):
   publicada (acuse + firma). El convenio en papel cuenta si hay adjunto del expediente con
   `attachments.category = registration_agreement`.
 
+## Documentos pendientes al marcar (servidor)
+
+La app bloquea el marcaje mientras falten documentos; el servidor aplica la misma regla en
+`PunchRecorder` mediante `App\Domain\Signatures\PunchDocumentsGate`, para todos los canales.
+
+| Situación | Resultado |
+|---|---|
+| Marcaje **en línea** (`POST /api/v1/attendance/punches`, `POST /api/v1/kiosk/punches`, marcaje web `POST /asistencias/marcar`) sin convenio vigente firmado (en la app o en papel) o sin aviso de privacidad vigente aceptado | Se rechaza: HTTP 409, `code = documents_pending`, `legacy_code = policy_violation` (apps anteriores muestran el mensaje). La app recarga `GET /documents/pending` y abre el flujo de documentos. En la web, error de formulario `punch`. |
+| Marcaje **sin conexión** (`POST /sync/punches`, `POST /kiosk/sync`, `captured_offline = true`) con `device_time` anterior a la recepción (más la tolerancia de reloj de la política) | Se **registra**: es evidencia de una jornada trabajada y nunca se descarta. Se abre la alerta `punch_without_agreement` (advertencia; una por colaborador y día con los marcajes y documentos faltantes) para que RH regularice. |
+| Marcaje sin conexión con `device_time` posterior a la recepción | No acredita que se capturó antes: se rechaza como en línea. |
+| La organización no ha publicado el convenio o el aviso | No se exige (no se puede pedir lo que no existe). Se abre la alerta de configuración `registration_documents_unpublished` (sin colaborador; una sola abierta, se actualiza con los documentos faltantes). |
+
+Pendiente de RH/Jurídico: quien sólo marca en kiosco puede acreditar el convenio en papel, pero
+el aviso de privacidad hoy sólo se acepta en la app.
+
 ## Dónde se opera
 
 | Paso | Web (`/rectificaciones`) | App |

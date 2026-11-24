@@ -140,15 +140,25 @@ export type HolidayRow = {
     code: string;
     name: string;
     kind: 'official' | 'company' | 'local';
+    /** preloaded = art. 74 precargado; adjusted = ajuste de RH a un precargado; variable = obligatorio capturado por RH. */
+    origin: 'preloaded' | 'adjusted' | 'variable' | 'company' | 'local';
     is_mandatory_rest: boolean;
     legal_basis: string | null;
+    notes: string | null;
+    change_reason: string | null;
+    /** Día oficial original cuando RH lo ajustó o lo movió. */
+    original: { date: string; name: string } | null;
     work_center_id: number | null;
     work_center: string | null;
     state: string | null;
     editable: boolean;
+    can_deactivate: boolean;
     created_by: string | null;
+    updated_by: string | null;
     deleted: boolean;
 };
+
+export type HolidayCan = ManageCan & { manage_mandatory: boolean };
 
 export type PolicyDocumentRow = {
     id: number;
@@ -253,3 +263,34 @@ export type LegalVacationTableRow = {
 };
 
 export type Option = SelectOption;
+
+/* ── Nómina: exportación NOI y pausa de comida ── */
+export type NoiConcept = { code: string; label: string; enabled: boolean };
+
+export type NoiColumn = { key: string; label: string };
+
+export type NoiSettings = {
+    date_format: string;
+    decimal_separator: string;
+    csv_institutional_header: boolean;
+    columns: NoiColumn[];
+    concepts: Record<string, NoiConcept>;
+    incidence_types: Record<string, string>;
+    only_payroll_incidences: boolean;
+};
+
+export type MealPauseSettings = {
+    pause: number;
+    confirmed_by_hr: boolean;
+    /** false = aún sin ajuste propio (valor inicial del servidor). */
+    configured: boolean;
+    max: number;
+};
+
+export type PayrollIncidenceType = {
+    code: string;
+    name: string;
+    affects_payroll: boolean;
+};
+
+export type SettingUpdate = { by: string | null; at: string | null } | null;

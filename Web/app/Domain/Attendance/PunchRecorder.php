@@ -3,6 +3,8 @@
 namespace App\Domain\Attendance;
 
 use App\Domain\Scheduling\ScheduleResolver;
+use App\Domain\Signatures\PunchDocumentsGate;
+use App\Domain\Signatures\RegistrationDocuments;
 use App\Enums\AuthMethod;
 use App\Enums\DeviceStatus;
 use App\Enums\LocationMode;
@@ -21,6 +23,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Throwable;
 
 /**
  * Único punto de escritura de marcajes. Valida dispositivo, firma, desafío,
@@ -32,6 +35,8 @@ use Illuminate\Support\Str;
  *  - Sin conexión, el evento ya ocurrió: se ACEPTA y se marca `flagged` con anomalías
  *    para revisión. La evidencia nunca se descarta.
  *  - Una firma inválida siempre se rechaza (no hay prueba de origen).
+ *  - Convenio de registro o aviso de privacidad pendientes: en línea se rechaza
+ *    (`documents_pending`); sin conexión se acepta y se alerta a RH (PunchDocumentsGate).
  */
 final class PunchRecorder
 {
@@ -45,6 +50,7 @@ final class PunchRecorder
         private readonly PolicyResolver $policies,
         private readonly ScheduleResolver $schedules,
         private readonly ClockSkewMonitor $clockSkew,
+        private readonly PunchDocumentsGate $documents,
     ) {}
 
     /**
@@ -61,14 +67,41 @@ final class PunchRecorder
         }
 
         $now = CarbonImmutable::now('UTC');
-        $employment = $employee->employmentOn($now) ?? ($input->deviceTime ? $employee->employmentOn($input->deviceTime) : null);
+        // Relación laboral y asignación por FECHA CIVIL del centro de trabajo (regla 4), no
+        // por la fecha UTC: a las 19:00 de Ciudad de México ya es «mañana» en UTC y la baja
+        // de hoy o un movimiento de mañana se aplicarían antes de tiempo. En línea manda la
+        // hora del servidor; la del dispositivo sólo cuenta en capturas sin conexión que no
+        // sean posteriores a la recepción (no puede elegir otra asignación ni otra política).
+        $civilTz = $this->schedules->timezoneFor($employee);
+        $today = $now->setTimezone($civilTz)->toDateString();
+        $declaredDay = $input->capturedOffline && $input->deviceTime !== null && $input->deviceTime->lte($now)
+            ? $input->deviceTime->setTimezone($civilTz)->toDateString()
+            : null;
+        $employment = $employee->employmentOn($declaredDay ?? $today) ?? $employee->employmentOn($today);
         if ($employment === null) {
             throw AttendanceException::noEmployment();
         }
-        $assignment = $employment->assignmentOn($input->deviceTime ?? $now);
+        $assignment = $employment->assignmentOn($declaredDay ?? $today);
         $policy = $this->policies->for($employee, $assignment);
 
         $this->assertAuthentication($user, $employee, $input, $device, $policy);
+
+        // Convenio de registro y aviso de privacidad vigentes (PunchDocumentsGate). En
+        // línea se rechaza; sin conexión, el marcaje capturado antes de llegar al servidor
+        // es evidencia de la jornada trabajada: se registra y se alerta a RH.
+        $documents = $this->documents->check($employee);
+        $blocking = $documents['pending'];
+        if ($input->kioskId !== null) {
+            // El kiosco de sucursal no tiene dónde mostrar ni aceptar el aviso de privacidad
+            // (es para personal sin teléfono): ahí sólo bloquea el convenio, que puede
+            // firmarse en papel. Si falta el aviso, el marcaje se registra y RH recibe la
+            // alerta `punch_without_agreement` para regularizarlo (decisión pendiente de RH
+            // sobre la aceptación del aviso en papel).
+            $blocking = array_values(array_diff($blocking, [RegistrationDocuments::PRIVACY]));
+        }
+        if ($blocking !== [] && ! $this->capturedBeforeReception($input, $now, $policy)) {
+            throw AttendanceException::documentsPending($blocking);
+        }
 
         $anomalies = [];
         $eventTime = $now;
@@ -107,8 +140,9 @@ final class PunchRecorder
         $status = array_intersect($anomalies, self::REVIEW_ANOMALIES) !== [] ? PunchStatus::Flagged : PunchStatus::Accepted;
 
         try {
-            $punch = $this->chain->transaction(function () use ($employee, $employment, $device, $user, $input, $now, $tz, $localDate, $anomalies, $status, $geo) {
+            $punch = $this->chain->transaction(function () use ($employee, $employment, $device, $user, $input, $now, $tz, $localDate, $anomalies, $status, $geo, $policy) {
                 $link = $this->chain->next($employee->organization_id, Punch::class);
+                $faceVerificationId = $this->consumeFaceVerification($employee, $input, $policy, $now);
 
                 $punch = new Punch([
                     'uuid' => (string) Str::uuid7(),
@@ -133,7 +167,7 @@ final class PunchRecorder
                     'local_date' => $localDate,
                     'auth_method' => $input->authMethod,
                     'signature_valid' => $device !== null,
-                    'face_verification_id' => $input->faceVerificationId,
+                    'face_verification_id' => $faceVerificationId,
                     'captured_offline' => $input->capturedOffline,
                     'status' => $status,
                     'anomalies' => $anomalies,
@@ -153,10 +187,6 @@ final class PunchRecorder
                 $punch->hash = $this->chain->hash($link['previous_hash'], HashChain::punchPayload($punch));
                 $punch->save();
 
-                if ($input->faceVerificationId !== null) {
-                    FaceVerification::query()->where('uuid', $input->faceVerificationId)->whereNull('consumed_at')->update(['consumed_at' => $now]);
-                }
-
                 return $punch;
             });
         } catch (UniqueConstraintViolationException) {
@@ -171,9 +201,27 @@ final class PunchRecorder
         // Diferencia > 10 min entre hora del dispositivo y del servidor ⇒ alerta en Cumplimiento.
         $this->clockSkew->evaluate($punch);
 
+        try {
+            $this->documents->afterRecorded($punch, $documents);
+        } catch (Throwable $e) {
+            // El marcaje ya quedó registrado: una falla de la alerta no debe perderlo.
+            report($e);
+        }
+
         PunchRecorded::dispatch($punch);
 
         return ['punch' => $punch, 'duplicate' => false];
+    }
+
+    /**
+     * Marcaje sin conexión cuya hora del dispositivo es anterior a la recepción en el
+     * servidor (con la tolerancia de reloj de la política): el hecho ya ocurrió.
+     */
+    private function capturedBeforeReception(PunchInput $input, CarbonImmutable $now, AttendancePolicy $policy): bool
+    {
+        return $input->capturedOffline
+            && $input->deviceTime !== null
+            && $input->deviceTime->lte($now->addSeconds((int) $policy->max_clock_skew_seconds));
     }
 
     private function assertAuthentication(User $user, Employee $employee, PunchInput $input, ?Device $device, AttendancePolicy $policy): void
@@ -248,6 +296,33 @@ final class PunchRecorder
                 throw AttendanceException::policyViolation('Se requiere una verificación facial vigente para marcar.');
             }
         }
+    }
+
+    /**
+     * Consume la verificación facial dentro de la transacción del marcaje (un solo uso real).
+     * Sólo se consume la del propio colaborador, coincidente y vigente. Si la política la
+     * exige y ya no está disponible (p. ej. dos marcajes concurrentes con la misma
+     * verificación), el marcaje se rechaza y la transacción se revierte.
+     */
+    private function consumeFaceVerification(Employee $employee, PunchInput $input, AttendancePolicy $policy, CarbonImmutable $now): ?string
+    {
+        if ($input->faceVerificationId === null) {
+            return null;
+        }
+
+        $consumed = FaceVerification::query()
+            ->where('uuid', $input->faceVerificationId)
+            ->where('employee_id', $employee->id)
+            ->where('result', 'match')
+            ->whereNull('consumed_at')
+            ->where('expires_at', '>', $now)
+            ->update(['consumed_at' => $now]);
+
+        if ($consumed === 0 && $policy->face_verification_required) {
+            throw AttendanceException::policyViolation('Se requiere una verificación facial vigente para marcar.');
+        }
+
+        return $consumed > 0 ? $input->faceVerificationId : null;
     }
 
     private function consumeChallenge(Device $device, string $nonce): void

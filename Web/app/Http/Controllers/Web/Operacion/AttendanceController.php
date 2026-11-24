@@ -54,6 +54,7 @@ final class AttendanceController extends Controller
 
         $props = [
             'tab' => $tab,
+            'can_export' => $user->can('punches.export'),
             'filters' => [
                 'search' => $filters['search'] ?? '',
                 'branch_id' => isset($filters['branch_id']) ? (string) $filters['branch_id'] : null,
@@ -147,8 +148,8 @@ final class AttendanceController extends Controller
     }
 
     /**
-     * Exportación CSV de los marcajes originales (sólo lectura, todos los roles con
-     * `punches.view`). Respeta alcance y filtros; queda en bitácora.
+     * Exportación CSV de los marcajes originales (sólo lectura, roles con
+     * `punches.export`: incluye coordenadas). Respeta alcance y filtros; queda en bitácora.
      */
     public function exportPunches(ListFiltersRequest $request, AuditLogger $audit): StreamedResponse
     {

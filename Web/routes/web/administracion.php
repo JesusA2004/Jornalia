@@ -17,6 +17,7 @@ use App\Http\Controllers\Web\Admin\LegalVersionController;
 use App\Http\Controllers\Web\Admin\OrganizationController;
 use App\Http\Controllers\Web\Admin\OrganizationSetupController;
 use App\Http\Controllers\Web\Admin\OrganizationStructureController;
+use App\Http\Controllers\Web\Admin\PayrollSettingsController;
 use App\Http\Controllers\Web\Admin\PlatformSettingsController;
 use App\Http\Controllers\Web\Admin\PolicyDocumentController;
 use App\Http\Controllers\Web\Admin\RoleController;
@@ -166,6 +167,7 @@ Route::prefix('configuracion')->name('configuracion.')->group(function () {
         Route::get('documentos/{policyDocument}/pdf', [PolicyDocumentController::class, 'pdf'])->whereNumber('policyDocument')->withTrashed()->name('documents.pdf');
         Route::get('ubicacion', [PlatformSettingsController::class, 'location'])->name('location');
         Route::get('sistema', [PlatformSettingsController::class, 'system'])->name('system');
+        Route::get('nomina', [PayrollSettingsController::class, 'edit'])->name('payroll');
     });
 
     Route::get('normativa', [LegalVersionController::class, 'index'])->middleware('can:settings.legal')->name('legal');
@@ -181,6 +183,9 @@ Route::prefix('configuracion')->name('configuracion.')->group(function () {
         Route::post('incidencias/{incidenceType}/desactivar', [IncidenceTypeController::class, 'deactivate'])->whereNumber('incidenceType')->name('incidences.deactivate');
         Route::post('incidencias/{incidenceType}/reactivar', [IncidenceTypeController::class, 'restore'])->whereNumber('incidenceType')->withTrashed()->name('incidences.restore');
         Route::put('incidencias/rectificaciones', [IncidenceTypeController::class, 'updateRectifications'])->name('incidences.rectifications');
+        // Nómina (RH): claves y columnas NOI y pausa de comida, con bitácora.
+        Route::put('nomina/noi', [PayrollSettingsController::class, 'updateNoi'])->name('payroll.noi');
+        Route::put('nomina/comida', [PayrollSettingsController::class, 'updateMealPause'])->name('payroll.meal');
     });
     Route::post('incidencias/people/sincronizar', [IncidenceTypeController::class, 'syncPeople'])
         ->middleware(['can:integrations.sync', 'throttle:6,1'])->name('incidences.people');

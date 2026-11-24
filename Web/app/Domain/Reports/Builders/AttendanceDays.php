@@ -7,6 +7,7 @@ use App\Domain\Attendance\EffectiveEvent;
 use App\Domain\Attendance\EffectiveTimeline;
 use App\Domain\Attendance\PunchOrigin;
 use App\Domain\Attendance\WorkdayCalculator;
+use App\Domain\Reports\MealPause;
 use App\Domain\Reports\ReportParameters;
 use App\Domain\Reports\Support\ReportFormat;
 use App\Enums\ApprovalStatus;
@@ -152,11 +153,14 @@ final class AttendanceDays
 
         $holidays = Holiday::query()->withoutGlobalScopes()->whereBetween('date', [$fromDate, $toDate])
             ->where('is_mandatory_rest', true)
-            ->where(fn ($q) => $q->whereNull('organization_id')->orWhere('organization_id', $chunk->first()?->organization_id))
+            ->effectiveFor($chunk->first()?->organization_id)
             ->orderByRaw('organization_id IS NULL')->get()
             ->groupBy(fn (Holiday $h) => $h->date->toDateString());
 
-        return compact('summaries', 'employments', 'incidences', 'vacations', 'rectifications', 'holidays');
+        // Pausa de comida definida por RH para la organización (fuente única, MealPause).
+        $mealPause = MealPause::current($chunk->first()?->organization_id);
+
+        return compact('summaries', 'employments', 'incidences', 'vacations', 'rectifications', 'holidays', 'mealPause');
     }
 
     /**
@@ -262,7 +266,7 @@ final class AttendanceDays
 
         // Pausas y origen a partir de los eventos reconocidos del día. El sistema
         // registra pausas (inicio/fin de descanso); cuál pausa del día es la comida
-        // lo define la organización (`reports.meal_pause`, p. ej. 2 = segunda pausa).
+        // lo define RH por organización (MealPause, ajuste `reports.meal_pause`; p. ej. 2 = segunda pausa).
         // Sin esa definición, las pausas se reportan como descanso y comida queda vacía.
         $pauses = [];
         $origins = [];
@@ -287,7 +291,7 @@ final class AttendanceDays
                 $pauses[] = [$open, null];
             }
         }
-        $mealPause = (int) config('reports.meal_pause', 0);
+        $mealPause = (int) ($ctx['mealPause'] ?? 0);
         $meal = $mealPause > 0 ? ($pauses[$mealPause - 1] ?? null) : null;
         $rest = array_values(array_filter($pauses, fn ($pause, $i) => $i !== $mealPause - 1, ARRAY_FILTER_USE_BOTH));
         [$breakStart, $breakEnd] = $rest[0] ?? [null, null];

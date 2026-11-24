@@ -21,6 +21,7 @@ import {
     StatusBadge,
 } from '@/components/app';
 import { Button } from '@/components/ui/button';
+import { incidenceLegendKey, legendTone } from '@/lib/attendance-status';
 import { formatDate } from '@/lib/format';
 import type { HelpStep, KeyValueItem } from '@/types';
 import type { IncidenceShowProps } from '@/types/operacion';
@@ -136,6 +137,13 @@ const help: HelpStep[] = [
         back-label="Bandeja"
     >
         <template #meta>
+            <StatusBadge
+                v-if="i.category_label"
+                :status="i.category"
+                :label="i.category_label"
+                :tone="legendTone(incidenceLegendKey(i.category))"
+                dot
+            />
             <StatusBadge
                 :status="i.status"
                 :label="i.status_label"

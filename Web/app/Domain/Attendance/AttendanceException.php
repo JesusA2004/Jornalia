@@ -2,6 +2,7 @@
 
 namespace App\Domain\Attendance;
 
+use App\Domain\Signatures\PunchDocumentsGate;
 use RuntimeException;
 
 /**
@@ -14,8 +15,22 @@ final class AttendanceException extends RuntimeException
         public readonly string $errorCode,
         string $message,
         public readonly int $status = 422,
+        /** Código equivalente para apps instaladas que no conocen `errorCode` (`legacy_code` del contrato). */
+        public readonly ?string $legacyCode = null,
     ) {
         parent::__construct($message);
+    }
+
+    /**
+     * Convenio de registro o aviso de privacidad vigente sin firmar en un marcaje en
+     * línea (PunchDocumentsGate). HTTP 409; `legacy_code = policy_violation` para apps
+     * anteriores, que muestran el mensaje del servidor.
+     *
+     * @param  list<string>  $pending  códigos de documento pendientes
+     */
+    public static function documentsPending(array $pending): self
+    {
+        return new self('documents_pending', PunchDocumentsGate::message($pending), 409, 'policy_violation');
     }
 
     public static function noEmployment(): self
