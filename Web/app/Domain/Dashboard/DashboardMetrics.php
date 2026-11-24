@@ -2,11 +2,16 @@
 
 namespace App\Domain\Dashboard;
 
+use App\Domain\Attendance\Omissions;
+use App\Domain\Legal\LegalFramework;
+use App\Domain\Legal\WeeklyOvertime;
+use App\Domain\Legal\WeeklyOvertimeCalculator;
 use App\Domain\Scheduling\ScheduleResolver;
 use App\Domain\Security\AccessScope;
 use App\Enums\ApprovalStatus;
 use App\Enums\PunchStatus;
 use App\Enums\PunchType;
+use App\Enums\RectificationStage;
 use App\Enums\WorkdayStatus;
 use App\Models\Branch;
 use App\Models\ComplianceAlert;
@@ -45,6 +50,8 @@ final class DashboardMetrics
         private readonly AccessScope $scope,
         private readonly CurrentOrganization $current,
         private readonly ScheduleResolver $schedules,
+        private readonly WeeklyOvertimeCalculator $weekly,
+        private readonly LegalFramework $law,
     ) {}
 
     /**
@@ -66,7 +73,7 @@ final class DashboardMetrics
             'totals' => $current,
             'previous' => $previous,
             'deltas' => $this->deltas($current, $previous),
-            'overtime' => $this->overtime($user, $from, $to, $branchId),
+            'overtime' => $this->overtime($user, $to, $branchId),
             'pending' => $this->pending($user, $branchId),
             'compliance' => $this->compliance($user, $branchId),
             'branches' => $this->branches($user, $from, $to, $branchId),
@@ -75,7 +82,7 @@ final class DashboardMetrics
     }
 
     /**
-     * @return array{scheduled_days:int, attended_days:int, punctual_days:int, late_days:int, absent_days:int, incomplete_days:int, worked_minutes:int, excess_minutes:int, late_minutes:int, night_minutes:int, after_cutoff_minutes:int, auto_clock_outs:int, punctuality_rate:float|null, attendance_rate:float|null, flagged_punches:int, offline_punches:int, punches:int}
+     * @return array{scheduled_days:int, attended_days:int, punctual_days:int, late_days:int, absent_days:int, incomplete_days:int, omission_days:int, worked_minutes:int, excess_minutes:int, late_minutes:int, night_minutes:int, punctuality_rate:float|null, attendance_rate:float|null, flagged_punches:int, offline_punches:int, punches:int, to_sign:int}
      */
     public function aggregate(User $user, CarbonImmutable $from, CarbonImmutable $to, ?int $branchId): array
     {
@@ -94,14 +101,13 @@ final class DashboardMetrics
             ->selectRaw('COALESCE(SUM(excess_minutes),0) as excess_minutes')
             ->selectRaw('COALESCE(SUM(late_minutes),0) as late_minutes')
             ->selectRaw('COALESCE(SUM(night_minutes),0) as night_minutes')
-            ->selectRaw('COALESCE(SUM(after_cutoff_minutes),0) as after_cutoff_minutes')
             ->first();
+        $omissionDays = Omissions::only($this->summaries($user, $from, $to, $branchId))->count();
 
         $punches = $this->punches($user, $from, $to, $branchId)->toBase()
             ->selectRaw('COUNT(*) as total')
             ->selectRaw("SUM(CASE WHEN status = '".PunchStatus::Flagged->value."' THEN 1 ELSE 0 END) as flagged")
             ->selectRaw('SUM(CASE WHEN captured_offline = 1 THEN 1 ELSE 0 END) as offline')
-            ->selectRaw("SUM(CASE WHEN source = 'system' THEN 1 ELSE 0 END) as auto_out")
             ->first();
 
         $attendedDays = (int) ($row->attended_days ?? 0);
@@ -116,17 +122,19 @@ final class DashboardMetrics
             'late_days' => (int) ($row->late_days ?? 0),
             'absent_days' => $absent,
             'incomplete_days' => (int) ($row->incomplete_days ?? 0),
+            'omission_days' => $omissionDays,
             'worked_minutes' => (int) ($row->worked_minutes ?? 0),
             'excess_minutes' => (int) ($row->excess_minutes ?? 0),
             'late_minutes' => (int) ($row->late_minutes ?? 0),
             'night_minutes' => (int) ($row->night_minutes ?? 0),
-            'after_cutoff_minutes' => (int) ($row->after_cutoff_minutes ?? 0),
-            'auto_clock_outs' => (int) ($punches->auto_out ?? 0),
             'punctuality_rate' => $attendedDays > 0 ? round($punctual * 100 / $attendedDays, 1) : null,
             'attendance_rate' => $scheduledDays > 0 ? round(($scheduledDays - $absent) * 100 / $scheduledDays, 1) : null,
             'punches' => (int) ($punches->total ?? 0),
             'flagged_punches' => (int) ($punches->flagged ?? 0),
+            // «Marcajes sin conexión»: capturados offline y sincronizados con hora del dispositivo y del servidor.
             'offline_punches' => (int) ($punches->offline ?? 0),
+            // «Rectificaciones por firmar»: autorizadas por el jefe, esperan la firma del colaborador.
+            'to_sign' => $this->rectifications($user, $branchId, RectificationStage::ToSign),
         ];
     }
 
@@ -144,7 +152,7 @@ final class DashboardMetrics
         $employees = $this->activeEmployees($user, $branchId);
         $employeeIds = (clone $employees)->pluck('employees.id')->all();
 
-        $key = sprintf('dashboard:today:%d:%d:%s:%s:%s', $this->current->id(), $user->id, $branchId ?? 'all', $date, md5(implode(',', $employeeIds)));
+        $key = sprintf('dashboard:today:v2:%d:%d:%s:%s:%s', $this->current->id(), $user->id, $branchId ?? 'all', $date, md5(implode(',', $employeeIds)));
         $scheduled = Cache::remember($key, 300, function () use ($employeeIds, $date) {
             $rows = [];
             Employee::query()->whereIn('id', $employeeIds)->chunkById(200, function ($chunk) use (&$rows, $date) {
@@ -155,7 +163,12 @@ final class DashboardMetrics
                     }
                     $shift = $this->schedules->shiftFor($employee, $date, $assignment);
                     if ($shift !== null) {
-                        $rows[$employee->id] = ['start' => $shift->startsAt->toIso8601String(), 'tolerance' => $shift->toleranceMinutes];
+                        $rows[$employee->id] = [
+                            'start' => $shift->startsAt->toIso8601String(),
+                            'end' => $shift->endsAt->toIso8601String(),
+                            'tolerance' => $shift->toleranceMinutes,
+                            'branch_id' => $assignment->branch_id,
+                        ];
                     }
                 }
             });
@@ -182,8 +195,19 @@ final class DashboardMetrics
 
         $absentNow = 0;
         $pendingArrival = 0;
+        $missingOut = 0;
+        $byBranch = [];
         foreach ($scheduled as $employeeId => $s) {
+            $branch = (int) ($s['branch_id'] ?? 0);
+            $byBranch[$branch] ??= ['scheduled' => 0, 'present' => 0];
+            $byBranch[$branch]['scheduled']++;
             if (isset($present[$employeeId])) {
+                $byBranch[$branch]['present']++;
+                // «Sin salida»: jornada abierta cuyo horario ya terminó (omisión en curso).
+                if (($last[$employeeId] ?? null) !== PunchType::ClockOut && $now->greaterThan(CarbonImmutable::parse($s['end']))) {
+                    $missingOut++;
+                }
+
                 continue;
             }
             $deadline = CarbonImmutable::parse($s['start'])->addMinutes((int) $s['tolerance']);
@@ -202,44 +226,81 @@ final class DashboardMetrics
             'pending_arrival' => $pendingArrival,
             'late' => $lateToday,
             'open_sessions' => $openSessions,
+            'missing_out' => $missingOut,
             'on_break' => $onBreak,
             'flagged_punches' => $punchesToday->where('status', PunchStatus::Flagged)->count(),
             'punches' => $punchesToday->count(),
+            'branches' => $this->branchesToday($byBranch),
         ];
     }
 
     /**
-     * @return array{recorded_minutes:int, authorized_minutes:int, double_minutes:int, triple_minutes:int, over_limit_minutes:int, pending:int, records:int}
+     * «Asistencia por sucursal»: presentes contra programados de hoy (datos reales).
+     *
+     * @param  array<int, array{scheduled:int, present:int}>  $byBranch
+     * @return list<array{branch_id:int|null, name:string, scheduled:int, present:int, rate:float|null}>
      */
-    private function overtime(User $user, CarbonImmutable $from, CarbonImmutable $to, ?int $branchId): array
+    private function branchesToday(array $byBranch): array
     {
-        $q = OvertimeRecord::query()->whereBetween('date', [$from->toDateString(), $to->toDateString()]);
+        $names = Branch::query()->whereIn('id', array_filter(array_keys($byBranch)))->pluck('name', 'id');
+        $rows = [];
+        foreach ($byBranch as $branchId => $c) {
+            $rows[] = [
+                'branch_id' => $branchId ?: null,
+                'name' => $branchId ? (string) ($names[$branchId] ?? 'Sucursal') : 'Sin sucursal',
+                'scheduled' => $c['scheduled'],
+                'present' => $c['present'],
+                'rate' => $c['scheduled'] > 0 ? round($c['present'] * 100 / $c['scheduled'], 1) : null,
+            ];
+        }
+        usort($rows, fn ($a, $b) => strcmp($a['name'], $b['name']));
+
+        return $rows;
+    }
+
+    /**
+     * Horas extra de la semana que contiene `$day`, calculadas por colaborador y
+     * por semana con `WeeklyOvertimeCalculator` (no por suma global de la empresa).
+     *
+     * @return array{week_start:string, week_end:string, recorded_minutes:int, authorized_minutes:int, justified_minutes:int, pending_minutes:int, double_minutes:int, triple_minutes:int, over_limit_minutes:int, pending:int, employees:int, minors:int, legal_label:string, legal_verified:bool}
+     */
+    private function overtime(User $user, CarbonImmutable $day, ?int $branchId): array
+    {
+        $start = WeeklyOvertimeCalculator::weekStart($day);
+        $end = $start->addDays(6);
+
+        $q = OvertimeRecord::query()->whereBetween('date', [$start->toDateString(), $end->toDateString()]);
         $this->scope->scopeByEmployee($q, $user);
         $this->branch($q, $branchId);
+        $ids = (clone $q)->distinct()->pluck('employee_id');
+        $pending = (clone $q)->where('status', ApprovalStatus::Pending)->where('recorded_excess_minutes', '>', 0)->count();
 
-        $row = $q->toBase()
-            ->selectRaw('COUNT(*) as records')
-            ->selectRaw('COALESCE(SUM(recorded_excess_minutes),0) as recorded')
-            ->selectRaw('COALESCE(SUM(authorized_minutes),0) as authorized')
-            ->selectRaw('COALESCE(SUM(double_minutes),0) as dbl')
-            ->selectRaw('COALESCE(SUM(triple_minutes),0) as tpl')
-            ->selectRaw('COALESCE(SUM(over_limit_minutes),0) as over_limit')
-            ->selectRaw("SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending")
-            ->first();
+        $weeks = $this->weekly->forEmployees(Employee::query()->whereIn('id', $ids->all() ?: [0])->get(), $start);
+        $sum = fn (string $key): int => (int) array_sum(array_map(fn (WeeklyOvertime $w) => $w->totals()[$key], $weeks));
+        $legal = $this->law->verificationFor($start);
 
         return [
-            'records' => (int) ($row->records ?? 0),
-            'recorded_minutes' => (int) ($row->recorded ?? 0),
-            'authorized_minutes' => (int) ($row->authorized ?? 0),
-            'double_minutes' => (int) ($row->dbl ?? 0),
-            'triple_minutes' => (int) ($row->tpl ?? 0),
-            'over_limit_minutes' => (int) ($row->over_limit ?? 0),
-            'pending' => (int) ($row->pending ?? 0),
+            'week_start' => $start->toDateString(),
+            'week_end' => $end->toDateString(),
+            'recorded_minutes' => $sum('recorded_minutes'),
+            'authorized_minutes' => $sum('authorized_minutes'),
+            'justified_minutes' => $sum('justified_minutes'),
+            'pending_minutes' => $sum('pending_minutes'),
+            'double_minutes' => $sum('double_minutes'),
+            'triple_minutes' => $sum('triple_minutes'),
+            'over_limit_minutes' => $sum('over_limit_minutes'),
+            'pending' => $pending,
+            'employees' => count(array_filter($weeks, fn (WeeklyOvertime $w) => $w->totals()['recorded_minutes'] > 0)),
+            'minors' => count(array_filter($weeks, fn (WeeklyOvertime $w) => $w->minor === true && $w->totals()['recorded_minutes'] > 0)),
+            'legal_label' => (string) $legal['label'],
+            'legal_verified' => (bool) $legal['verified'],
         ];
     }
 
     /**
-     * @return array{incidences:int, rectifications:int, vacations:int, overtime:int}
+     * Bandeja «Por resolver» del alcance del usuario.
+     *
+     * @return array{rectifications:int, signatures:int, to_validate:int, omissions:int, incidences:int, vacations:int, overtime:int}
      */
     private function pending(User $user, ?int $branchId): array
     {
@@ -252,12 +313,33 @@ final class DashboardMetrics
             return $q->count();
         };
 
+        $omissions = WorkdaySummary::query();
+        $this->scope->scopeByEmployee($omissions, $user);
+        $this->branch($omissions, $branchId);
+
+        $overtime = OvertimeRecord::query()->where('status', ApprovalStatus::Pending)->where('recorded_excess_minutes', '>', 0);
+        $this->scope->scopeByEmployee($overtime, $user);
+        $this->branch($overtime, $branchId);
+
         return [
+            'rectifications' => $this->rectifications($user, $branchId, RectificationStage::ToAuthorize),
+            // Firmas del colaborador pendientes (rectificaciones autorizadas sin firma).
+            'signatures' => $this->rectifications($user, $branchId, RectificationStage::ToSign),
+            'to_validate' => $this->rectifications($user, $branchId, RectificationStage::ToValidate),
+            'omissions' => Omissions::unrectified($omissions)->count(),
             'incidences' => $count(Incidence::class),
-            'rectifications' => $count(RectificationRequest::class),
             'vacations' => $count(VacationRequest::class),
-            'overtime' => $count(OvertimeRecord::class),
+            'overtime' => $overtime->count(),
         ];
+    }
+
+    private function rectifications(User $user, ?int $branchId, RectificationStage $stage): int
+    {
+        $q = RectificationRequest::query()->where('stage', $stage);
+        $this->scope->scopeByEmployee($q, $user);
+        $this->branch($q, $branchId);
+
+        return $q->count();
     }
 
     /**

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
-import { AlertOctagon, Check, Timer, X } from '@lucide/vue';
+import { AlertOctagon, Check, MessageSquareText, Timer } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import OvertimeController from '@/actions/App/Http/Controllers/Web/Operacion/OvertimeController';
 import FormField from '@/components/app/FormField.vue';
@@ -22,8 +22,9 @@ import { cn } from '@/lib/utils';
 import type { EmployeeCard, OvertimeRecordCell } from '@/types/operacion';
 
 /**
- * Autorización de tiempo extraordinario de un día. Los minutos autorizados no
- * pueden superar el excedente registrado; el excedente nunca se oculta.
+ * Autorización o justificación del tiempo extra de un día. Los minutos
+ * autorizados no superan lo registrado; el tiempo nunca se oculta. A menores de
+ * 18 años sólo se les puede justificar (el backend también lo bloquea).
  */
 const props = defineProps<{
     record: OvertimeRecordCell | null;
@@ -43,7 +44,7 @@ watch(
     () => props.record,
     (r) => {
         if (r) {
-            mode.value = 'approve';
+            mode.value = r.can_authorize ? 'approve' : 'reject';
             form.clearErrors();
             localErrors.value = {};
             form.authorized_minutes = String(
@@ -164,7 +165,18 @@ function submit(): void {
                     </div>
                 </div>
                 <p
-                    v-if="record.over_limit_minutes > 0"
+                    v-if="!record.can_authorize"
+                    class="flex items-start gap-2 rounded-xl border border-danger/30 bg-danger-soft/60 p-3 text-xs text-danger-soft-foreground"
+                >
+                    <AlertOctagon
+                        class="mt-0.5 size-4 shrink-0"
+                        aria-hidden="true"
+                    />
+                    Menor de 18 años: tiempo extra prohibido. Sólo puede
+                    justificarse.
+                </p>
+                <p
+                    v-else-if="record.over_limit_minutes > 0"
                     class="flex items-start gap-2 rounded-xl border border-danger/30 bg-danger-soft/60 p-3 text-xs text-danger-soft-foreground"
                 >
                     <AlertOctagon
@@ -184,9 +196,10 @@ function submit(): void {
                         type="button"
                         role="radio"
                         :aria-checked="mode === 'approve'"
+                        :disabled="!record.can_authorize"
                         :class="
                             cn(
-                                'flex items-center justify-center gap-2 rounded-xl border p-2.5 text-sm font-semibold',
+                                'flex items-center justify-center gap-2 rounded-xl border p-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50',
                                 mode === 'approve'
                                     ? 'border-success/40 bg-success-soft text-success-soft-foreground ring-2 ring-success/30'
                                     : 'text-muted-foreground hover:bg-surface-2',
@@ -204,13 +217,14 @@ function submit(): void {
                             cn(
                                 'flex items-center justify-center gap-2 rounded-xl border p-2.5 text-sm font-semibold',
                                 mode === 'reject'
-                                    ? 'border-danger/40 bg-danger-soft text-danger-soft-foreground ring-2 ring-danger/30'
+                                    ? 'border-foreground/30 bg-neutral-soft text-neutral-soft-foreground ring-2 ring-foreground/20'
                                     : 'text-muted-foreground hover:bg-surface-2',
                             )
                         "
                         @click="mode = 'reject'"
                     >
-                        <X class="size-4" aria-hidden="true" /> No autorizar
+                        <MessageSquareText class="size-4" aria-hidden="true" />
+                        Justificar
                     </button>
                 </div>
 
@@ -247,7 +261,11 @@ function submit(): void {
                         v-model="form.justification"
                         rows="3"
                         maxlength="1000"
-                        placeholder="Motivo operativo de la decisión…"
+                        :placeholder="
+                            mode === 'reject'
+                                ? 'Por qué el tiempo no se paga como extra…'
+                                : 'Motivo operativo de la autorización…'
+                        "
                     />
                 </FormField>
             </form>
@@ -259,11 +277,15 @@ function submit(): void {
                 <Button
                     type="submit"
                     form="overtime-form"
-                    :variant="mode === 'reject' ? 'destructive' : 'default'"
+                    :variant="mode === 'reject' ? 'secondary' : 'default'"
                     :disabled="form.processing"
                 >
                     <Spinner v-if="form.processing" />
-                    {{ mode === 'reject' ? 'Registrar rechazo' : 'Autorizar' }}
+                    {{
+                        mode === 'reject'
+                            ? 'Registrar justificación'
+                            : 'Autorizar'
+                    }}
                 </Button>
             </DialogFooter>
         </DialogContent>

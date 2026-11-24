@@ -1,0 +1,6 @@
+# Documentos internos de RH (no se publican en el repositorio)
+docs/cambios/
+
+# Sistema
+.DS_Store
+Thumbs.db

@@ -2,7 +2,6 @@
 import { Link } from '@inertiajs/vue3';
 import {
     Ban,
-    Bot,
     CalendarClock,
     CalendarRange,
     CheckCircle2,
@@ -16,7 +15,9 @@ import {
     MapPin,
     Monitor,
     ShieldAlert,
+    Scale,
     Sparkles,
+    TriangleAlert,
     WifiOff,
 } from '@lucide/vue';
 import { computed } from 'vue';
@@ -38,9 +39,10 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { formatMinutes } from '@/lib/format';
+import { formatDateTime, formatMinutes } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import DayRuler from '@/pages/asistencias/components/DayRuler.vue';
+import { legendDotClass, workdayLegendKey } from '@/lib/attendance-status';
 import {
     approvalTone,
     dayMonthShort,
@@ -106,10 +108,8 @@ function punchItems(p: PunchDetail): KeyValueItem[] {
         },
         {
             key: 'source',
-            label: 'Origen',
-            value:
-                p.source_label +
-                (p.captured_offline ? ' · capturado sin conexión' : ''),
+            label: 'Origen del marcaje',
+            value: p.origin.label,
         },
         { key: 'location', label: 'Ubicación', value: location },
         {
@@ -125,7 +125,7 @@ function punchItems(p: PunchDetail): KeyValueItem[] {
             key: 'device',
             label: 'Dispositivo',
             value: p.is_system
-                ? 'Sistema (cierre automático)'
+                ? 'Generado por sistema (histórico)'
                 : p.device
                   ? `${p.device.name} · ${p.device.platform}${p.device.model ? ` · ${p.device.model}` : ''}`
                   : p.recorded_by
@@ -136,15 +136,25 @@ function punchItems(p: PunchDetail): KeyValueItem[] {
             key: 'device_time',
             label: 'Hora del dispositivo',
             value: p.device_time
-                ? `${p.clock_skew_seconds ?? 0} s de desfase`
+                ? `${time(p.device_time)} · ${p.clock_skew_seconds ?? 0} s de desfase`
                 : null,
+        },
+        {
+            key: 'synced_at',
+            label: 'Sincronización',
+            value: p.synced_at ? time(p.synced_at) : null,
+        },
+        {
+            key: 'received_at',
+            label: 'Recepción en servidor',
+            value: time(p.received_at ?? p.server_time),
         },
         { key: 'ip', label: 'IP', value: p.ip_address, mono: true },
         {
             key: 'signature',
             label: 'Firma',
             value: p.is_system
-                ? 'No aplica (sistema)'
+                ? 'No aplica (histórico de sistema)'
                 : p.device
                   ? p.signature_valid
                       ? 'Válida'
@@ -168,13 +178,104 @@ function punchItems(p: PunchDetail): KeyValueItem[] {
     ];
 }
 
+const time = (iso: string | null) =>
+    formatDateTime(iso, { format: 'time-seconds', timeZone: tz.value });
+
 const osm = (p: PunchDetail) =>
     `https://www.openstreetmap.org/?mlat=${p.latitude}&mlon=${p.longitude}#map=18/${p.latitude}/${p.longitude}`;
 
-/** Salida automática por política (registrada por el sistema). */
-const autoOut = computed(() => props.day.auto_clock_out);
-const isAuto = (uuid: string | null) =>
-    uuid !== null && uuid === autoOut.value?.punch_uuid;
+const OMISSION_LABEL: Record<string, string> = {
+    missing_clock_out: 'Omisión de salida',
+    missing_clock_in: 'Omisión de entrada',
+};
+
+const statusLabel = computed(() => {
+    if (!props.summary) {
+        return 'Sin calcular';
+    }
+    if (props.summary.has_rectifications) {
+        return 'Rectificada*';
+    }
+
+    return props.summary.omission
+        ? (OMISSION_LABEL[props.summary.omission] ?? props.summary.status_label)
+        : props.summary.status_label;
+});
+
+const statusTone = computed(() =>
+    workdayTone(props.summary?.status, {
+        omission: props.summary?.omission,
+        rectified: props.summary?.has_rectifications,
+    }),
+);
+
+const iso = (value: string | null | undefined) =>
+    formatDateTime(value ?? null, { format: 'time', timeZone: tz.value });
+
+/** Programado vs registrado vs calculado (sin cálculos: todo viene del dominio). */
+const comparison = computed(() => {
+    const s = props.summary;
+    const shift = props.day.shift;
+
+    return [
+        {
+            key: 'scheduled',
+            title: 'Programado',
+            rows: [
+                {
+                    label: 'Horario',
+                    value: shift
+                        ? `${iso(shift.starts_at)} – ${iso(shift.ends_at)}`
+                        : '—',
+                },
+                {
+                    label: 'Descanso / comida',
+                    value: shift ? formatMinutes(shift.break_minutes) : '—',
+                },
+                {
+                    label: 'Jornada',
+                    value: shift ? formatMinutes(shift.scheduled_minutes) : '—',
+                },
+            ],
+        },
+        {
+            key: 'registered',
+            title: 'Registrado',
+            rows: [
+                {
+                    label: 'Entrada',
+                    value: s?.first_in ? iso(s.first_in) : 'Sin entrada',
+                },
+                {
+                    label: 'Salida',
+                    value: s?.last_out ? iso(s.last_out) : 'Sin salida',
+                },
+                {
+                    label: 'Descanso / comida',
+                    value: formatMinutes(s?.break_minutes ?? 0),
+                },
+            ],
+        },
+        {
+            key: 'computed',
+            title: 'Calculado',
+            rows: [
+                {
+                    label: 'Trabajado',
+                    value: formatMinutes(s?.worked_minutes ?? 0),
+                },
+                {
+                    label: 'Retardo',
+                    value: formatMinutes(s?.late_minutes ?? 0),
+                },
+                {
+                    label: 'Tiempo extra',
+                    value: formatMinutes(s?.excess_minutes ?? 0),
+                },
+            ],
+        },
+    ];
+});
 
 const adjustmentItems = computed<TimelineItem[]>(() =>
     props.day.adjustments.map((a) => ({
@@ -198,24 +299,12 @@ const adjustmentItems = computed<TimelineItem[]>(() =>
 const recognizedItems = computed<TimelineItem[]>(() =>
     props.day.recognized.map((e, i) => ({
         id: `${e.time}-${i}`,
-        title: isAuto(e.punch_uuid)
-            ? 'Salida automática por política'
-            : e.type_label,
-        description: isAuto(e.punch_uuid)
-            ? 'Hora límite aplicada por el sistema'
-            : e.origin_label,
+        title: e.type_label,
+        description: e.origin_label,
         at: e.time,
         timezone: tz.value,
-        tone: isAuto(e.punch_uuid)
-            ? 'info'
-            : e.origin === 'original'
-              ? 'success'
-              : 'info',
-        icon: isAuto(e.punch_uuid)
-            ? Bot
-            : e.origin === 'original'
-              ? CheckCircle2
-              : Sparkles,
+        tone: e.origin === 'original' ? 'success' : 'info',
+        icon: e.origin === 'original' ? CheckCircle2 : Sparkles,
     })),
 );
 
@@ -227,13 +316,18 @@ const help = [
     },
     {
         title: 'Rectificación',
-        text: 'Ajustes aprobados que agregan, reemplazan o excluyen un marcaje del cálculo, sin borrarlo.',
+        text: 'Ajuste firmado por el colaborador que agrega, reemplaza o excluye un marcaje, sin borrarlo.',
         icon: FilePenLine,
     },
     {
         title: 'Reconocido',
         text: 'La secuencia efectiva que se usa para calcular la jornada.',
         icon: CheckCircle2,
+    },
+    {
+        title: 'Omisión de checada',
+        text: 'Falta la entrada o la salida. El sistema no la completa; se corrige con rectificación firmada.',
+        icon: TriangleAlert,
     },
 ];
 </script>
@@ -312,16 +406,10 @@ const help = [
             }}</span>
             <span
                 :class="
-                    cn('h-1.5 w-6 rounded-full', {
-                        'bg-success': workdayTone(d.status) === 'success',
-                        'bg-warning': workdayTone(d.status) === 'warning',
-                        'bg-danger': workdayTone(d.status) === 'danger',
-                        'bg-info': workdayTone(d.status) === 'info',
-                        'bg-brand': workdayTone(d.status) === 'brand',
-                        'bg-border': ['neutral', 'primary'].includes(
-                            workdayTone(d.status),
-                        ),
-                    })
+                    cn(
+                        'h-1.5 w-6 rounded-full',
+                        legendDotClass(workdayLegendKey(d.status)),
+                    )
                 "
                 :title="d.status_label"
             />
@@ -331,9 +419,17 @@ const help = [
     <div class="mb-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <KpiTile
             label="Estado"
-            :value="summary?.status_label ?? 'Sin calcular'"
+            :value="statusLabel"
             :icon="CalendarClock"
-            :tone="workdayTone(summary?.status)"
+            :tone="statusTone"
+            :href="summary?.rectification?.url ?? undefined"
+            :hint="
+                summary?.has_rectifications
+                    ? 'Ajuste firmado por el colaborador'
+                    : summary?.omission
+                      ? 'Requiere rectificación firmada'
+                      : undefined
+            "
         />
         <KpiTile
             label="Trabajado"
@@ -358,14 +454,12 @@ const help = [
             tone="warning"
         />
         <KpiTile
-            label="Excedente"
+            label="Tiempo extra"
             :value="formatMinutes(summary?.excess_minutes ?? 0)"
             :hint="
-                summary?.after_cutoff_minutes
-                    ? `Después del cierre (no reconocido) ${formatMinutes(summary.after_cutoff_minutes)}`
-                    : summary?.night_minutes
-                      ? `Nocturno ${formatMinutes(summary.night_minutes)}`
-                      : undefined
+                summary?.night_minutes
+                    ? `Nocturno ${formatMinutes(summary.night_minutes)}`
+                    : undefined
             "
             :icon="Sparkles"
             tone="info"
@@ -390,68 +484,9 @@ const help = [
                 <span class="flex items-center gap-1"
                     ><span class="size-2 rounded-full bg-danger" />Salida</span
                 >
-                <span v-if="autoOut" class="flex items-center gap-1"
-                    ><span
-                        class="size-2.5 rounded-sm border-2 border-dashed border-info"
-                    />Automática</span
-                >
             </div>
         </template>
         <DayRuler :day="day" />
-        <div
-            v-if="autoOut"
-            class="mt-4 flex flex-col gap-3 rounded-xl border border-dashed border-info/50 bg-info-soft/40 p-4 sm:flex-row sm:items-center"
-        >
-            <span
-                class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-info-soft text-info-soft-foreground"
-            >
-                <Bot class="size-4" aria-hidden="true" />
-            </span>
-            <div class="min-w-0 flex-1 text-sm">
-                <p class="font-medium">
-                    Salida automática por política (<DateTimeDisplay
-                        :value="autoOut.cutoff_at"
-                        :timezone="tz"
-                        format="time"
-                    />)
-                </p>
-                <p class="text-xs text-muted-foreground">
-                    Registrada por el sistema a las
-                    <DateTimeDisplay
-                        :value="autoOut.registered_at"
-                        :timezone="tz"
-                        format="time"
-                    />
-                    <template v-if="autoOut.real_out_at">
-                        · Salida real del colaborador
-                        <DateTimeDisplay
-                            :value="autoOut.real_out_at"
-                            :timezone="tz"
-                            format="time"
-                        />
-                    </template>
-                </p>
-            </div>
-            <div
-                v-if="
-                    (summary?.after_cutoff_minutes ??
-                        autoOut.after_cutoff_minutes) > 0
-                "
-                class="rounded-lg bg-card px-3 py-2 text-right ring-1 ring-border"
-            >
-                <p class="font-display numeric text-lg font-bold">
-                    {{
-                        formatMinutes(
-                            summary?.after_cutoff_minutes ||
-                                autoOut.after_cutoff_minutes,
-                        )
-                    }}
-                </p>
-                <p class="text-[0.7rem] text-muted-foreground">
-                    después del cierre (no reconocidos)
-                </p>
-            </div>
-        </div>
         <div
             v-if="summary && summary.anomalies.length > 0"
             class="mt-4 flex flex-wrap gap-1.5"
@@ -462,6 +497,37 @@ const help = [
                 class="rounded-md bg-warning-soft px-2 py-0.5 text-xs text-warning-soft-foreground"
                 >{{ a.label }}</span
             >
+        </div>
+    </SectionCard>
+
+    <!-- Programado vs registrado vs calculado -->
+    <SectionCard
+        title="Programado · registrado · calculado"
+        :icon="Scale"
+        class="mb-6"
+    >
+        <div class="grid gap-4 sm:grid-cols-3">
+            <div
+                v-for="col in comparison"
+                :key="col.key"
+                class="rounded-xl border bg-surface-2/40 p-3"
+            >
+                <p
+                    class="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+                >
+                    {{ col.title }}
+                </p>
+                <dl class="flex flex-col gap-1.5 text-sm">
+                    <div
+                        v-for="r in col.rows"
+                        :key="r.label"
+                        class="flex items-baseline justify-between gap-3"
+                    >
+                        <dt class="text-muted-foreground">{{ r.label }}</dt>
+                        <dd class="numeric font-medium">{{ r.value }}</dd>
+                    </div>
+                </dl>
+            </div>
         </div>
     </SectionCard>
 
@@ -570,7 +636,7 @@ const help = [
                         p.voided && 'border-dashed opacity-80',
                         p.status === 'flagged' && 'border-warning/40',
                         p.is_system &&
-                            'border-dashed border-info/50 bg-info-soft/30',
+                            'border-dashed border-warning/50 bg-warning-soft/20',
                     )
                 "
             >
@@ -582,7 +648,7 @@ const help = [
                             cn(
                                 'flex size-9 shrink-0 items-center justify-center rounded-xl',
                                 p.is_system
-                                    ? 'bg-info-soft text-info-soft-foreground'
+                                    ? 'bg-warning-soft text-warning-soft-foreground'
                                     : p.type === 'clock_in'
                                       ? 'bg-success-soft text-success-soft-foreground'
                                       : p.type === 'clock_out'
@@ -591,28 +657,10 @@ const help = [
                             )
                         "
                     >
-                        <Bot
-                            v-if="p.is_system"
-                            class="size-4"
-                            aria-hidden="true"
-                        />
-                        <Fingerprint v-else class="size-4" aria-hidden="true" />
+                        <Fingerprint class="size-4" aria-hidden="true" />
                     </span>
                     <div class="min-w-0 flex-1">
                         <p
-                            v-if="p.is_system"
-                            class="flex flex-wrap items-center gap-2 font-medium"
-                        >
-                            Salida automática por política
-                            <DateTimeDisplay
-                                :value="p.recognized_time"
-                                :timezone="tz"
-                                format="time"
-                                class="font-display numeric text-lg font-bold"
-                            />
-                        </p>
-                        <p
-                            v-else
                             class="flex flex-wrap items-center gap-2 font-medium"
                         >
                             {{ p.type_label }}
@@ -623,23 +671,18 @@ const help = [
                                 class="font-display numeric text-lg font-bold"
                             />
                         </p>
-                        <p
-                            v-if="p.is_system"
-                            class="text-xs text-muted-foreground"
-                        >
-                            Registrada por el sistema a las
-                            <DateTimeDisplay
-                                :value="p.server_time"
-                                :timezone="tz"
-                                format="time"
-                            />
-                            · {{ p.auth_method_label }}
-                        </p>
-                        <p v-else class="text-xs text-muted-foreground">
-                            {{ p.source_label }} · {{ p.auth_method_label }}
+                        <p class="text-xs text-muted-foreground">
+                            {{ p.origin.label }} · {{ p.auth_method_label }}
                         </p>
                     </div>
                     <div class="flex flex-wrap items-center gap-1.5">
+                        <Badge
+                            v-if="p.is_system"
+                            variant="outline"
+                            class="gap-1 border-warning/40 text-warning-soft-foreground"
+                        >
+                            No reconocido
+                        </Badge>
                         <Badge
                             v-if="p.voided"
                             variant="outline"

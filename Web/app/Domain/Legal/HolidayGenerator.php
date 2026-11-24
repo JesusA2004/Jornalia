@@ -13,6 +13,8 @@ use Carbon\CarbonImmutable;
 final class HolidayGenerator
 {
     /**
+     * Precarga los días de los años indicados. Devuelve cuántos días nuevos creó.
+     *
      * @param  list<array<string, mixed>>  $rules
      */
     public function generate(array $rules, int $fromYear, int $toYear): int
@@ -24,15 +26,43 @@ final class HolidayGenerator
                 if ($date === null) {
                     continue;
                 }
-                Holiday::query()->updateOrCreate(
-                    ['organization_id' => null, 'work_center_id' => null, 'date' => $date->toDateString(), 'code' => $rule['code']],
-                    ['name' => $rule['name'], 'kind' => 'official', 'is_mandatory_rest' => true, 'legal_basis' => $rule['article'] ?? 'LFT art. 74'],
-                );
+                // Idempotente y respetuoso de la edición de RH: si el día ya existe
+                // (aunque RH lo haya renombrado o dado de baja lógica) no se toca.
+                $exists = Holiday::query()->withTrashed()
+                    ->whereNull('organization_id')->whereNull('work_center_id')
+                    ->where('code', $rule['code'])
+                    ->whereYear('date', $year)
+                    ->exists();
+                if ($exists) {
+                    continue;
+                }
+                Holiday::query()->create([
+                    'organization_id' => null,
+                    'work_center_id' => null,
+                    'date' => $date->toDateString(),
+                    'code' => $rule['code'],
+                    'name' => $rule['name'],
+                    'kind' => 'official',
+                    'is_mandatory_rest' => true,
+                    'legal_basis' => $rule['article'] ?? 'LFT art. 74',
+                ]);
                 $count++;
             }
         }
 
         return $count;
+    }
+
+    /**
+     * Reglas oficiales del archivo normativo versionado (`database/data/legal`).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function officialRules(): array
+    {
+        $data = json_decode((string) file_get_contents(database_path('data/legal/parametros_legales.json')), true, flags: JSON_THROW_ON_ERROR);
+
+        return array_values((array) ($data['holidays'] ?? []));
     }
 
     /**

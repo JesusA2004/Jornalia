@@ -6,6 +6,7 @@ use App\Domain\Attendance\EffectiveTimeline;
 use App\Domain\Attendance\PolicyResolver;
 use App\Domain\Attendance\WorkdayCalculator;
 use App\Domain\Legal\LegalFramework;
+use App\Domain\Location\LocationTracking;
 use App\Domain\Scheduling\ScheduleResolver;
 use App\Enums\ApprovalStatus;
 use App\Enums\PunchType;
@@ -103,8 +104,9 @@ final class WorkdayPresenter
             'break_minutes' => (int) $summary->break_minutes,
             'late_minutes' => (int) $summary->late_minutes,
             'excess_minutes' => (int) $summary->excess_minutes,
-            'auto_clock_out_at' => $summary->auto_clock_out_at?->utc()->format('Y-m-d\TH:i:s\Z'),
-            'after_cutoff_minutes' => (int) $summary->after_cutoff_minutes,
+            // Deprecados (salida automática eliminada): se conservan para apps instaladas.
+            'auto_clock_out_at' => null,
+            'after_cutoff_minutes' => 0,
             'incidences' => $incidences->map(fn (Incidence $i) => IncidenceResource::summary($i))->values()->all(),
         ];
     }
@@ -210,6 +212,10 @@ final class WorkdayPresenter
             'offline_max_hours' => (int) $policy->offline_max_hours,
             'geofences' => array_values(GeofenceResource::collection($fences)->resolve()),
             'face_verification_enabled' => (bool) $policy->face_verification_required,
+            // Parámetro por puesto (B2): sólo al marcar o seguimiento durante la jornada.
+            'location_tracking' => app(LocationTracking::class)->modeFor($employee),
+            'tracking_paused_states' => LocationTracking::PAUSED_STATES,
+            'location_contingency_minutes' => app(LocationTracking::class)->settings()['contingency_minutes'],
         ];
     }
 }

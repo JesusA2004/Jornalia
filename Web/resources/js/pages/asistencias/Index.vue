@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import {
     AlarmClock,
-    Bot,
     CalendarClock,
     Clock,
+    Download,
     Fingerprint,
     Hash,
     Hourglass,
     ListChecks,
+    Lock,
     ShieldAlert,
+    TriangleAlert,
     UserX,
     WifiOff,
 } from '@lucide/vue';
@@ -28,6 +30,7 @@ import {
     UserAvatar,
 } from '@/components/app';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -73,7 +76,7 @@ const { filters, activeCount, reset, processing } = useFilters(
         status: props.filters.status,
         from: props.filters.from,
         to: props.filters.to,
-        auto: props.filters.auto ? '1' : null,
+        omisiones: props.filters.omisiones ? '1' : null,
     },
     {
         defaults: {
@@ -98,13 +101,33 @@ const statusOptions = computed(() =>
         : props.options.workday_statuses,
 );
 
-/** Sólo jornadas / marcajes con salida automática por política (`?auto=1`). */
-const onlyAuto = computed({
-    get: () => filters.auto === '1',
+/** «Sólo omisiones de checada» (`?omisiones=1`), combinable con los demás filtros. */
+const onlyOmissions = computed({
+    get: () => filters.omisiones === '1',
     set: (v: boolean) => {
-        filters.auto = v ? '1' : null;
+        filters.omisiones = v ? '1' : null;
     },
 });
+
+/** Exportación CSV de marcajes originales con los filtros vigentes (sólo lectura). */
+const exportHref = computed(() =>
+    asistencias.export.url({
+        query: {
+            search: filters.search || undefined,
+            branch_id: filters.branch_id ?? undefined,
+            department_id: filters.department_id ?? undefined,
+            employee_id: filters.employee_id ?? undefined,
+            status: filters.status ?? undefined,
+            from: filters.from ?? undefined,
+            to: filters.to ?? undefined,
+        },
+    }),
+);
+
+const OMISSION_LABEL: Record<string, string> = {
+    missing_clock_out: 'Omisión de salida',
+    missing_clock_in: 'Omisión de entrada',
+};
 
 const sort = computed(() =>
     props.filters.sort
@@ -124,6 +147,12 @@ const workdayColumns: DataTableColumn<Workday>[] = [
     { key: 'schedule', label: 'Horario', hideBelow: 'lg' },
     { key: 'first_in', label: 'Entrada / salida', sortable: true },
     {
+        key: 'break_minutes',
+        label: 'Descanso',
+        numeric: true,
+        hideBelow: 'xl',
+    },
+    {
         key: 'worked_minutes',
         label: 'Trabajado',
         sortable: true,
@@ -138,18 +167,20 @@ const workdayColumns: DataTableColumn<Workday>[] = [
     },
     {
         key: 'excess_minutes',
-        label: 'Excedente',
+        label: 'Tiempo extra',
         sortable: true,
         numeric: true,
         hideBelow: 'md',
     },
+    { key: 'origin', label: 'Origen del marcaje', hideBelow: 'lg' },
 ];
 
 const punchColumns: DataTableColumn<PunchRow>[] = [
     { key: 'employee', label: 'Colaborador' },
     { key: 'server_time', label: 'Hora', sortable: true },
     { key: 'type', label: 'Tipo' },
-    { key: 'source', label: 'Origen / autenticación', hideBelow: 'md' },
+    { key: 'source', label: 'Origen del marcaje', hideBelow: 'md' },
+    { key: 'device', label: 'Dispositivo / recepción', hideBelow: 'xl' },
     { key: 'status', label: 'Estado' },
     { key: 'anomalies', label: 'Anomalías', hideBelow: 'lg' },
     {
@@ -174,17 +205,22 @@ const showHref = (row: {
 const help = [
     {
         title: 'Jornadas',
-        text: 'Resultado calculado por día: horario, entrada, salida, trabajado, retardo y excedente.',
+        text: 'Por día: programado, registrado y calculado (trabajado, retardo, tiempo extra).',
         icon: CalendarClock,
     },
     {
         title: 'Marcajes originales',
-        text: 'Registro inmutable tal como se capturó. Nunca se edita ni se borra; las correcciones son rectificaciones.',
+        text: 'Sólo consulta y exportación para todos los roles. Guarda hora del dispositivo y de recepción.',
         icon: Fingerprint,
     },
     {
-        title: 'Detalle',
-        text: 'Abre una fila para ver el día completo: original, rectificación y horario reconocido.',
+        title: 'Omisiones de checada',
+        text: 'Falta la entrada o la salida. El sistema no la completa: se corrige con una rectificación firmada.',
+        icon: TriangleAlert,
+    },
+    {
+        title: 'Rectificada*',
+        text: 'Día corregido con firma del colaborador. El asterisco abre la solicitud firmada.',
         icon: ListChecks,
     },
 ];
@@ -209,8 +245,8 @@ const help = [
                 Jornadas
             </TabsTrigger>
             <TabsTrigger value="marcajes">
-                <Fingerprint class="size-4" aria-hidden="true" />
-                Marcajes originales
+                <Lock class="size-4" aria-hidden="true" />
+                Marcajes originales · sólo lectura
             </TabsTrigger>
         </TabsList>
     </Tabs>
@@ -227,7 +263,7 @@ const help = [
         <KpiTile
             label="Trabajado"
             :value="formatMinutes(totals.worked_minutes ?? 0, 'decimal')"
-            :hint="`Excedente ${formatMinutes(totals.excess_minutes ?? 0)}`"
+            :hint="`Tiempo extra ${formatMinutes(totals.excess_minutes ?? 0)}`"
             :icon="Clock"
             tone="success"
         />
@@ -247,14 +283,14 @@ const help = [
             tone="danger"
         />
         <KpiTile
-            label="Salidas automáticas"
-            :value="totals.auto_clock_outs ?? 0"
-            :hint="`Después del cierre ${formatMinutes(totals.after_cutoff_minutes ?? 0)} (no reconocido)`"
-            :icon="Bot"
-            tone="info"
+            label="Omisiones de checada"
+            :value="totals.omissions ?? 0"
+            hint="Sin entrada o sin salida; requieren rectificación firmada"
+            :icon="TriangleAlert"
+            tone="danger"
         />
     </div>
-    <div v-else class="mb-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+    <div v-else class="mb-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">
         <KpiTile
             label="Marcajes"
             :value="totals.punches ?? 0"
@@ -271,12 +307,6 @@ const help = [
             :value="totals.offline ?? 0"
             :icon="WifiOff"
             tone="info"
-        />
-        <KpiTile
-            label="Salidas automáticas"
-            :value="totals.auto_clock_outs ?? 0"
-            :icon="Bot"
-            tone="neutral"
         />
     </div>
 
@@ -340,9 +370,9 @@ const help = [
                     class="w-44"
                 />
                 <div class="flex h-9 items-center gap-2 rounded-md border px-3">
-                    <Switch :id="`auto-${tab}`" v-model="onlyAuto" />
-                    <Label :for="`auto-${tab}`" class="text-sm font-normal"
-                        >Sólo salidas automáticas</Label
+                    <Switch id="solo-omisiones" v-model="onlyOmissions" />
+                    <Label for="solo-omisiones" class="text-sm font-normal"
+                        >Sólo omisiones de checada</Label
                     >
                 </div>
             </FilterBar>
@@ -364,37 +394,46 @@ const help = [
         </template>
         <template #cell-status="{ row }">
             <div class="flex flex-wrap items-center gap-1.5">
+                <a
+                    v-if="row.has_rectifications && row.rectification?.url"
+                    :href="row.rectification.url"
+                    class="rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    title="Ver la rectificación firmada"
+                    @click.stop
+                >
+                    <StatusBadge
+                        label="Rectificada*"
+                        :tone="workdayTone(row.status, { rectified: true })"
+                        size="sm"
+                    />
+                </a>
                 <StatusBadge
+                    v-else-if="row.has_rectifications"
+                    label="Rectificada*"
+                    :tone="workdayTone(row.status, { rectified: true })"
+                    size="sm"
+                />
+                <StatusBadge
+                    v-else-if="row.omission"
+                    :label="OMISSION_LABEL[row.omission] ?? row.status_label"
+                    :tone="workdayTone(row.status, { omission: row.omission })"
+                    size="sm"
+                />
+                <StatusBadge
+                    v-else
                     :label="row.status_label"
                     :tone="workdayTone(row.status)"
                     size="sm"
                 />
-                <Badge
-                    v-if="row.auto_clock_out_at"
-                    variant="outline"
-                    class="gap-1 border-dashed border-info/60 text-[0.65rem] text-info-soft-foreground"
-                    :title="
-                        row.after_cutoff_minutes
-                            ? `${formatMinutes(row.after_cutoff_minutes)} después del cierre (no reconocidos)`
-                            : undefined
-                    "
-                >
-                    <Bot class="size-3" aria-hidden="true" /> Salida automática
-                </Badge>
-                <TooltipProvider
-                    v-if="row.has_rectifications || row.anomalies.length > 0"
-                >
+                <TooltipProvider v-if="row.anomalies.length > 0">
                     <Tooltip>
                         <TooltipTrigger as-child>
                             <span
-                                class="inline-flex size-5 items-center justify-center rounded-full bg-info-soft text-[0.65rem] font-bold text-info-soft-foreground"
-                                >{{ row.has_rectifications ? 'R' : '!' }}</span
+                                class="inline-flex size-5 items-center justify-center rounded-full bg-warning-soft text-[0.65rem] font-bold text-warning-soft-foreground"
+                                >!</span
                             >
                         </TooltipTrigger>
                         <TooltipContent>
-                            <p v-if="row.has_rectifications">
-                                Con rectificación aprobada
-                            </p>
                             <p v-for="a in row.anomalies" :key="a.code">
                                 {{ a.label }}
                             </p>
@@ -442,12 +481,25 @@ const help = [
                 />
             </span>
         </template>
+        <template #cell-break_minutes="{ row }">
+            <MinutesDisplay
+                :minutes="row.break_minutes || null"
+                format="short"
+                class="text-muted-foreground"
+            />
+        </template>
         <template #cell-worked_minutes="{ row }">
             <MinutesDisplay
                 :minutes="row.worked_minutes"
                 format="short"
                 class="font-medium"
             />
+            <p
+                v-if="row.scheduled_minutes"
+                class="text-xs whitespace-nowrap text-muted-foreground"
+            >
+                de {{ formatMinutes(row.scheduled_minutes, 'short') }}
+            </p>
         </template>
         <template #cell-late_minutes="{ row }">
             <MinutesDisplay
@@ -470,6 +522,22 @@ const help = [
                         : 'text-muted-foreground'
                 "
             />
+        </template>
+        <template #cell-origin="{ row }">
+            <span
+                v-if="row.origin"
+                :class="[
+                    'text-xs',
+                    row.origin.code === 'omission'
+                        ? 'font-medium text-danger-soft-foreground'
+                        : row.origin.code === 'rectified'
+                          ? 'text-info-soft-foreground'
+                          : 'text-muted-foreground',
+                ]"
+                >{{ row.origin.code === 'rectified' ? '*' : ''
+                }}{{ row.origin.label }}</span
+            >
+            <span v-else class="text-sm text-muted-foreground">—</span>
         </template>
     </DataTable>
 
@@ -532,12 +600,12 @@ const help = [
                     size="sm"
                     class="w-44"
                 />
-                <div class="flex h-9 items-center gap-2 rounded-md border px-3">
-                    <Switch :id="`auto-${tab}`" v-model="onlyAuto" />
-                    <Label :for="`auto-${tab}`" class="text-sm font-normal"
-                        >Sólo salidas automáticas</Label
-                    >
-                </div>
+                <Button variant="outline" size="sm" as-child>
+                    <a :href="exportHref" download>
+                        <Download class="size-4" aria-hidden="true" />
+                        Exportar
+                    </a>
+                </Button>
             </FilterBar>
         </template>
         <template #cell-employee="{ row }">
@@ -554,30 +622,22 @@ const help = [
         </template>
         <template #cell-server_time="{ row }">
             <DateTimeDisplay
-                :value="row.is_system ? row.recognized_time : row.server_time"
+                :value="row.server_time"
                 format="datetime"
                 class="numeric text-sm font-medium"
             />
-            <p v-if="row.is_system" class="text-xs text-muted-foreground">
-                Registrada
-                <DateTimeDisplay
-                    :value="row.server_time"
-                    format="time"
-                    :tooltip="false"
-                />
-            </p>
         </template>
         <template #cell-type="{ row }">
             <span
-                v-if="row.is_system"
-                class="inline-flex items-center gap-1.5 rounded-md border border-dashed border-info/60 px-1.5 py-0.5 text-sm font-medium text-info-soft-foreground"
-            >
-                <Bot class="size-3.5" aria-hidden="true" />
-                Salida automática
-            </span>
-            <span
-                v-else
-                class="inline-flex items-center gap-1.5 text-sm font-medium"
+                :class="[
+                    'inline-flex items-center gap-1.5 text-sm font-medium',
+                    row.is_system && 'text-muted-foreground line-through',
+                ]"
+                :title="
+                    row.is_system
+                        ? 'Histórico generado por sistema: no se reconoce como marcaje'
+                        : undefined
+                "
             >
                 <span
                     :class="[
@@ -593,9 +653,34 @@ const help = [
             </span>
         </template>
         <template #cell-source="{ row }">
-            <p class="text-sm">{{ row.source_label }}</p>
+            <p
+                :class="[
+                    'text-sm',
+                    row.is_system && 'font-medium text-warning-soft-foreground',
+                ]"
+            >
+                {{ row.origin.label }}
+            </p>
             <p class="text-xs text-muted-foreground">
                 {{ row.auth_method_label }}
+            </p>
+        </template>
+        <template #cell-device="{ row }">
+            <p class="numeric text-xs whitespace-nowrap">
+                <span class="text-muted-foreground">Disp. </span>
+                <DateTimeDisplay
+                    :value="row.device_time"
+                    format="time"
+                    :tooltip="false"
+                />
+            </p>
+            <p class="numeric text-xs whitespace-nowrap">
+                <span class="text-muted-foreground">Recep. </span>
+                <DateTimeDisplay
+                    :value="row.received_at ?? row.server_time"
+                    format="time"
+                    :tooltip="false"
+                />
             </p>
         </template>
         <template #cell-status="{ row }">
@@ -643,6 +728,13 @@ const help = [
         </template>
     </DataTable>
 
+    <p
+        class="mt-4 flex items-start gap-2 rounded-lg border border-brand/25 bg-brand-soft px-3 py-2 text-xs text-brand-soft-foreground"
+    >
+        <Lock class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+        Los marcajes originales no se pueden editar ni borrar; toda corrección
+        se hace en Rectificaciones con firma del colaborador
+    </p>
     <p class="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
         <Hourglass class="size-3.5" aria-hidden="true" />
         Horas en {{ timezone }}.

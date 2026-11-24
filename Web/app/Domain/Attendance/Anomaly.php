@@ -19,7 +19,9 @@ enum Anomaly: string
     case RestDay = 'rest_day';
     case OutsideSchedule = 'outside_schedule';
     case MissingClockOut = 'missing_clock_out';
+    case MissingClockIn = 'missing_clock_in';
     case BreakNotClosed = 'break_not_closed';
+    /** Sólo histórico: la salida automática se eliminó; se conserva para leer registros previos. */
     case AutoClockOut = 'auto_clock_out';
 
     public function label(): string
@@ -36,9 +38,10 @@ enum Anomaly: string
             self::Holiday => 'Marcaje en día festivo',
             self::RestDay => 'Marcaje en día de descanso',
             self::OutsideSchedule => 'Fuera del horario programado',
-            self::MissingClockOut => 'Falta registro de salida',
+            self::MissingClockOut => 'Omisión de checada de salida',
+            self::MissingClockIn => 'Omisión de checada de entrada',
             self::BreakNotClosed => 'Descanso sin cerrar',
-            self::AutoClockOut => 'Salida automática',
+            self::AutoClockOut => 'Generado por sistema (histórico)',
         };
     }
 

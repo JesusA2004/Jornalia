@@ -1,26 +1,16 @@
+import { legendTone, workdayLegendKey } from '@/lib/attendance-status';
 import type { Tone } from '@/types';
 
-/** Tono visual por estado de jornada (la etiqueta viene del backend). */
-export function workdayTone(status: string | null | undefined): Tone {
-    switch (status) {
-        case 'present':
-            return 'success';
-        case 'late':
-        case 'incomplete':
-            return 'warning';
-        case 'absent':
-            return 'danger';
-        case 'holiday':
-        case 'holiday_worked':
-            return 'brand';
-        case 'vacation':
-        case 'leave':
-            return 'info';
-        case 'rest_day_worked':
-            return 'primary';
-        default:
-            return 'neutral';
-    }
+/**
+ * Tono visual por estado de jornada (la etiqueta viene del backend). Usa la
+ * leyenda compartida (`lib/attendance-status`) para conservar los mismos colores
+ * en Asistencias, Calendario, Incidencias y Reportes.
+ */
+export function workdayTone(
+    status: string | null | undefined,
+    flags: { omission?: string | null; rectified?: boolean } = {},
+): Tone {
+    return legendTone(workdayLegendKey(status, flags));
 }
 
 export function punchStatusTone(status: string | null | undefined): Tone {

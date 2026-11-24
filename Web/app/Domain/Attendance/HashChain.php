@@ -3,6 +3,7 @@
 namespace App\Domain\Attendance;
 
 use App\Models\AttendanceAdjustment;
+use App\Models\ElectronicSignature;
 use App\Models\Organization;
 use App\Models\Punch;
 use Carbon\CarbonInterface;
@@ -29,7 +30,7 @@ final class HashChain
     /**
      * Debe llamarse dentro de una transacción.
      *
-     * @param  class-string<Punch|AttendanceAdjustment>  $modelClass
+     * @param  class-string<Punch|AttendanceAdjustment|ElectronicSignature>  $modelClass
      * @return array{sequence:int, previous_hash:string}
      */
     public function next(int $organizationId, string $modelClass): array

@@ -32,6 +32,9 @@ final readonly class PunchInput
         public ?string $faceVerificationId,
         public ?string $ipAddress,
         public ?string $userAgent,
+        public ?int $kioskId = null,
+        /** Hora de envío/sincronización según el reloj del dispositivo (opcional). */
+        public ?CarbonImmutable $syncedAt = null,
     ) {}
 
     public function hasLocation(): bool

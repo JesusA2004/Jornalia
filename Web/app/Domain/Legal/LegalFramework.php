@@ -41,6 +41,34 @@ final class LegalFramework
     }
 
     /**
+     * Estado de verificación de la normativa vigente en una fecha, para leyendas como
+     * «Normativa en verificación» / «Verificada por RH» (Horas extra, Cumplimiento, Configuración).
+     *
+     * @return array{code:string|null, name:string|null, valid_from:string|null, valid_to:string|null, verified:bool, label:string, verified_by:string|null, verified_at:string|null}
+     */
+    public function verificationFor(CarbonInterface|string $date): array
+    {
+        $day = CarbonImmutable::parse($date)->toDateString();
+        $version = LegalVersion::query()->with('verifiedBy:id,name')
+            ->whereDate('valid_from', '<=', $day)
+            ->where(fn ($q) => $q->whereNull('valid_to')->orWhereDate('valid_to', '>=', $day))
+            ->orderByDesc('valid_from')
+            ->first();
+        $verified = $version?->isVerified() ?? false;
+
+        return [
+            'code' => $version?->code,
+            'name' => $version?->name,
+            'valid_from' => $version?->valid_from?->toDateString(),
+            'valid_to' => $version?->valid_to?->toDateString(),
+            'verified' => $verified,
+            'label' => $verified ? 'Verificada por RH' : 'Normativa en verificación',
+            'verified_by' => $verified ? $version->verifiedBy?->name : null,
+            'verified_at' => $verified ? $version->verified_at?->utc()->format('Y-m-d\TH:i:s\Z') : null,
+        ];
+    }
+
+    /**
      * Días mínimos legales de vacaciones para un año de servicio cumplido.
      */
     public function legalVacationDays(int $serviceYear, CarbonInterface|string $onDate): int

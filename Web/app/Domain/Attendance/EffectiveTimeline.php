@@ -12,6 +12,9 @@ use Carbon\CarbonImmutable;
 /**
  * Construye la línea de tiempo reconocida de un colaborador aplicando, sobre
  * los marcajes originales inmutables, los ajustes de rectificaciones aprobadas.
+ *
+ * Nunca fabrica eventos: sólo reconoce marcajes del colaborador y ajustes
+ * firmados. Un marcaje faltante permanece como omisión.
  */
 final class EffectiveTimeline
 {
@@ -22,11 +25,6 @@ final class EffectiveTimeline
      */
     public static function punchTime(Punch $punch): CarbonImmutable
     {
-        // Cierre automático: la hora reconocida es la hora límite aplicada.
-        if ($punch->source === PunchSource::System && $punch->device_time !== null) {
-            return CarbonImmutable::instance($punch->device_time);
-        }
-
         if ($punch->captured_offline && $punch->device_time !== null && $punch->device_time->lte($punch->server_time)) {
             return CarbonImmutable::instance($punch->device_time);
         }
@@ -68,6 +66,13 @@ final class EffectiveTimeline
         foreach ($punches as $punch) {
             $adj = $byTarget[$punch->uuid] ?? null;
             if ($adj?->action === AdjustmentAction::Void) {
+                continue;
+            }
+            // Marcajes históricos generados por el sistema (salida automática ya
+            // eliminada): se conservan intactos como evidencia, pero NO se reconocen
+            // como marcaje del colaborador. El día queda como omisión hasta que una
+            // rectificación firmada lo corrija (reemplazo o alta de un nuevo evento).
+            if ($punch->source === PunchSource::System && $adj?->action !== AdjustmentAction::Replace) {
                 continue;
             }
             if ($adj?->action === AdjustmentAction::Replace) {

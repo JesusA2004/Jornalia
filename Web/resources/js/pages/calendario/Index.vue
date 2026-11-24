@@ -5,13 +5,15 @@ import {
     CalendarRange,
     ChevronLeft,
     ChevronRight,
+    Coffee,
+    ExternalLink,
     Landmark,
     Moon,
     Palmtree,
     Stethoscope,
     Users,
 } from '@lucide/vue';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import {
     ComboboxField,
     DataTable,
@@ -23,6 +25,13 @@ import {
     UserAvatar,
 } from '@/components/app';
 import { Button } from '@/components/ui/button';
+import {
+    Sheet,
+    SheetContent,
+    SheetDescription,
+    SheetHeader,
+    SheetTitle,
+} from '@/components/ui/sheet';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
     Tooltip,
@@ -31,6 +40,11 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useFilters } from '@/composables/useFilters';
+import {
+    ATTENDANCE_LEGEND,
+    incidenceLegendKey,
+    workdayLegendKey,
+} from '@/lib/attendance-status';
 import { formatDate, formatMinutes } from '@/lib/format';
 import { toPaginationMeta } from '@/lib/pagination';
 import { cn } from '@/lib/utils';
@@ -136,7 +150,11 @@ const singleRoster = computed(() =>
 const singleDay = (date: string) =>
     singleRoster.value?.days.find((d) => d.date === date) ?? null;
 
-type RosterRow = { employee: EmployeeCard | null; days: CalendarDayCell[] };
+type RosterRow = {
+    employee: EmployeeCard | null;
+    days: CalendarDayCell[];
+    rest_days?: string[];
+};
 
 const rosterColumns = computed<DataTableColumn<RosterRow>[]>(() => [
     {
@@ -157,23 +175,60 @@ function cellOf(row: RosterRow, key: string): CalendarDayCell | null {
     return row.days.find((d) => d.date === date) ?? null;
 }
 
-function incidenceKind(category: string | null): ChipKind {
-    return category === 'disability'
-        ? 'disability'
-        : category === 'leave'
-          ? 'leave'
-          : 'incidence';
+const incidenceKind = (category: string | null): ChipKind =>
+    incidenceLegendKey(category);
+
+/** Leyenda compartida con Asistencias, Incidencias y Reportes. */
+const legend = ATTENDANCE_LEGEND;
+
+const restLabel = (days: string[] | undefined) =>
+    days && days.length > 0 ? `Descanso: ${days.join(', ')}` : null;
+
+/** Detalle del día (clic en un día o en una celda del colaborador). */
+const detail = ref<{
+    date: string;
+    cell: CalendarDayCell | null;
+    row: RosterRow | null;
+} | null>(null);
+const detailOpen = computed({
+    get: () => detail.value !== null,
+    set: (v: boolean) => {
+        if (!v) {
+            detail.value = null;
+        }
+    },
+});
+
+function openDay(
+    date: string,
+    row: RosterRow | null = null,
+    cell: CalendarDayCell | null = null,
+): void {
+    detail.value = {
+        date,
+        row: row ?? singleRoster.value,
+        cell: cell ?? singleDay(date),
+    };
 }
 
-const legend: Array<{ kind: ChipKind; label: string }> = [
-    { kind: 'shift', label: 'Turno' },
-    { kind: 'rest', label: 'Descanso' },
-    { kind: 'holiday', label: 'Festivo' },
-    { kind: 'vacation', label: 'Vacaciones' },
-    { kind: 'leave', label: 'Permiso' },
-    { kind: 'disability', label: 'Incapacidad' },
-    { kind: 'incidence', label: 'Incidencia' },
-];
+const longDate = (d: string) =>
+    new Intl.DateTimeFormat('es-MX', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+    }).format(new Date(`${d}T12:00:00Z`));
+
+const detailEvents = computed(() =>
+    detail.value
+        ? eventsOn(detail.value.date).filter(
+              (e) =>
+                  !detail.value?.row?.employee ||
+                  e.title === detail.value.row.employee.name,
+          )
+        : [],
+);
 
 const help = [
     {
@@ -188,12 +243,12 @@ const help = [
     },
     {
         title: 'Festivos',
-        text: 'Pasa el cursor para ver el fundamento legal.',
+        text: 'Días de descanso obligatorio (art. 74 LFT) precargados cada año; RH los edita.',
         icon: Landmark,
     },
     {
-        title: 'Línea punteada',
-        text: 'Solicitud aún pendiente de aprobación.',
+        title: 'Detalle',
+        text: 'Pasa el cursor para ver el nombre completo; clic para abrir el día.',
         icon: Palmtree,
     },
 ];
@@ -287,9 +342,10 @@ const isToday = (d: string) => d === props.range.today;
         </FilterBar>
 
         <div class="mb-4 flex flex-wrap items-center gap-2">
-            <CalendarChip v-for="l in legend" :key="l.kind" :kind="l.kind">{{
+            <CalendarChip v-for="l in legend" :key="l.key" :kind="l.key">{{
                 l.label
             }}</CalendarChip>
+            <CalendarChip kind="none" pending>Pendiente</CalendarChip>
         </div>
 
         <!-- ═════════ Mes ═════════ -->
@@ -297,122 +353,152 @@ const isToday = (d: string) => d === props.range.today;
             v-if="view === 'month'"
             :class="
                 cn(
-                    'overflow-hidden rounded-2xl border bg-card shadow-elev-1',
+                    'overflow-x-auto rounded-2xl border bg-card shadow-elev-1',
                     processing && 'opacity-70',
                 )
             "
         >
-            <div
-                class="grid grid-cols-7 border-b bg-surface-2 text-center text-xs font-semibold text-muted-foreground"
-            >
-                <span
-                    v-for="d in [
-                        'Lun',
-                        'Mar',
-                        'Mié',
-                        'Jue',
-                        'Vie',
-                        'Sáb',
-                        'Dom',
-                    ]"
-                    :key="d"
-                    class="py-2"
-                    >{{ d }}</span
-                >
-            </div>
-            <div class="grid grid-cols-7">
+            <div class="min-w-[44rem]">
                 <div
-                    v-for="d in range.days"
-                    :key="d"
-                    :class="
-                        cn(
-                            'flex min-h-24 flex-col gap-1 border-r border-b p-1.5 sm:min-h-32 sm:p-2 [&:nth-child(7n)]:border-r-0',
-                            !d.startsWith(anchorMonth) &&
-                                'bg-surface-2/50 text-muted-foreground',
-                        )
-                    "
+                    class="grid grid-cols-7 border-b bg-surface-2 text-center text-xs font-semibold text-muted-foreground"
                 >
-                    <div class="flex items-center justify-between">
-                        <span
-                            :class="
-                                cn(
-                                    'flex size-6 items-center justify-center rounded-full numeric text-xs font-semibold',
-                                    isToday(d) &&
-                                        'bg-primary text-primary-foreground',
-                                )
-                            "
-                            >{{ Number(d.slice(8)) }}</span
-                        >
-                        <span
-                            v-if="eventsOn(d).length > 0"
-                            class="numeric text-[0.65rem] text-muted-foreground"
-                        >
-                            {{ eventsOn(d).length }}
-                        </span>
-                    </div>
-                    <Tooltip v-for="h in holidaysByDate[d] ?? []" :key="h.id">
-                        <TooltipTrigger as-child>
-                            <CalendarChip kind="holiday" class="cursor-help">
-                                <Landmark
-                                    class="size-3 shrink-0"
-                                    aria-hidden="true"
-                                />
-                                <span class="truncate">{{ h.name }}</span>
-                            </CalendarChip>
-                        </TooltipTrigger>
-                        <TooltipContent class="max-w-64">
-                            <p class="font-medium">
-                                {{ h.name }} · {{ h.kind_label }}
-                            </p>
-                            <p>
-                                {{
-                                    h.legal_basis ?? 'Sin fundamento registrado'
-                                }}
-                            </p>
-                            <p v-if="h.is_mandatory_rest">
-                                Descanso obligatorio
-                            </p>
-                        </TooltipContent>
-                    </Tooltip>
-                    <template v-if="singleDay(d)">
-                        <CalendarChip v-if="singleDay(d)?.shift" kind="shift">
-                            {{ time(singleDay(d)!.shift!.starts_at) }}–{{
-                                time(singleDay(d)!.shift!.ends_at)
-                            }}
-                        </CalendarChip>
-                        <CalendarChip
-                            v-else-if="singleDay(d)?.rest_day"
-                            kind="rest"
-                            >Descanso</CalendarChip
-                        >
-                    </template>
-                    <Link
-                        v-for="e in eventsOn(d).slice(0, 3)"
-                        :key="e.id"
-                        :href="e.href"
-                        class="min-w-0"
+                    <span
+                        v-for="d in [
+                            'Lun',
+                            'Mar',
+                            'Mié',
+                            'Jue',
+                            'Vie',
+                            'Sáb',
+                            'Dom',
+                        ]"
+                        :key="d"
+                        class="py-2"
+                        >{{ d }}</span
                     >
-                        <CalendarChip
-                            :kind="eventKind(e)"
-                            :pending="e.status === 'pending'"
-                            class="hover:brightness-95"
-                        >
-                            <span class="truncate">{{ e.title }}</span>
-                        </CalendarChip>
-                    </Link>
-                    <Tooltip v-if="eventsOn(d).length > 3">
-                        <TooltipTrigger as-child>
-                            <span
-                                class="cursor-help px-1 text-[0.7rem] font-medium text-muted-foreground"
-                                >+{{ eventsOn(d).length - 3 }} más</span
+                </div>
+                <div class="grid grid-cols-7">
+                    <div
+                        v-for="d in range.days"
+                        :key="d"
+                        :class="
+                            cn(
+                                'flex min-h-24 flex-col gap-1 border-r border-b p-1.5 sm:min-h-32 sm:p-2 [&:nth-child(7n)]:border-r-0',
+                                !d.startsWith(anchorMonth) &&
+                                    'bg-surface-2/50 text-muted-foreground',
+                            )
+                        "
+                    >
+                        <div class="flex items-center justify-between">
+                            <button
+                                type="button"
+                                :class="
+                                    cn(
+                                        'flex size-6 items-center justify-center rounded-full numeric text-xs font-semibold hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+                                        isToday(d) &&
+                                            'bg-primary text-primary-foreground hover:bg-primary',
+                                    )
+                                "
+                                :aria-label="`Ver detalle del ${longDate(d)}`"
+                                @click="openDay(d)"
                             >
-                        </TooltipTrigger>
-                        <TooltipContent>
-                            <p v-for="e in eventsOn(d).slice(3)" :key="e.id">
-                                {{ e.title }} · {{ e.kind_label }}
-                            </p>
-                        </TooltipContent>
-                    </Tooltip>
+                                {{ Number(d.slice(8)) }}
+                            </button>
+                            <span
+                                v-if="eventsOn(d).length > 0"
+                                class="numeric text-[0.65rem] text-muted-foreground"
+                            >
+                                {{ eventsOn(d).length }}
+                            </span>
+                        </div>
+                        <Tooltip
+                            v-for="h in holidaysByDate[d] ?? []"
+                            :key="h.id"
+                        >
+                            <TooltipTrigger as-child>
+                                <button
+                                    type="button"
+                                    class="min-w-0 text-left"
+                                    @click="openDay(d)"
+                                >
+                                    <CalendarChip kind="holiday" wrap>
+                                        <Landmark
+                                            class="mt-px size-3 shrink-0"
+                                            aria-hidden="true"
+                                        />
+                                        <span>{{ h.name }}</span>
+                                    </CalendarChip>
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent class="max-w-64">
+                                <p class="font-medium">
+                                    {{ h.name }} · {{ h.kind_label }}
+                                </p>
+                                <p>
+                                    {{
+                                        h.legal_basis ??
+                                        'Sin fundamento registrado'
+                                    }}
+                                </p>
+                                <p v-if="h.is_mandatory_rest">
+                                    Descanso obligatorio
+                                </p>
+                            </TooltipContent>
+                        </Tooltip>
+                        <template v-if="singleDay(d)">
+                            <CalendarChip
+                                v-if="singleDay(d)?.shift"
+                                kind="shift"
+                            >
+                                {{ time(singleDay(d)!.shift!.starts_at) }}–{{
+                                    time(singleDay(d)!.shift!.ends_at)
+                                }}
+                            </CalendarChip>
+                            <CalendarChip
+                                v-else-if="singleDay(d)?.rest_day"
+                                kind="rest"
+                                >Descanso</CalendarChip
+                            >
+                        </template>
+                        <Tooltip
+                            v-for="e in eventsOn(d).slice(0, 3)"
+                            :key="e.id"
+                        >
+                            <TooltipTrigger as-child>
+                                <Link :href="e.href" class="min-w-0">
+                                    <CalendarChip
+                                        :kind="eventKind(e)"
+                                        :pending="e.status === 'pending'"
+                                        class="hover:brightness-95"
+                                    >
+                                        <span class="truncate">{{
+                                            e.title
+                                        }}</span>
+                                    </CalendarChip>
+                                </Link>
+                            </TooltipTrigger>
+                            <TooltipContent class="max-w-72">
+                                <p class="font-medium">{{ e.title }}</p>
+                                <p>{{ e.kind_label }} · {{ e.status_label }}</p>
+                            </TooltipContent>
+                        </Tooltip>
+                        <Tooltip v-if="eventsOn(d).length > 3">
+                            <TooltipTrigger as-child>
+                                <span
+                                    class="cursor-help px-1 text-[0.7rem] font-medium text-muted-foreground"
+                                    >+{{ eventsOn(d).length - 3 }} más</span
+                                >
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p
+                                    v-for="e in eventsOn(d).slice(3)"
+                                    :key="e.id"
+                                >
+                                    {{ e.title }} · {{ e.kind_label }}
+                                </p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </div>
                 </div>
             </div>
             <div
@@ -457,6 +543,13 @@ const isToday = (d: string) => d === props.range.today;
                         show-name
                         size="sm"
                     />
+                    <p
+                        v-if="restLabel(row.rest_days)"
+                        class="mt-1 flex items-center gap-1 text-[0.7rem] text-muted-foreground"
+                    >
+                        <Coffee class="size-3" aria-hidden="true" />
+                        {{ restLabel(row.rest_days) }}
+                    </p>
                 </template>
                 <template
                     v-for="d in range.days"
@@ -483,23 +576,35 @@ const isToday = (d: string) => d === props.range.today;
                             <template v-else>
                                 <Tooltip v-if="cell.holiday">
                                     <TooltipTrigger as-child>
-                                        <CalendarChip
-                                            kind="holiday"
-                                            class="cursor-help"
+                                        <button
+                                            type="button"
+                                            class="min-w-0 text-left"
+                                            @click="
+                                                openDay(cell.date, row, cell)
+                                            "
                                         >
-                                            <Landmark
-                                                class="size-3 shrink-0"
-                                                aria-hidden="true"
-                                            />
-                                            <span class="truncate">{{
-                                                cell.holiday.name
-                                            }}</span>
-                                        </CalendarChip>
+                                            <CalendarChip kind="holiday" wrap>
+                                                <Landmark
+                                                    class="mt-px size-3 shrink-0"
+                                                    aria-hidden="true"
+                                                />
+                                                <span>{{
+                                                    cell.holiday.name
+                                                }}</span>
+                                            </CalendarChip>
+                                        </button>
                                     </TooltipTrigger>
-                                    <TooltipContent>{{
-                                        cell.holiday.legal_basis ??
-                                        'Sin fundamento registrado'
-                                    }}</TooltipContent>
+                                    <TooltipContent class="max-w-72">
+                                        <p class="font-medium">
+                                            {{ cell.holiday.name }}
+                                        </p>
+                                        <p>
+                                            {{
+                                                cell.holiday.legal_basis ??
+                                                'Sin fundamento registrado'
+                                            }}
+                                        </p>
+                                    </TooltipContent>
                                 </Tooltip>
                                 <Tooltip v-if="cell.shift">
                                     <TooltipTrigger as-child>
@@ -544,7 +649,7 @@ const isToday = (d: string) => d === props.range.today;
                                 <CalendarChip
                                     v-else-if="cell.rest_day"
                                     kind="rest"
-                                    >Descanso</CalendarChip
+                                    >Descanso semanal</CalendarChip
                                 >
                                 <CalendarChip
                                     v-else-if="cell.no_schedule"
@@ -591,27 +696,32 @@ const isToday = (d: string) => d === props.range.today;
                                         cell.incidence.name
                                     }}</span>
                                 </CalendarChip>
-                                <Link
-                                    v-if="cell.status && row.employee"
-                                    :href="
-                                        asistencias.show.url({
-                                            employee: row.employee.id,
-                                            date: cell.date,
-                                        })
-                                    "
-                                    class="px-1 text-[0.7rem] text-muted-foreground hover:text-foreground hover:underline"
+                                <button
+                                    v-if="cell.status"
+                                    type="button"
+                                    class="min-w-0 text-left"
+                                    @click="openDay(cell.date, row, cell)"
                                 >
-                                    {{ cell.status_label
-                                    }}<template v-if="cell.worked_minutes">
-                                        ·
-                                        {{
-                                            formatMinutes(
-                                                cell.worked_minutes,
-                                                'short',
-                                            )
-                                        }}</template
+                                    <CalendarChip
+                                        :kind="workdayLegendKey(cell.status)"
+                                        class="hover:brightness-95"
                                     >
-                                </Link>
+                                        <span class="truncate"
+                                            >{{ cell.status_label
+                                            }}<template
+                                                v-if="cell.worked_minutes"
+                                            >
+                                                ·
+                                                {{
+                                                    formatMinutes(
+                                                        cell.worked_minutes,
+                                                        'short',
+                                                    )
+                                                }}</template
+                                            ></span
+                                        >
+                                    </CalendarChip>
+                                </button>
                             </template>
                         </template>
                     </div>
@@ -649,11 +759,9 @@ const isToday = (d: string) => d === props.range.today;
                             ><span class="block font-medium text-foreground">{{
                                 formatDate(h.date, 'date')
                             }}</span
-                            ><span
-                                v-if="h.legal_basis"
-                                class="block whitespace-nowrap"
-                                >{{ h.legal_basis }}</span
-                            ></span
+                            ><span v-if="h.legal_basis" class="block">{{
+                                h.legal_basis
+                            }}</span></span
                         >
                     </li>
                 </ul>
@@ -685,5 +793,179 @@ const isToday = (d: string) => d === props.range.today;
                 </ul>
             </div>
         </section>
+
+        <!-- Detalle del día -->
+        <Sheet v-model:open="detailOpen">
+            <SheetContent class="w-full gap-0 overflow-y-auto sm:max-w-md">
+                <SheetHeader v-if="detail">
+                    <SheetTitle class="capitalize">{{
+                        longDate(detail.date)
+                    }}</SheetTitle>
+                    <SheetDescription>
+                        {{ detail.row?.employee?.name ?? 'Equipo' }}
+                    </SheetDescription>
+                </SheetHeader>
+                <div v-if="detail" class="flex flex-col gap-4 px-4 pb-6">
+                    <section
+                        v-for="h in holidaysByDate[detail.date] ?? []"
+                        :key="h.id"
+                        class="rounded-xl border p-3"
+                    >
+                        <CalendarChip kind="holiday" wrap class="mb-2 w-fit">
+                            <Landmark
+                                class="mt-px size-3 shrink-0"
+                                aria-hidden="true"
+                            />
+                            {{ h.kind_label }}
+                        </CalendarChip>
+                        <p class="font-medium">{{ h.name }}</p>
+                        <p class="text-sm text-muted-foreground">
+                            {{ h.legal_basis ?? 'Sin fundamento registrado' }}
+                        </p>
+                        <p
+                            v-if="h.is_mandatory_rest"
+                            class="mt-1 text-xs text-brand-soft-foreground"
+                        >
+                            Descanso obligatorio
+                        </p>
+                    </section>
+
+                    <section
+                        v-if="detail.cell"
+                        class="flex flex-col gap-2 rounded-xl border p-3 text-sm"
+                    >
+                        <p class="font-medium">Jornada</p>
+                        <p
+                            v-if="!detail.cell.employed"
+                            class="text-muted-foreground"
+                        >
+                            Sin relación laboral
+                        </p>
+                        <template v-else>
+                            <p
+                                v-if="detail.cell.shift"
+                                class="flex items-center gap-2"
+                            >
+                                <CalendarChip kind="shift">
+                                    <Moon
+                                        v-if="
+                                            detail.cell.shift.kind === 'night'
+                                        "
+                                        class="size-3 shrink-0"
+                                        aria-hidden="true"
+                                    />
+                                    {{ time(detail.cell.shift.starts_at) }}–{{
+                                        time(detail.cell.shift.ends_at)
+                                    }}
+                                </CalendarChip>
+                                <span class="text-muted-foreground"
+                                    >{{ detail.cell.shift.schedule_name }} ·
+                                    {{ detail.cell.shift.kind_label }} ·
+                                    descanso
+                                    {{
+                                        formatMinutes(
+                                            detail.cell.shift.break_minutes,
+                                        )
+                                    }}</span
+                                >
+                            </p>
+                            <CalendarChip
+                                v-else-if="detail.cell.rest_day"
+                                kind="rest"
+                                class="w-fit"
+                                >Descanso semanal</CalendarChip
+                            >
+                            <CalendarChip
+                                v-else-if="detail.cell.no_schedule"
+                                kind="none"
+                                class="w-fit"
+                                >Sin horario</CalendarChip
+                            >
+                            <p
+                                v-if="restLabel(detail.row?.rest_days)"
+                                class="text-xs text-muted-foreground"
+                            >
+                                {{ restLabel(detail.row?.rest_days) }}
+                            </p>
+                            <p
+                                v-if="detail.cell.status"
+                                class="flex items-center gap-2"
+                            >
+                                <CalendarChip
+                                    :kind="workdayLegendKey(detail.cell.status)"
+                                    >{{
+                                        detail.cell.status_label
+                                    }}</CalendarChip
+                                >
+                                <span
+                                    v-if="detail.cell.worked_minutes"
+                                    class="text-muted-foreground"
+                                    >{{
+                                        formatMinutes(
+                                            detail.cell.worked_minutes,
+                                        )
+                                    }}</span
+                                >
+                            </p>
+                            <Link
+                                v-if="detail.row?.employee"
+                                :href="
+                                    asistencias.show.url({
+                                        employee: detail.row.employee.id,
+                                        date: detail.date,
+                                    })
+                                "
+                                class="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                            >
+                                Ver asistencia del día
+                                <ExternalLink
+                                    class="size-3"
+                                    aria-hidden="true"
+                                />
+                            </Link>
+                        </template>
+                    </section>
+
+                    <section
+                        v-if="detailEvents.length > 0"
+                        class="flex flex-col gap-2 rounded-xl border p-3 text-sm"
+                    >
+                        <p class="font-medium">Ausencias</p>
+                        <Link
+                            v-for="e in detailEvents"
+                            :key="e.id"
+                            :href="e.href"
+                            class="flex items-start justify-between gap-3 rounded-lg px-1 py-1 hover:bg-surface-2"
+                        >
+                            <span class="min-w-0"
+                                ><span class="font-medium">{{ e.title }}</span>
+                                <span
+                                    class="block text-xs text-muted-foreground"
+                                    >{{ e.kind_label }} ·
+                                    {{ formatDate(e.starts_on, 'date') }} –
+                                    {{ formatDate(e.ends_on, 'date') }}</span
+                                ></span
+                            >
+                            <CalendarChip
+                                :kind="eventKind(e)"
+                                :pending="e.status === 'pending'"
+                                >{{ e.status_label }}</CalendarChip
+                            >
+                        </Link>
+                    </section>
+
+                    <p
+                        v-if="
+                            !detail.cell &&
+                            detailEvents.length === 0 &&
+                            (holidaysByDate[detail.date] ?? []).length === 0
+                        "
+                        class="text-sm text-muted-foreground"
+                    >
+                        Sin festivos ni ausencias.
+                    </p>
+                </div>
+            </SheetContent>
+        </Sheet>
     </TooltipProvider>
 </template>

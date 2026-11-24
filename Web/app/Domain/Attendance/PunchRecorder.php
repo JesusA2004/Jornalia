@@ -44,6 +44,7 @@ final class PunchRecorder
         private readonly EffectiveTimeline $timeline,
         private readonly PolicyResolver $policies,
         private readonly ScheduleResolver $schedules,
+        private readonly ClockSkewMonitor $clockSkew,
     ) {}
 
     /**
@@ -115,12 +116,18 @@ final class PunchRecorder
                     'employee_id' => $employee->id,
                     'employment_id' => $employment->id,
                     'device_id' => $device?->id,
+                    'kiosk_id' => $input->kioskId,
                     'recorded_by' => $user->id,
                     'client_uuid' => $input->clientUuid,
                     'type' => $input->type,
-                    'source' => $input->capturedOffline ? PunchSource::MobileOffline : $input->source,
+                    // El kiosco conserva su origen aun sin conexión (captured_offline lo distingue).
+                    'source' => $input->capturedOffline && $input->source !== PunchSource::Kiosk ? PunchSource::MobileOffline : $input->source,
                     'server_time' => $now,
                     'device_time' => $input->deviceTime?->utc(),
+                    // Hora oficial = recepción en servidor; se guardan también la del
+                    // dispositivo y la de sincronización (sólo al INSERT: tabla inmutable).
+                    'received_at' => $now,
+                    'synced_at' => $input->syncedAt?->utc() ?? ($input->capturedOffline ? null : $input->deviceTime?->utc()),
                     'clock_skew_seconds' => $input->deviceTime ? (int) $input->deviceTime->diffInSeconds($now, false) : null,
                     'timezone' => $input->timezone !== '' ? $input->timezone : $tz,
                     'local_date' => $localDate,
@@ -161,6 +168,9 @@ final class PunchRecorder
 
         $device?->forceFill(['last_seen_at' => $now])->saveQuietly();
 
+        // Diferencia > 10 min entre hora del dispositivo y del servidor ⇒ alerta en Cumplimiento.
+        $this->clockSkew->evaluate($punch);
+
         PunchRecorded::dispatch($punch);
 
         return ['punch' => $punch, 'duplicate' => false];
@@ -169,6 +179,17 @@ final class PunchRecorder
     private function assertAuthentication(User $user, Employee $employee, PunchInput $input, ?Device $device, AttendancePolicy $policy): void
     {
         $allowed = (array) $policy->allowed_auth_methods;
+
+        if ($input->authMethod === AuthMethod::KioskPin) {
+            // Kiosco de sucursal: KioskService ya autenticó el kiosco (token) y al colaborador
+            // (número de empleado + NIP). Aquí sólo se aplica la verificación facial si la política la exige.
+            if ($input->source !== PunchSource::Kiosk || $input->kioskId === null) {
+                throw AttendanceException::policyViolation('Método de autenticación no permitido fuera de un kiosco.');
+            }
+            $this->assertFaceVerification($employee, $input, $policy);
+
+            return;
+        }
 
         if ($input->authMethod === AuthMethod::WebSession) {
             if (! $policy->web_punch_allowed) {
@@ -210,6 +231,11 @@ final class PunchRecorder
             $this->consumeChallenge($device, (string) $input->nonce);
         }
 
+        $this->assertFaceVerification($employee, $input, $policy);
+    }
+
+    private function assertFaceVerification(Employee $employee, PunchInput $input, AttendancePolicy $policy): void
+    {
         if ($policy->face_verification_required) {
             $ok = $input->faceVerificationId !== null && FaceVerification::query()
                 ->where('uuid', $input->faceVerificationId)
@@ -253,6 +279,10 @@ final class PunchRecorder
         $mode = $policy->location_mode;
 
         if (! $input->hasLocation()) {
+            // Kiosco: equipo fijo en la sucursal autorizado por RH; su ubicación es la de la sucursal.
+            if ($input->source === PunchSource::Kiosk) {
+                return [$geo, []];
+            }
             if (in_array($mode, [LocationMode::Required, LocationMode::Geofence], true)) {
                 if (! $input->capturedOffline) {
                     throw AttendanceException::locationRequired();

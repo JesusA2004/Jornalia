@@ -40,6 +40,8 @@ final class PunchPayload
             'location.captured_at' => ['required_with:location', 'date'],
             'location.is_mocked' => ['nullable', 'boolean'],
             'face_verification_id' => ['nullable', 'uuid'],
+            // Hora de envío/sincronización según el reloj del dispositivo (opcional; apps previas no la envían).
+            'synced_at' => ['nullable', 'string', 'max:40', 'date'],
         ];
     }
 
@@ -99,6 +101,7 @@ final class PunchPayload
             faceVerificationId: $data['face_verification_id'] ?? null,
             ipAddress: $request->ip(),
             userAgent: $request->userAgent(),
+            syncedAt: isset($data['synced_at']) ? CarbonImmutable::parse((string) $data['synced_at'])->utc() : null,
         );
     }
 }

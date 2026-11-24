@@ -30,7 +30,6 @@ class WorkdaySummary extends Model
             'scheduled_end' => 'datetime',
             'first_in' => 'datetime',
             'last_out' => 'datetime',
-            'auto_clock_out_at' => 'datetime',
             'anomalies' => 'array',
             'has_rectifications' => 'boolean',
             'computed_at' => 'datetime',

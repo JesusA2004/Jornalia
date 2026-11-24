@@ -65,6 +65,10 @@ final class PunchController extends ApiController
         $results = [];
         foreach ((array) $request->validated('punches') as $item) {
             $item = (array) $item;
+            // La hora de sincronización puede venir por elemento o para todo el lote.
+            if (! isset($item['synced_at']) && is_string($request->input('synced_at'))) {
+                $item['synced_at'] = $request->input('synced_at');
+            }
             $clientUuid = is_string($item['client_uuid'] ?? null) ? $item['client_uuid'] : '';
 
             try {

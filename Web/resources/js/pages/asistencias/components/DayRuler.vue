@@ -97,9 +97,6 @@ const dot = (type: string) =>
           ? 'bg-danger'
           : 'bg-warning';
 const time = (iso: string) => timeFormatter.value.format(new Date(iso));
-/** Marcaje registrado por el sistema (salida automática por política). */
-const autoUuid = computed(() => props.day.auto_clock_out?.punch_uuid ?? null);
-const cutoffAt = computed(() => props.day.auto_clock_out?.cutoff_at ?? null);
 </script>
 
 <template>
@@ -146,7 +143,7 @@ const cutoffAt = computed(() => props.day.auto_clock_out?.cutoff_at ?? null);
                                             p.status === 'flagged' &&
                                                 'outline-2 outline-offset-1 outline-warning',
                                             p.is_system &&
-                                                'rounded-sm border-2 border-dashed border-info bg-card ring-0',
+                                                'rounded-sm border-2 border-dashed border-warning bg-card opacity-70 ring-0',
                                         )
                                     "
                                     :style="{
@@ -157,28 +154,18 @@ const cutoffAt = computed(() => props.day.auto_clock_out?.cutoff_at ?? null);
                                             ),
                                         ),
                                     }"
-                                    :aria-label="`${p.is_system ? 'Salida automática' : p.type_label} ${time(p.recognized_time ?? p.server_time)}`"
+                                    :aria-label="`${p.type_label} ${time(p.recognized_time ?? p.server_time)}${p.is_system ? ' · generado por sistema (histórico)' : ''}`"
                                 />
                             </TooltipTrigger>
                             <TooltipContent>
+                                {{ p.type_label }} · {{ time(p.server_time) }} ·
+                                {{ p.origin.label }}
                                 <template v-if="p.is_system">
-                                    Salida automática por política ({{
-                                        time(p.recognized_time)
-                                    }}) · registrada {{ time(p.server_time) }}
-                                </template>
-                                <template v-else
-                                    >{{ p.type_label }} ·
-                                    {{ time(p.server_time) }}</template
+                                    · no reconocido</template
                                 >
                                 <template v-if="p.voided"> · excluido</template>
                             </TooltipContent>
                         </Tooltip>
-                        <div
-                            v-if="cutoffAt"
-                            class="pointer-events-none absolute inset-y-0 border-l-2 border-dashed border-info/70"
-                            :style="{ left: pct(minuteOf(cutoffAt)) }"
-                            aria-hidden="true"
-                        />
                     </template>
                     <template v-else>
                         <Tooltip v-for="(e, i) in day.recognized" :key="i">
@@ -191,9 +178,6 @@ const cutoffAt = computed(() => props.day.auto_clock_out?.cutoff_at ?? null);
                                             dot(e.type),
                                             e.origin !== 'original' &&
                                                 'ring-info',
-                                            e.punch_uuid !== null &&
-                                                e.punch_uuid === autoUuid &&
-                                                'rounded-sm border-2 border-dashed border-info bg-card ring-0',
                                         )
                                     "
                                     :style="{ left: pct(minuteOf(e.time)) }"
@@ -201,13 +185,8 @@ const cutoffAt = computed(() => props.day.auto_clock_out?.cutoff_at ?? null);
                                 />
                             </TooltipTrigger>
                             <TooltipContent>
-                                {{
-                                    e.punch_uuid !== null &&
-                                    e.punch_uuid === autoUuid
-                                        ? 'Salida automática por política'
-                                        : e.type_label
-                                }}
-                                · {{ time(e.time) }} · {{ e.origin_label }}
+                                {{ e.type_label }} · {{ time(e.time) }} ·
+                                {{ e.origin_label }}
                             </TooltipContent>
                         </Tooltip>
                     </template>

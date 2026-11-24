@@ -3,7 +3,6 @@ import { Link, router } from '@inertiajs/vue3';
 import {
     AlarmClock,
     ArrowRight,
-    Bot,
     CalendarCheck,
     CalendarClock,
     ClipboardList,
@@ -11,10 +10,12 @@ import {
     Coffee,
     DoorOpen,
     FileClock,
+    Signature,
     Gauge,
     Hourglass,
     LayoutDashboard,
     PalmtreeIcon,
+    PenLine,
     ShieldAlert,
     ShieldCheck,
     Sparkles,
@@ -24,6 +25,7 @@ import {
     UserX,
     Users,
     WifiOff,
+    AlertTriangle,
 } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import {
@@ -155,14 +157,93 @@ const hasTrend = computed(() =>
     (m.value?.trend ?? []).some((d) => d.attended > 0 || d.absent > 0),
 );
 
-const branchRows = computed(() =>
-    (m.value?.branches ?? []).slice(0, 10).map((b) => ({
-        name: b.name,
-        worked: Math.round(b.worked_minutes / 6) / 10,
-        late: b.late,
-        absent: b.absent,
-    })),
+/** Asistencias filtradas (omisiones, sucursal y fecha) cuando hay permiso. */
+function attendanceUrl(
+    query: Record<string, string | null>,
+): string | undefined {
+    if (!can('punches.view')) {
+        return undefined;
+    }
+
+    return asistencias.index.url({
+        query: Object.fromEntries(
+            Object.entries(query).filter(([, v]) => v !== null && v !== ''),
+        ) as Record<string, string>,
+    });
+}
+
+const omissionsUrl = computed(() =>
+    attendanceUrl({ omisiones: '1', branch_id: props.filters.branch_id }),
 );
+
+function branchUrl(branchId: number | null): string | undefined {
+    if (branchId === null || !t.value) {
+        return undefined;
+    }
+
+    return attendanceUrl({
+        branch_id: String(branchId),
+        from: t.value.date,
+        to: t.value.date,
+    });
+}
+
+const toSignUrl = computed(() =>
+    can('rectifications.view')
+        ? rectificaciones.index.url({ query: { tab: 'por_firmar' } })
+        : undefined,
+);
+
+const todayItems = computed(() => {
+    if (!t.value) {
+        return [];
+    }
+
+    return [
+        {
+            label: 'Ausentes',
+            value: t.value.absent,
+            icon: UserX,
+            tone: 'text-danger-soft-foreground bg-danger-soft',
+            href: undefined as string | undefined,
+        },
+        {
+            label: 'Retardos',
+            value: t.value.late,
+            icon: AlarmClock,
+            tone: 'text-warning-soft-foreground bg-warning-soft',
+            href: undefined,
+        },
+        {
+            label: 'Sin salida',
+            value: t.value.missing_out,
+            icon: DoorOpen,
+            tone: 'text-info-soft-foreground bg-info-soft',
+            href: omissionsUrl.value,
+        },
+        {
+            label: 'En descanso',
+            value: t.value.on_break,
+            icon: Coffee,
+            tone: 'text-neutral-soft-foreground bg-neutral-soft',
+            href: undefined,
+        },
+        {
+            label: 'En revisión',
+            value: t.value.flagged_punches,
+            icon: ShieldAlert,
+            tone: 'text-warning-soft-foreground bg-warning-soft',
+            href: undefined,
+        },
+        {
+            label: 'Marcajes',
+            value: t.value.punches,
+            icon: Clock,
+            tone: 'text-primary-soft-foreground bg-primary-soft',
+            href: undefined,
+        },
+    ];
+});
 
 const severityData = computed(() => {
     const s = m.value?.compliance.by_severity;
@@ -195,11 +276,32 @@ const pendingItems = computed(() => {
     return [
         {
             key: 'rect',
-            label: 'Rectificaciones',
+            label: 'Rectificaciones por autorizar',
             value: p.rectifications,
             icon: FileClock,
-            href: rectificaciones.index.url(),
+            href: rectificaciones.index.url({
+                query: { tab: 'por_autorizar' },
+            }),
             permission: 'rectifications.view',
+            isNew: false,
+        },
+        {
+            key: 'sign',
+            label: 'Firmas del colaborador pendientes',
+            value: p.signatures,
+            icon: PenLine,
+            href: rectificaciones.index.url({ query: { tab: 'por_firmar' } }),
+            permission: 'rectifications.view',
+            isNew: true,
+        },
+        {
+            key: 'omissions',
+            label: 'Omisiones de checada sin rectificar',
+            value: p.omissions,
+            icon: AlertTriangle,
+            href: asistencias.index.url({ query: { omisiones: '1' } }),
+            permission: 'punches.view',
+            isNew: true,
         },
         {
             key: 'inc',
@@ -208,6 +310,7 @@ const pendingItems = computed(() => {
             icon: ClipboardList,
             href: incidencias.index.url(),
             permission: 'incidences.view',
+            isNew: false,
         },
         {
             key: 'vac',
@@ -216,14 +319,16 @@ const pendingItems = computed(() => {
             icon: PalmtreeIcon,
             href: vacaciones.index.url(),
             permission: 'vacations.view',
+            isNew: false,
         },
         {
             key: 'ot',
-            label: 'Horas extra',
+            label: 'Horas extra por autorizar',
             value: p.overtime,
             icon: Timer,
             href: horasExtra.index.url(),
             permission: 'overtime.view',
+            isNew: false,
         },
     ].filter((i) => can(i.permission));
 });
@@ -245,6 +350,16 @@ const help = [
         title: 'Datos reales',
         text: 'Las cifras salen de las jornadas calculadas y los marcajes registrados; nada se estima en pantalla.',
         icon: ShieldCheck,
+    },
+    {
+        title: 'Sin marcajes automáticos',
+        text: 'Una salida faltante queda como omisión hasta su rectificación firmada por el colaborador.',
+        icon: DoorOpen,
+    },
+    {
+        title: 'Horas extra',
+        text: 'Dobles y triples se calculan por colaborador y por semana con la normativa del año.',
+        icon: Timer,
     },
     {
         title: 'Cumplimiento',
@@ -347,47 +462,18 @@ const help = [
                 <div
                     class="grid flex-1 grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6"
                 >
-                    <div
-                        v-for="item in [
-                            {
-                                label: 'Ausentes',
-                                value: t.absent,
-                                icon: UserX,
-                                tone: 'text-danger-soft-foreground bg-danger-soft',
-                            },
-                            {
-                                label: 'Retardos',
-                                value: t.late,
-                                icon: AlarmClock,
-                                tone: 'text-warning-soft-foreground bg-warning-soft',
-                            },
-                            {
-                                label: 'Sin salida',
-                                value: t.open_sessions,
-                                icon: DoorOpen,
-                                tone: 'text-info-soft-foreground bg-info-soft',
-                            },
-                            {
-                                label: 'En descanso',
-                                value: t.on_break,
-                                icon: Coffee,
-                                tone: 'text-neutral-soft-foreground bg-neutral-soft',
-                            },
-                            {
-                                label: 'En revisión',
-                                value: t.flagged_punches,
-                                icon: ShieldAlert,
-                                tone: 'text-warning-soft-foreground bg-warning-soft',
-                            },
-                            {
-                                label: 'Marcajes',
-                                value: t.punches,
-                                icon: Clock,
-                                tone: 'text-primary-soft-foreground bg-primary-soft',
-                            },
-                        ]"
+                    <component
+                        :is="item.href ? Link : 'div'"
+                        v-for="item in todayItems"
                         :key="item.label"
-                        class="flex flex-col gap-2 rounded-2xl border bg-surface-2/60 p-3"
+                        :href="item.href"
+                        :class="
+                            cn(
+                                'flex flex-col gap-2 rounded-2xl border bg-surface-2/60 p-3',
+                                item.href &&
+                                    'transition-colors hover:border-primary/40 hover:bg-surface-2',
+                            )
+                        "
                     >
                         <span
                             :class="
@@ -409,7 +495,7 @@ const help = [
                         <span class="text-xs text-muted-foreground">{{
                             item.label
                         }}</span>
-                    </div>
+                    </component>
                 </div>
             </div>
         </section>
@@ -461,7 +547,7 @@ const help = [
                     :sparkline="m.trend.map((d) => d.absent)"
                 />
                 <KpiTile
-                    label="Excedente registrado"
+                    label="Tiempo extra registrado"
                     :value="formatMinutes(m.totals.excess_minutes, 'decimal')"
                     :icon="Hourglass"
                     tone="info"
@@ -474,31 +560,19 @@ const help = [
                     "
                 />
                 <KpiTile
-                    label="Marcajes en revisión"
-                    :value="m.totals.flagged_punches"
-                    :hint="`${formatNumber(m.totals.offline_punches)} sin conexión · ${formatNumber(m.totals.punches)} totales`"
+                    label="Marcajes sin conexión"
+                    :value="m.totals.offline_punches"
+                    hint="Hora del dispositivo y del servidor"
                     :icon="WifiOff"
                     tone="warning"
-                    :delta="m.deltas.flagged_punches"
-                    :positive-is-good="false"
                 />
                 <KpiTile
-                    label="Salidas automáticas"
-                    :value="m.totals.auto_clock_outs"
-                    :hint="`${formatMinutes(m.totals.after_cutoff_minutes)} después del cierre (no reconocido)`"
-                    :icon="Bot"
-                    tone="neutral"
-                    :href="
-                        can('punches.view')
-                            ? asistencias.index.url({
-                                  query: {
-                                      auto: '1',
-                                      from: filters.from,
-                                      to: filters.to,
-                                  },
-                              })
-                            : undefined
-                    "
+                    label="Rectificaciones por firmar"
+                    :value="m.totals.to_sign"
+                    hint="Esperan firma del colaborador"
+                    :icon="Signature"
+                    tone="primary"
+                    :href="toSignUrl"
                 />
             </div>
         </div>
@@ -611,85 +685,68 @@ const help = [
 
         <div class="grid gap-6 xl:grid-cols-3">
             <SectionCard
-                title="Por sucursal"
+                title="Asistencia por sucursal"
+                description="Presentes / programados hoy"
                 :icon="Users"
                 class="xl:col-span-2"
             >
-                <ChartBar
-                    v-if="branchRows.length > 0"
-                    :data="branchRows"
-                    index="name"
-                    :series="[
-                        {
-                            key: 'worked',
-                            label: 'Horas trabajadas',
-                            color: 'var(--chart-1)',
-                        },
-                    ]"
-                    :value-formatter="(v) => `${formatNumber(v)} h`"
-                    :show-legend="false"
-                    height-class="h-56"
-                />
-                <div v-if="m.branches.length > 0" class="mt-4 overflow-x-auto">
-                    <table
-                        class="w-full min-w-[34rem] text-sm [&_td+td]:pl-4 [&_th]:whitespace-nowrap [&_th+th]:pl-4"
-                    >
-                        <thead>
-                            <tr class="text-left text-xs text-muted-foreground">
-                                <th class="py-2 font-medium">Sucursal</th>
-                                <th class="py-2 text-right font-medium">
-                                    Personas
-                                </th>
-                                <th class="py-2 text-right font-medium">
-                                    Puntualidad
-                                </th>
-                                <th class="py-2 text-right font-medium">
-                                    Retardos
-                                </th>
-                                <th class="py-2 text-right font-medium">
-                                    Faltas
-                                </th>
-                                <th class="py-2 text-right font-medium">
-                                    Excedente
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y">
-                            <tr v-for="b in m.branches" :key="b.name">
-                                <td class="py-2 font-medium">{{ b.name }}</td>
-                                <td class="py-2 text-right numeric">
-                                    {{ b.employees }}
-                                </td>
-                                <td class="py-2 text-right numeric">
-                                    {{ formatPercent(b.punctuality_rate) }}
-                                </td>
-                                <td class="py-2 text-right numeric">
-                                    {{ b.late }}
-                                </td>
-                                <td class="py-2 text-right numeric">
-                                    {{ b.absent }}
-                                </td>
-                                <td class="py-2 text-right numeric">
-                                    <MinutesDisplay
-                                        :minutes="b.excess_minutes"
-                                        format="short"
-                                    />
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+                <ul v-if="t.branches.length > 0" class="flex flex-col gap-1">
+                    <li v-for="b in t.branches" :key="b.name">
+                        <component
+                            :is="branchUrl(b.branch_id) ? Link : 'div'"
+                            :href="branchUrl(b.branch_id)"
+                            :class="
+                                cn(
+                                    'grid grid-cols-[minmax(0,9rem)_1fr_auto] items-center gap-3 rounded-xl px-2 py-2 text-sm sm:grid-cols-[minmax(0,12rem)_1fr_auto]',
+                                    branchUrl(b.branch_id) &&
+                                        'transition-colors hover:bg-surface-2',
+                                )
+                            "
+                        >
+                            <span
+                                class="truncate font-medium"
+                                :title="b.name"
+                                >{{ b.name }}</span
+                            >
+                            <Progress :model-value="b.rate ?? 0" class="h-2" />
+                            <span
+                                class="numeric text-xs whitespace-nowrap text-muted-foreground"
+                                >{{ formatPercent(b.rate) }} ·
+                                {{ b.present }} de {{ b.scheduled }}</span
+                            >
+                        </component>
+                    </li>
+                </ul>
                 <EmptyState
                     v-else
                     :icon="Users"
                     size="sm"
                     bordered
-                    title="Sin datos por sucursal"
+                    title="Sin personal programado hoy"
                 />
+                <p
+                    v-if="t.branches.length > 0 && can('punches.view')"
+                    class="mt-2 text-xs text-muted-foreground"
+                >
+                    Clic en una sucursal para ver el detalle de su personal.
+                </p>
             </SectionCard>
 
             <div class="flex flex-col gap-6">
-                <SectionCard title="Horas extra" :icon="Timer">
+                <SectionCard title="Horas extra · semana" :icon="Timer">
+                    <template v-if="can('overtime.view')" #actions>
+                        <Button variant="ghost" size="sm" as-child>
+                            <Link
+                                :href="
+                                    horasExtra.index.url({
+                                        query: { week: m.overtime.week_start },
+                                    })
+                                "
+                            >
+                                Ver <ArrowRight class="size-3.5" />
+                            </Link>
+                        </Button>
+                    </template>
                     <div class="grid grid-cols-2 gap-3">
                         <div class="rounded-xl bg-surface-2 p-3">
                             <p class="text-xs text-muted-foreground">Dobles</p>
@@ -745,6 +802,25 @@ const help = [
                             format="short"
                         />
                         · {{ m.overtime.pending }} pendientes
+                        <template v-if="m.overtime.minors > 0">
+                            ·
+                            <span
+                                class="font-semibold text-danger-soft-foreground"
+                                >{{ m.overtime.minors }} menores de 18</span
+                            ></template
+                        >
+                    </p>
+                    <p
+                        :class="
+                            cn(
+                                'mt-2 w-fit rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold',
+                                m.overtime.legal_verified
+                                    ? 'bg-success-soft text-success-soft-foreground'
+                                    : 'bg-warning-soft text-warning-soft-foreground',
+                            )
+                        "
+                    >
+                        {{ m.overtime.legal_label }}
                     </p>
                 </SectionCard>
 
@@ -768,9 +844,15 @@ const help = [
                                         aria-hidden="true"
                                     />
                                 </span>
-                                <span class="flex-1 text-sm font-medium">{{
-                                    item.label
-                                }}</span>
+                                <span
+                                    class="flex flex-1 flex-col text-sm font-medium"
+                                    >{{ item.label
+                                    }}<span
+                                        v-if="item.isNew && item.value > 0"
+                                        class="text-[0.6875rem] font-normal text-muted-foreground"
+                                        >Antes del cierre de nómina</span
+                                    ></span
+                                >
                                 <span
                                     :class="
                                         cn(

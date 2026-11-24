@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Web\Operacion\Support;
 
 use App\Domain\Attendance\Anomaly;
 use App\Domain\Attendance\EffectiveTimeline;
+use App\Domain\Attendance\Omissions;
 use App\Domain\Attendance\PolicyResolver;
+use App\Domain\Attendance\PunchOrigin;
 use App\Domain\Scheduling\ScheduleResolver;
 use App\Enums\AdjustmentAction;
 use App\Enums\PunchSource;
@@ -14,7 +16,6 @@ use App\Models\Employee;
 use App\Models\Punch;
 use App\Models\WorkdaySummary;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Collection;
 
 /**
  * Serializa marcajes, ajustes y jornadas para Inertia. Sin reglas laborales:
@@ -63,10 +64,13 @@ final class AttendancePresenter
             'anomalies' => self::anomalies($p->anomalies),
             'has_location' => $p->latitude !== null && $p->longitude !== null,
             'sequence' => (int) $p->sequence,
-            // Salida automática por política: registrada por el sistema; la hora
-            // reconocida es la hora límite (device_time), no la de registro.
+            // Marcaje histórico generado por el sistema (salida automática eliminada):
+            // se conserva como evidencia, pero no se reconoce como marcaje del colaborador.
             'is_system' => $p->source === PunchSource::System,
-            'recognized_time' => OperacionScope::iso(EffectiveTimeline::punchTime($p)),
+            'recognized_time' => $p->source === PunchSource::System ? null : OperacionScope::iso(EffectiveTimeline::punchTime($p)),
+            'origin' => PunchOrigin::present(PunchOrigin::forPunch($p)),
+            'received_at' => OperacionScope::iso($p->received_at ?? $p->server_time),
+            'synced_at' => OperacionScope::iso($p->synced_at),
         ];
 
         if (! $detailed) {
@@ -117,11 +121,15 @@ final class AttendancePresenter
     }
 
     /**
-     * @param  array<int, array<string, mixed>>|null  $cards
+     * @param  array<string, mixed>|null  $card
+     * @param  array{code:string, label:string}|null  $origin  origen del marcaje (PunchOrigin)
+     * @param  array{id:int, url:string}|null  $rectification  rectificación aplicada (firmada) del día
      * @return array<string, mixed>
      */
-    public static function workday(WorkdaySummary $w, ?array $card = null): array
+    public static function workday(WorkdaySummary $w, ?array $card = null, ?array $origin = null, ?array $rectification = null): array
     {
+        $anomalies = (array) $w->anomalies;
+
         return [
             'id' => $w->id,
             'employee_id' => $w->employee_id,
@@ -144,10 +152,11 @@ final class AttendancePresenter
             'late_minutes' => (int) $w->late_minutes,
             'early_leave_minutes' => (int) $w->early_leave_minutes,
             'excess_minutes' => (int) $w->excess_minutes,
-            'auto_clock_out_at' => OperacionScope::iso($w->auto_clock_out_at),
-            'after_cutoff_minutes' => (int) ($w->after_cutoff_minutes ?? 0),
             'night_minutes' => (int) $w->night_minutes,
             'has_rectifications' => (bool) $w->has_rectifications,
+            'omission' => array_values(array_intersect($anomalies, Omissions::ANOMALIES))[0] ?? null,
+            'origin' => $origin,
+            'rectification' => $rectification,
             'anomalies' => self::anomalies($w->anomalies),
             'legal_version_code' => $w->legal_version_code,
             'computed_at' => OperacionScope::iso($w->computed_at),
@@ -215,34 +224,6 @@ final class AttendancePresenter
             'punches' => $punches->map(fn (Punch $p) => self::punch($p, true) + ['voided' => in_array($p->uuid, $voided, true)])->values()->all(),
             'adjustments' => $adjustments->map(fn (AttendanceAdjustment $a) => self::adjustment($a))->values()->all(),
             'recognized' => $recognized,
-            'auto_clock_out' => $this->autoClockOut($punches),
-        ];
-    }
-
-    /**
-     * Salida automática del día y, si existe, la salida real posterior al límite
-     * (tiempo conservado pero no reconocido como jornada ni como extra).
-     *
-     * @param  Collection<int, Punch>  $punches
-     * @return array{punch_uuid:string, cutoff_at:?string, registered_at:?string, real_out_at:?string, real_out_uuid:?string, after_cutoff_minutes:int}|null
-     */
-    private function autoClockOut(Collection $punches): ?array
-    {
-        $system = $punches->first(fn (Punch $p) => $p->source === PunchSource::System && $p->type === PunchType::ClockOut);
-        if ($system === null) {
-            return null;
-        }
-        $cutoff = EffectiveTimeline::punchTime($system);
-        $real = $punches->filter(fn (Punch $p) => $p->source !== PunchSource::System && $p->type === PunchType::ClockOut
-            && EffectiveTimeline::punchTime($p)->gt($cutoff))->first();
-
-        return [
-            'punch_uuid' => $system->uuid,
-            'cutoff_at' => OperacionScope::iso($cutoff),
-            'registered_at' => OperacionScope::iso($system->server_time),
-            'real_out_at' => $real ? OperacionScope::iso(EffectiveTimeline::punchTime($real)) : null,
-            'real_out_uuid' => $real?->uuid,
-            'after_cutoff_minutes' => $real ? (int) $cutoff->diffInMinutes(EffectiveTimeline::punchTime($real)) : 0,
         ];
     }
 

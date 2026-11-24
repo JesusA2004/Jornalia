@@ -37,6 +37,8 @@ class Punch extends Model
             'auth_method' => AuthMethod::class,
             'server_time' => 'immutable_datetime',
             'device_time' => 'immutable_datetime',
+            'received_at' => 'immutable_datetime',
+            'synced_at' => 'immutable_datetime',
             'created_at' => 'immutable_datetime',
             'local_date' => 'date',
             'anomalies' => 'array',

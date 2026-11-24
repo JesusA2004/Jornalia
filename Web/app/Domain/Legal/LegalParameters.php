@@ -56,7 +56,8 @@ final readonly class LegalParameters
 
         return new self(
             versionCode: $version->code,
-            verificationStatus: $version->verification_status,
+            // «Verificada» exige usuario y fecha reales de validación por RH.
+            verificationStatus: $version->isVerified() ? LegalVersion::STATUS_VERIFIED : LegalVersion::STATUS_UNVERIFIED,
             weeklyOrdinaryMaxMinutes: (int) $p['weekly_ordinary_max_minutes'],
             dailyMaxDay: (int) ($daily['day'] ?? 480),
             dailyMaxNight: (int) ($daily['night'] ?? 420),
@@ -96,6 +97,6 @@ final readonly class LegalParameters
 
     public function isVerified(): bool
     {
-        return $this->verificationStatus === 'verified';
+        return $this->verificationStatus === LegalVersion::STATUS_VERIFIED;
     }
 }

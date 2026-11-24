@@ -2,12 +2,13 @@
 import {
     AlertOctagon,
     BadgeCheck,
-    Bot,
+    Baby,
     CalendarClock,
     ChevronLeft,
     ChevronRight,
     Clock,
     Hourglass,
+    MessageSquareText,
     Scale,
     ShieldAlert,
     Timer,
@@ -40,6 +41,7 @@ import { cn } from '@/lib/utils';
 import type { DataTableColumn, HelpStep } from '@/types';
 import type {
     EmployeeCard,
+    OvertimeDayCell,
     OvertimeIndexProps,
     OvertimeRecordCell,
     OvertimeWeekRow,
@@ -123,52 +125,57 @@ function openRecord(
     dialogOpen.value = true;
 }
 
-function cellTone(record: OvertimeRecordCell | null): string {
-    if (!record || record.recorded_excess_minutes === 0) {
+function cellTone(cell: OvertimeDayCell): string {
+    if (cell.recorded_minutes === 0) {
         return '';
     }
-    if (record.over_limit_minutes > 0) {
+    if (cell.over_limit_minutes > 0) {
         return 'bg-danger-soft text-danger-soft-foreground ring-1 ring-danger/40';
     }
-    if (record.status === 'approved') {
+    if (cell.pending_minutes > 0) {
+        return 'bg-warning-soft text-warning-soft-foreground';
+    }
+    if (cell.authorized_minutes > 0) {
         return 'bg-success-soft text-success-soft-foreground';
     }
-    if (record.status === 'rejected') {
-        return 'bg-neutral-soft text-neutral-soft-foreground';
-    }
 
-    return 'bg-warning-soft text-warning-soft-foreground';
+    return 'bg-neutral-soft text-neutral-soft-foreground';
 }
 
 const emptyHint = computed(() =>
     props.filters.all
         ? 'No hay jornadas registradas en esta semana.'
-        : 'Nadie registró excedentes esta semana. Activa «Todo el personal» para ver a todos.',
+        : 'Nadie registró tiempo extra esta semana. Activa «Todo el personal» para ver a todos.',
 );
+
+const hours = (minutes: number | null | undefined): string =>
+    minutes === null || minutes === undefined
+        ? '—'
+        : formatMinutes(minutes, 'short');
 
 const dayOf = (row: OvertimeWeekRow, date: string) =>
     row.days.find((d) => d.date === date) ?? null;
 
 const help: HelpStep[] = [
     {
-        title: 'Excedente registrado',
-        text: 'Tiempo trabajado por encima del turno, calculado del registro.',
+        title: 'Tiempo extra registrado',
+        text: 'Todo tiempo después del horario. Nada se descarta: queda pendiente.',
         icon: Clock,
     },
     {
-        title: 'Dobles y triples',
-        text: 'Clasificación legal vigente; lo que rebasa límites se marca en rojo.',
-        icon: Scale,
-    },
-    {
-        title: 'Autoriza con justificación',
-        text: 'Nunca más de lo registrado; el excedente jamás se oculta.',
+        title: 'Autoriza o justifica',
+        text: 'El jefe autoriza (pago) o justifica (se conserva sin pago extra).',
         icon: BadgeCheck,
     },
     {
-        title: 'Después del cierre',
-        text: 'Tiempo posterior a la salida automática por política: se conserva, pero no cuenta como jornada ni como extra.',
-        icon: Bot,
+        title: 'Dobles y triples',
+        text: 'Por colaborador y semana, con los topes de la normativa del año (LFT arts. 66 y 68).',
+        icon: Scale,
+    },
+    {
+        title: 'Menores de 18',
+        text: 'Tiempo extra prohibido: se alerta y sólo puede justificarse.',
+        icon: Baby,
     },
 ];
 </script>
@@ -217,85 +224,101 @@ const help: HelpStep[] = [
     </p>
 
     <div
-        class="mb-5 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4 2xl:grid-cols-7"
+        class="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4 2xl:grid-cols-7"
     >
         <KpiTile
-            label="Excedente registrado"
-            :value="formatMinutes(totals.recorded_excess_minutes, 'short')"
+            label="Tiempo extra registrado"
+            :value="hours(totals.recorded_minutes)"
             :icon="TrendingUp"
             tone="info"
-            :hint="`${totals.records} días con excedente`"
+            :hint="`${totals.overtime_days} días · ${totals.employees} personas`"
         />
         <KpiTile
             label="Autorizado"
-            :value="formatMinutes(totals.authorized_minutes, 'short')"
+            :value="hours(totals.authorized_minutes)"
             :icon="BadgeCheck"
             tone="success"
         />
         <KpiTile
+            label="Justificado"
+            :value="hours(totals.justified_minutes)"
+            :icon="MessageSquareText"
+            tone="neutral"
+            hint="Se conserva sin pago extra"
+        />
+        <KpiTile
             label="Dobles"
-            :value="formatMinutes(totals.double_minutes, 'short')"
+            :value="hours(totals.double_minutes)"
             :icon="Clock"
             tone="primary"
+            :hint="`Hasta ${hours(limits.weekly_max_minutes)}/semana`"
         />
         <KpiTile
             label="Triples"
-            :value="formatMinutes(totals.triple_minutes, 'short')"
+            :value="hours(totals.triple_minutes)"
             :icon="Hourglass"
             tone="warning"
+            :hint="`Excedente · máx. ${hours(limits.excess_weekly_max_minutes)}/semana`"
         />
         <KpiTile
-            label="Sobre límite"
-            :value="formatMinutes(totals.over_limit_minutes, 'short')"
+            label="Sobre límite legal"
+            :value="hours(totals.over_limit_minutes)"
             :icon="AlertOctagon"
             :tone="totals.over_limit_minutes > 0 ? 'danger' : 'neutral'"
             :class="
                 totals.over_limit_minutes > 0 ? 'ring-2 ring-danger/40' : ''
             "
-            hint="Rebasa límites legales"
+            hint="Alertado en Cumplimiento"
         />
         <KpiTile
             label="Pendientes"
             :value="totals.pending"
             :icon="ShieldAlert"
             tone="warning"
-            hint="Por autorizar"
-        />
-        <KpiTile
-            label="Después del cierre"
-            :value="formatMinutes(totals.after_cutoff_minutes, 'short')"
-            :icon="Bot"
-            tone="neutral"
-            hint="No reconocido · no es extra"
+            :hint="`${hours(totals.pending_minutes)} por autorizar · todo tiempo registrado se revisa`"
         />
     </div>
 
     <div
-        class="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border bg-surface-2 px-4 py-2.5 text-xs text-muted-foreground"
+        class="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-xl border bg-surface-2 px-4 py-2.5 text-xs text-muted-foreground"
     >
         <span
             class="inline-flex items-center gap-1.5 font-semibold text-foreground"
             ><Scale class="size-3.5" aria-hidden="true" />
-            {{ limits.version }}</span
+            {{ limits.name ?? limits.version }}</span
         >
         <span
-            >Máx. diario
-            {{ formatMinutes(limits.daily_max_minutes, 'short') }}</span
+            >Jornada máx.
+            {{ hours(limits.weekly_ordinary_max_minutes) }}/sem</span
+        >
+        <span>Extra máx. {{ hours(limits.weekly_max_minutes) }}/sem</span>
+        <span>Hasta {{ hours(limits.daily_max_minutes) }}/día</span>
+        <span>Máx. {{ limits.max_days_per_week }} días/sem</span>
+        <span
+            >Excedente ≤ {{ hours(limits.excess_weekly_max_minutes) }}/sem (pago
+            triple)</span
+        >
+        <span v-if="limits.daily_total_max_minutes"
+            >Tope {{ hours(limits.daily_total_max_minutes) }}/día</span
         >
         <span
-            >Máx. semanal
-            {{ formatMinutes(limits.weekly_max_minutes, 'short') }}</span
-        >
-        <span>Hasta {{ limits.max_days_per_week }} días/semana</span>
-        <span
-            >Dobles ×{{ limits.double_multiplier }} · Excedentes ×{{
-                limits.excess_multiplier
-            }}</span
+            v-if="!limits.minors_allowed"
+            class="font-semibold text-danger-soft-foreground"
+            >Menores de 18: prohibido</span
         >
         <span
-            v-if="limits.verification_status !== 'verified'"
-            class="font-medium text-warning-soft-foreground"
-            >Normativa en verificación</span
+            :class="
+                cn(
+                    'rounded-full px-2 py-0.5 font-semibold',
+                    limits.verified
+                        ? 'bg-success-soft text-success-soft-foreground'
+                        : 'bg-warning-soft text-warning-soft-foreground',
+                )
+            "
+            >{{ limits.verification_label
+            }}<template v-if="limits.verified && limits.verified_at">
+                · {{ formatDate(limits.verified_at, 'date-short') }}</template
+            ></span
         >
     </div>
 
@@ -380,7 +403,7 @@ const help: HelpStep[] = [
                                 :class="
                                     cn(
                                         'mx-auto flex w-full max-w-24 flex-col items-center rounded-lg px-1.5 py-1 text-center transition-all',
-                                        cellTone(cell.record),
+                                        cellTone(cell),
                                         cell.record?.can_decide
                                             ? 'cursor-pointer hover:scale-[1.03] hover:shadow-elev-1'
                                             : 'cursor-default',
@@ -395,47 +418,17 @@ const help: HelpStep[] = [
                                     class="numeric text-xs text-muted-foreground"
                                 />
                                 <span
-                                    v-if="
-                                        cell.record &&
-                                        cell.record.recorded_excess_minutes > 0
-                                    "
+                                    v-if="cell.recorded_minutes > 0"
                                     class="numeric text-sm font-bold"
                                 >
-                                    +{{
-                                        formatMinutes(
-                                            cell.record.recorded_excess_minutes,
-                                            'short',
-                                        )
-                                    }}
+                                    +{{ hours(cell.recorded_minutes) }}
                                 </span>
                                 <span
-                                    v-if="
-                                        cell.record &&
-                                        cell.record.over_limit_minutes > 0
-                                    "
+                                    v-if="cell.over_limit_minutes > 0"
                                     class="numeric text-[0.625rem] font-bold uppercase"
                                 >
-                                    {{
-                                        formatMinutes(
-                                            cell.record.over_limit_minutes,
-                                            'short',
-                                        )
-                                    }}
+                                    {{ hours(cell.over_limit_minutes) }}
                                     límite
-                                </span>
-                                <span
-                                    v-if="cell.after_cutoff_minutes > 0"
-                                    class="mt-0.5 inline-flex items-center gap-0.5 rounded border border-dashed border-info/60 px-1 numeric text-[0.625rem] text-info-soft-foreground"
-                                >
-                                    <Bot
-                                        class="size-2.5"
-                                        aria-hidden="true"
-                                    />{{
-                                        formatMinutes(
-                                            cell.after_cutoff_minutes,
-                                            'short',
-                                        )
-                                    }}
                                 </span>
                             </button>
                         </TooltipTrigger>
@@ -444,64 +437,48 @@ const help: HelpStep[] = [
                                 {{ formatDate(d, 'date-long') }}
                             </p>
                             <p>
-                                Trabajado
-                                {{
-                                    formatMinutes(cell.worked_minutes, 'short')
-                                }}
-                                · ordinario
-                                {{
-                                    formatMinutes(
-                                        cell.ordinary_minutes,
-                                        'short',
-                                    )
-                                }}
+                                Trabajado {{ hours(cell.worked_minutes) }} ·
+                                ordinario {{ hours(cell.ordinary_minutes) }}
                             </p>
-                            <template v-if="cell.record">
+                            <template v-if="cell.recorded_minutes > 0">
                                 <p>
-                                    Excedente
-                                    {{
-                                        formatMinutes(
-                                            cell.record.recorded_excess_minutes,
-                                            'short',
-                                        )
-                                    }}
-                                    · dobles
-                                    {{
-                                        formatMinutes(
-                                            cell.record.double_minutes,
-                                            'short',
-                                        )
-                                    }}
-                                    · triples
-                                    {{
-                                        formatMinutes(
-                                            cell.record.triple_minutes,
-                                            'short',
-                                        )
-                                    }}
+                                    Tiempo extra
+                                    {{ hours(cell.recorded_minutes) }} · dobles
+                                    {{ hours(cell.double_minutes) }} · triples
+                                    {{ hours(cell.triple_minutes) }}
                                 </p>
                                 <p>
-                                    {{ cell.record.status_label
-                                    }}<template
-                                        v-if="cell.record.authorized_minutes"
-                                    >
+                                    <template v-if="cell.pending_minutes"
+                                        >Pendiente
+                                        {{
+                                            hours(cell.pending_minutes)
+                                        }}</template
+                                    ><template v-if="cell.authorized_minutes">
                                         · autorizado
                                         {{
-                                            formatMinutes(
-                                                cell.record.authorized_minutes,
-                                                'short',
-                                            )
+                                            hours(cell.authorized_minutes)
+                                        }}</template
+                                    ><template v-if="cell.justified_minutes">
+                                        · justificado
+                                        {{
+                                            hours(cell.justified_minutes)
                                         }}</template
                                     >
                                 </p>
                                 <p
-                                    v-if="cell.record.justification"
+                                    v-if="cell.minor"
+                                    class="font-semibold text-danger-soft-foreground"
+                                >
+                                    Menor de 18: prohibido
+                                </p>
+                                <p
+                                    v-if="cell.record?.justification"
                                     class="text-muted-foreground"
                                 >
                                     {{ cell.record.justification }}
                                 </p>
                                 <p
-                                    v-if="cell.record.can_decide"
+                                    v-if="cell.record?.can_decide"
                                     class="font-medium"
                                 >
                                     Clic para resolver
@@ -513,19 +490,6 @@ const help: HelpStep[] = [
                             >
                                 {{ cell.status_label }}
                             </p>
-                            <p
-                                v-if="cell.after_cutoff_minutes > 0"
-                                class="text-info-soft-foreground"
-                            >
-                                Después del cierre (no reconocido):
-                                {{
-                                    formatMinutes(
-                                        cell.after_cutoff_minutes,
-                                        'short',
-                                    )
-                                }}
-                                — no cuenta como tiempo extra
-                            </p>
                         </TooltipContent>
                     </Tooltip>
                 </TooltipProvider>
@@ -535,36 +499,28 @@ const help: HelpStep[] = [
         <template #cell-totals="{ row }">
             <div class="grid justify-items-end gap-0.5 text-xs">
                 <span class="numeric text-sm font-bold"
-                    >+{{
-                        formatMinutes(
-                            row.totals.recorded_excess_minutes,
-                            'short',
-                        )
-                    }}</span
+                    >+{{ hours(row.totals.recorded_minutes) }}</span
                 >
                 <span class="text-muted-foreground">
-                    Ord.
-                    {{ formatMinutes(row.totals.ordinary_minutes, 'short') }} ·
-                    Aut.
-                    {{ formatMinutes(row.totals.authorized_minutes, 'short') }}
+                    Ord. {{ hours(row.totals.ordinary_minutes) }} · Aut.
+                    {{ hours(row.totals.authorized_minutes) }}
+                </span>
+                <span class="text-muted-foreground">
+                    Dobles {{ hours(row.totals.double_minutes) }} · Triples
+                    {{ hours(row.totals.triple_minutes) }}
                 </span>
                 <span
                     v-if="row.totals.over_limit_minutes > 0"
                     class="rounded-full bg-danger-soft px-2 numeric font-semibold text-danger-soft-foreground"
                 >
-                    {{ formatMinutes(row.totals.over_limit_minutes, 'short') }}
+                    {{ hours(row.totals.over_limit_minutes) }}
                     sobre límite
                 </span>
                 <span
-                    v-if="row.totals.after_cutoff_minutes > 0"
-                    class="text-info-soft-foreground"
-                    title="Después del cierre automático: no cuenta como tiempo extra"
+                    v-if="row.minor"
+                    class="rounded-full bg-danger-soft px-2 font-semibold text-danger-soft-foreground"
+                    >Menor de 18</span
                 >
-                    {{
-                        formatMinutes(row.totals.after_cutoff_minutes, 'short')
-                    }}
-                    después del cierre (no reconocido)
-                </span>
                 <span
                     v-if="row.totals.pending > 0"
                     class="text-warning-soft-foreground"
@@ -573,6 +529,11 @@ const help: HelpStep[] = [
             </div>
         </template>
     </DataTable>
+
+    <p class="mt-3 text-xs text-muted-foreground">
+        Todo tiempo registrado después del horario se muestra aquí para
+        autorizar o justificar; el sistema no descarta tiempo por sí solo.
+    </p>
 
     <OvertimeDecisionDialog
         v-model:open="dialogOpen"

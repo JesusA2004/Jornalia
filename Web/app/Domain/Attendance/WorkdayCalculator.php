@@ -26,8 +26,14 @@ use Carbon\CarbonImmutable;
  *    (LFT art. 64: si no puede salir del lugar, el descanso es tiempo efectivo).
  *  - Retardo: entrada posterior al inicio + tolerancia; se informa el total de
  *    minutos desde el inicio programado. La tolerancia nunca altera el marcaje.
- *  - Excedente: trabajo más allá de lo programado. NO equivale a hora extra
- *    autorizada; alimenta `overtime_records` para revisión.
+ *  - Tiempo extra registrado: trabajo más allá de lo programado. Nunca se
+ *    descarta: alimenta `overtime_records` como «pendiente» para que el jefe lo
+ *    autorice o justifique.
+ *  - Omisiones de checada: entrada sin salida (`missing_clock_out`) o salida sin
+ *    entrada (`missing_clock_in`). El sistema NO completa marcajes; sólo una
+ *    rectificación firmada por el colaborador corrige el día.
+ *  - Falta injustificada: la determina el sistema cuando no hay marcaje ni
+ *    vacaciones/incidencia aprobada en un día programado ya concluido.
  *  - Atribución de turnos nocturnos: una entrada pertenece a la fecha del turno
  *    programado cuya ventana la contiene; si no hay turno, a su fecha civil.
  */
@@ -39,7 +45,6 @@ final class WorkdayCalculator
         private readonly LegalFramework $law,
         private readonly ShiftClassifier $classifier,
         private readonly ComplianceEvaluator $compliance,
-        private readonly AutoClockOut $autoClockOut,
     ) {}
 
     public function compute(Employee $employee, string $date, bool $persist = true): WorkdaySummary
@@ -62,15 +67,11 @@ final class WorkdayCalculator
         $lastOut = null;
         $rectified = false;
         $anomalies = [];
-        $cutoff = null;
-        $afterCutoff = 0;
 
+        // Todo el tiempo registrado cuenta: no existe hora de corte ni salida
+        // automática. Lo que rebase el horario se envía a revisión como tiempo extra.
         foreach ($sessions as $s) {
-            if ($firstIn === null) {
-                $firstIn = $s['in'];
-                // Hora máxima de salida (persona > puesto > política), si está configurada.
-                $cutoff = $this->autoClockOut->cutoffFor($employee, $s['in'], $assignment);
-            }
+            $firstIn ??= $s['in'];
             $rectified = $rectified || $s['rectified'];
             if ($s['out'] === null) {
                 $open = true;
@@ -79,24 +80,22 @@ final class WorkdayCalculator
             }
             $lastOut = $s['out'];
 
-            // El tiempo posterior al cierre automático se conserva aparte y no se
-            // reconoce como trabajo ordinario ni extraordinario.
-            $countedEnd = $s['out'];
-            if ($cutoff !== null && $s['out']->gt($cutoff)) {
-                $countedEnd = $s['in']->gte($cutoff) ? $s['in'] : $cutoff;
-                $afterCutoff += (int) $countedEnd->diffInMinutes($s['out']);
-            }
-
-            $presence = (int) $s['in']->diffInMinutes($countedEnd);
+            $presence = (int) $s['in']->diffInMinutes($s['out']);
             $break = min($s['break'], $presence);
             $worked += max(0, $presence - $break);
             $breaks += $break;
-            if ($countedEnd->gt($s['in'])) {
-                $night += $this->classifier->nightMinutes($s['in']->setTimezone($tz), $countedEnd->setTimezone($tz), $law);
-            }
+            $night += $this->classifier->nightMinutes($s['in']->setTimezone($tz), $s['out']->setTimezone($tz), $law);
             if ($s['break_open']) {
                 $anomalies[] = 'break_not_closed';
             }
+        }
+
+        // Salida sin entrada reconocida (omisión de checada de entrada).
+        $orphanOut = $this->orphanClockOut($employee, $date, $tz, $shift);
+        if ($orphanOut !== null) {
+            $anomalies[] = 'missing_clock_in';
+            $rectified = $rectified || $orphanOut->isRectified();
+            $lastOut ??= $orphanOut->time;
         }
 
         $scheduled = $shift?->scheduledMinutes() ?? 0;
@@ -118,7 +117,7 @@ final class WorkdayCalculator
             $excess = $worked;
         }
 
-        $status = $this->status($employee, $date, $tz, $shift, $holiday !== null, $sessions !== [], $open, $late > 0, $assignment !== null && $assignment->schedule_id !== null);
+        $status = $this->status($employee, $date, $tz, $shift, $holiday !== null, $sessions !== [] || $orphanOut !== null, $open || $orphanOut !== null, $late > 0, $assignment !== null && $assignment->schedule_id !== null);
         if ($open && CarbonImmutable::parse($date, $tz)->addDay()->endOfDay()->isPast()) {
             $anomalies[] = 'missing_clock_out';
         }
@@ -141,8 +140,6 @@ final class WorkdayCalculator
             'late_minutes' => $late,
             'early_leave_minutes' => $early,
             'excess_minutes' => $excess,
-            'after_cutoff_minutes' => $afterCutoff,
-            'auto_clock_out_at' => $cutoff,
             'night_minutes' => $night,
             'status' => $status,
             'has_rectifications' => $rectified,
@@ -211,6 +208,41 @@ final class WorkdayCalculator
         return array_map(fn ($s) => [
             'in' => $s['in'], 'out' => $s['out'], 'break' => $s['break'], 'break_open' => $s['break_open'], 'rectified' => $s['rectified'],
         ], $sessions);
+    }
+
+    /**
+     * Salida reconocida atribuible a `$date` sin entrada previa en la misma sesión.
+     * Se usa la ventana del turno programado (fin + 6 h) o, sin turno, la fecha civil.
+     */
+    private function orphanClockOut(Employee $employee, string $date, string $tz, ?ScheduledShift $shift): ?EffectiveEvent
+    {
+        $dayStart = CarbonImmutable::parse($date, $tz)->startOfDay()->utc();
+        $events = $this->timeline->between($employee->id, $dayStart->subDay(), $dayStart->addDays(2));
+
+        $inSession = false;
+        foreach ($events as $event) {
+            if ($event->type === PunchType::ClockIn) {
+                $inSession = true;
+
+                continue;
+            }
+            if ($event->type !== PunchType::ClockOut) {
+                continue;
+            }
+            if ($inSession) {
+                $inSession = false;
+
+                continue;
+            }
+            $belongs = $shift !== null
+                ? $event->time->gte($shift->startsAt) && $event->time->lte($shift->endsAt->addHours(6))
+                : $event->time->setTimezone($tz)->toDateString() === $date;
+            if ($belongs) {
+                return $event;
+            }
+        }
+
+        return null;
     }
 
     private function attribute(CarbonImmutable $time, string $date, string $tz, ?ScheduledShift $shift, ?ScheduledShift $prev, ?ScheduledShift $next): string
