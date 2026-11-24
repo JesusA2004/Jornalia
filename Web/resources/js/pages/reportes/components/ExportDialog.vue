@@ -33,8 +33,11 @@ const props = defineProps<{
         to: string | null;
         branch_id: string | null;
         department_id: string | null;
+        position_id?: string | null;
+        region?: string | null;
         employee_id: string | null;
         status: string | null;
+        period_unit?: string | null;
     };
 }>();
 
@@ -50,21 +53,21 @@ const FORMATS: Array<{
     {
         value: 'xlsx',
         label: 'Excel',
-        hint: 'Datos + hoja de información',
+        hint: 'Filtros, totales y hoja de información',
         icon: FileSpreadsheet,
         tone: 'bg-success-soft text-success-soft-foreground',
     },
     {
         value: 'pdf',
         label: 'PDF',
-        hint: 'Documento con encabezado legal',
+        hint: 'Encabezado institucional y paginación',
         icon: FileText,
         tone: 'bg-danger-soft text-danger-soft-foreground',
     },
     {
         value: 'csv',
         label: 'CSV',
-        hint: 'Texto plano UTF-8',
+        hint: 'UTF-8, protegido contra fórmulas',
         icon: FileType,
         tone: 'bg-info-soft text-info-soft-foreground',
     },
@@ -77,6 +80,9 @@ const form = useForm({
     to: '',
     branch_id: null as string | null,
     department_id: null as string | null,
+    position_id: null as string | null,
+    region: null as string | null,
+    period_unit: null as string | null,
     employee_id: null as string | null,
     status: null as string | null,
     observations: '',
@@ -101,6 +107,9 @@ function submit(): void {
         to: props.params.to ?? '',
         branch_id: props.params.branch_id,
         department_id: props.params.department_id,
+        position_id: props.params.position_id ?? null,
+        region: props.params.region ?? null,
+        period_unit: props.params.period_unit ?? null,
         employee_id: props.params.employee_id,
         status: props.params.status,
         observations: data.observations.trim() || null,
@@ -209,11 +218,11 @@ const errorList = computed(() =>
                         aria-hidden="true"
                     />
                     <p>
-                        El archivo incluye empresa, periodo, parámetros,
-                        responsable, fecha de generación, totales,
+                        Logotipo, razón social, RFC, centro de trabajo, periodo,
+                        fecha y usuario de generación, totales,
                         <strong class="font-semibold text-foreground"
-                            >identificador único y huella SHA-256</strong
-                        >.
+                            >folio y huella SHA-256</strong
+                        >. Queda registrado en la bitácora.
                     </p>
                 </div>
 

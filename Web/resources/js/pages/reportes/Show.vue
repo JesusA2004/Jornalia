@@ -6,17 +6,20 @@ import {
     Fingerprint,
     Sigma,
     TableProperties,
+    UserSearch,
 } from '@lucide/vue';
 import { computed } from 'vue';
 import ReportController from '@/actions/App/Http/Controllers/Web/Operacion/ReportController';
 import ComboboxField from '@/components/app/ComboboxField.vue';
 import DataTable from '@/components/app/DataTable.vue';
 import DateRangePicker from '@/components/app/DateRangePicker.vue';
+import EmptyState from '@/components/app/EmptyState.vue';
 import FilterBar from '@/components/app/FilterBar.vue';
 import PageHeader from '@/components/app/PageHeader.vue';
 import SelectField from '@/components/app/SelectField.vue';
 import { useFilters } from '@/composables/useFilters';
 import { usePermissions } from '@/composables/usePermissions';
+import { legendSoftClass, workdayLegendKey } from '@/lib/attendance-status';
 import { formatNumber } from '@/lib/format';
 import { toPaginationMeta } from '@/lib/pagination';
 import type { DataTableColumn } from '@/types';
@@ -55,11 +58,21 @@ const { filters, activeCount, reset, processing } = useFilters(
         to: props.filters.to,
         branch_id: props.filters.branch_id,
         department_id: props.filters.department_id,
+        position_id: props.filters.position_id ?? null,
+        region: props.filters.region ?? null,
         employee_id: props.filters.employee_id,
         status: props.filters.status,
+        period_unit: props.filters.period_unit ?? null,
     },
     {
-        only: ['rows', 'totals', 'filters', 'exports'],
+        only: [
+            'rows',
+            'totals',
+            'capped',
+            'needs_employee',
+            'filters',
+            'exports',
+        ],
         defaults: { from: props.filters.from, to: props.filters.to },
     },
 );
@@ -76,11 +89,50 @@ const columns = computed<DataTableColumn<Row>[]>(() =>
     })),
 );
 
+/**
+ * Insignia con la leyenda compartida de Asistencias (mismos colores en
+ * Asistencias, Incidencias y Reportes). Sólo aplica a filas de jornada.
+ */
+const WORKDAY_STATUSES = new Set([
+    'present',
+    'late',
+    'incomplete',
+    'absent',
+    'rest_day',
+    'rest_day_worked',
+    'holiday',
+    'holiday_worked',
+    'leave',
+    'vacation',
+    'unscheduled',
+    'future',
+]);
+
+function legendClass(key: string, row: Row): string | null {
+    const status = typeof row.status === 'string' ? row.status : null;
+    if (key === 'status_label' && status && WORKDAY_STATUSES.has(status)) {
+        return legendSoftClass(
+            workdayLegendKey(status, {
+                omission: (row.omission as string | null) || null,
+            }),
+        );
+    }
+    if (key === 'omission' && row.omission) {
+        return legendSoftClass('omission');
+    }
+
+    return null;
+}
+
 const typeOf = (key: string) =>
     props.report.columns.find((c) => c.key === key)?.type ?? 'text';
 
 const sumColumns = computed(() => props.report.columns.filter((c) => c.sum));
 const hasTotals = computed(() => Object.keys(props.totals).length > 0);
+const allows = (filter: string) =>
+    (props.report.filters ?? ['branch', 'department', 'employee']).includes(
+        filter,
+    );
 
 // Las filas de reporte no tienen id: clave estable por objeto.
 const keys = new WeakMap<Row, number>();
@@ -108,8 +160,12 @@ const help = [
     },
     {
         title: 'Huella verificable',
-        text: 'Cada archivo lleva identificador y SHA-256 de los datos.',
+        text: 'Cada archivo lleva folio, encabezado institucional y SHA-256.',
         icon: Fingerprint,
+    },
+    {
+        title: 'Días completos',
+        text: 'Días sin marcaje, descansos, vacaciones y festivos también aparecen.',
     },
 ];
 </script>
@@ -158,6 +214,35 @@ const help = [
                 prefix="Depto.:"
                 clearable
                 class="w-full sm:w-52"
+            />
+            <SelectField
+                v-if="
+                    allows('position') && (options.positions ?? []).length > 0
+                "
+                v-model="filters.position_id"
+                :options="options.positions ?? []"
+                placeholder="Puesto"
+                prefix="Puesto:"
+                clearable
+                class="w-full sm:w-48"
+            />
+            <SelectField
+                v-if="allows('region') && (options.regions ?? []).length > 0"
+                v-model="filters.region"
+                :options="options.regions ?? []"
+                placeholder="Región"
+                prefix="Región:"
+                clearable
+                class="w-full sm:w-44"
+            />
+            <SelectField
+                v-if="allows('period_unit')"
+                v-model="filters.period_unit"
+                :options="options.period_units ?? []"
+                placeholder="Semanal"
+                prefix="Periodo:"
+                clearable
+                class="w-full sm:w-44"
             />
             <ComboboxField
                 v-model="filters.employee_id"
@@ -221,14 +306,24 @@ const help = [
                 </div>
             </template>
             <p
-                v-else-if="rows.total > 0"
+                v-else-if="capped || rows.total > 0"
                 class="col-span-2 self-center text-xs text-muted-foreground sm:col-span-2"
             >
                 Volumen alto: los totales se incluyen en el archivo exportado.
             </p>
         </div>
 
+        <EmptyState
+            v-if="needs_employee"
+            :icon="UserSearch"
+            bordered
+            class="rounded-2xl"
+            title="Elige un colaborador"
+            description="Este reporte es individual."
+        />
+
         <DataTable
+            v-else
             :rows="rows.data"
             :columns="columns"
             :row-key="rowKey"
@@ -246,7 +341,16 @@ const help = [
                 :key="c.key"
                 #[`cell-${c.key}`]="{ row }"
             >
+                <span
+                    v-if="legendClass(c.key, row as Row)"
+                    :class="[
+                        'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap',
+                        legendClass(c.key, row as Row),
+                    ]"
+                    >{{ (row as Row)[c.key] }}</span
+                >
                 <ReportCell
+                    v-else
                     :value="(row as Row)[c.key]"
                     :type="typeOf(c.key)"
                     :timezone="timezone"

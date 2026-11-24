@@ -44,12 +44,21 @@ final class GenerateReportExport implements ShouldQueue
             if ($export->status === 'completed') {
                 return;
             }
+            // La bitácora atribuye la generación al usuario que la solicitó (también en cola).
+            $previous = auth()->user();
+            auth()->setUser($user);
             try {
                 $exporter->generate($export, $user, $organization);
-                $audit->log('report.generated', $export, "Reporte generado: {$export->report} ({$export->format}, {$export->row_count} filas)", ['sha256' => $export->sha256], $organization->id);
+                $audit->log('report.generated', $export, "Reporte generado {$export->folio}: {$export->report} ({$export->format}, {$export->row_count} filas)", [
+                    'folio' => $export->folio, 'report' => $export->report, 'format' => $export->format, 'rows' => $export->row_count,
+                    'sha256' => $export->sha256, 'data_sha256' => $export->parameters['data_sha256'] ?? null,
+                ], $organization->id);
             } catch (Throwable $e) {
                 report($e);
                 $export->forceFill(['status' => 'failed', 'error' => mb_substr($e->getMessage(), 0, 500)])->save();
+                $audit->log('report.failed', $export, "Falló la generación del reporte {$export->folio}", ['error' => mb_substr($e->getMessage(), 0, 200)], $organization->id);
+            } finally {
+                $previous !== null ? auth()->setUser($previous) : auth()->forgetUser();
             }
         });
     }

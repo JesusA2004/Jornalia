@@ -11,6 +11,7 @@ import {
     Scale,
     SearchX,
     ShieldCheck,
+    Wallet,
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
 import { computed, ref } from 'vue';
@@ -61,6 +62,11 @@ const CATEGORY: Record<
         icon: LayoutGrid,
         tone: 'bg-warning-soft text-warning-soft-foreground',
         ring: 'group-hover:ring-warning/30',
+    },
+    nomina: {
+        icon: Wallet,
+        tone: 'bg-info-soft text-info-soft-foreground',
+        ring: 'group-hover:ring-info/30',
     },
 };
 
@@ -124,8 +130,12 @@ const help = [
     },
     {
         title: 'Exporta',
-        text: 'Excel, PDF o CSV. Cada archivo lleva identificador y huella SHA-256.',
+        text: 'Excel, PDF o CSV en cualquier momento, con encabezado institucional, folio y SHA-256. Queda en la bitácora.',
         icon: Fingerprint,
+    },
+    {
+        title: 'Volúmenes grandes',
+        text: 'Se generan en segundo plano; el estado aparece en «Exportaciones recientes».',
     },
     {
         title: 'Inspección laboral',

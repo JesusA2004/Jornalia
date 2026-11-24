@@ -131,6 +131,9 @@ function period(e: ReportExportRow): string | null {
                         <p
                             class="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground [&>*+*]:before:mr-1.5 [&>*+*]:before:content-['·']"
                         >
+                            <span v-if="item.folio" class="font-medium">{{
+                                item.folio
+                            }}</span>
                             <span v-if="period(item)">{{ period(item) }}</span>
                             <span v-if="item.row_count !== null"
                                 >{{ formatNumber(item.row_count) }}
