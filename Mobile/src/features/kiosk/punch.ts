@@ -19,12 +19,14 @@ export class KioskPunchError extends Error {
 const CREDENTIAL_CODES = new Set(['kiosk_invalid_credentials', 'validation_failed', 'invalid_credentials', 'invalid_pin', 'not_found', 'forbidden']);
 
 /**
- * El servidor exige verificación facial vigente (PunchRecorder responde
- * `policy_violation` con un mensaje sobre la verificación facial). Heurística
- * documentada: el contrato no trae un código propio para este caso.
+ * El servidor exige verificación facial vigente: código `face_verification_required`
+ * (contrato B1). Servidores anteriores respondían `policy_violation` con un mensaje
+ * sobre la verificación facial; se acepta por compatibilidad.
  */
 export function isFaceRequired(e: unknown): boolean {
-  return e instanceof ApiRequestError && e.code === 'policy_violation' && /facial|rostro/i.test(e.message);
+  if (!(e instanceof ApiRequestError)) return false;
+  if (e.code === 'face_verification_required' || e.legacyCode === 'face_verification_required') return true;
+  return e.code === 'policy_violation' && /facial|rostro/i.test(e.message);
 }
 
 /** Traduce el error del servidor sin revelar si falló el número o el NIP. */

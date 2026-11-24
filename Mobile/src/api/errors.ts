@@ -33,6 +33,7 @@ const KNOWN_CODES: readonly ApiErrorCode[] = [
   'kiosk_employee_inactive',
   'pin_locked',
   'pin_not_set',
+  'face_verification_required',
 ];
 
 /** Error devuelto por el servidor con forma `ApiError`. */
@@ -40,6 +41,8 @@ export class ApiRequestError extends Error {
   readonly status: number;
   readonly code: ApiErrorCode;
   readonly fieldErrors: Record<string, string[]>;
+  /** Código anterior equivalente (compatibilidad con apps instaladas), p. ej. `policy_violation`. */
+  readonly legacyCode: ApiErrorCode | undefined;
 
   constructor(status: number, body: ApiError) {
     super(body.message);
@@ -47,10 +50,12 @@ export class ApiRequestError extends Error {
     this.status = status;
     this.code = body.code;
     this.fieldErrors = body.errors ?? {};
+    this.legacyCode = body.legacy_code;
   }
 
   toApiError(): ApiError {
-    return { message: this.message, code: this.code, errors: this.fieldErrors };
+    const base: ApiError = { message: this.message, code: this.code, errors: this.fieldErrors };
+    return this.legacyCode ? { ...base, legacy_code: this.legacyCode } : base;
   }
 
   /** 5xx o 429: puede reintentarse más tarde. */
@@ -104,7 +109,8 @@ export function toApiError(status: number, body: unknown): ApiError {
     const code = isKnownCode(b.code) ? b.code : codeForStatus(status);
     const message = typeof b.message === 'string' && b.message.length > 0 ? b.message : defaultMessage(code);
     const errors = b.errors && typeof b.errors === 'object' ? b.errors : undefined;
-    return errors ? { message, code, errors } : { message, code };
+    const legacy = isKnownCode(b.legacy_code) ? b.legacy_code : undefined;
+    return { message, code, ...(errors ? { errors } : {}), ...(legacy ? { legacy_code: legacy } : {}) };
   }
   const code = codeForStatus(status);
   return { message: defaultMessage(code), code };
@@ -145,6 +151,7 @@ export function defaultMessage(code: ApiErrorCode): string {
     kiosk_employee_inactive: 'Tu registro no está activo. Acude con RH.',
     pin_locked: 'NIP bloqueado 15 minutos por intentos fallidos.',
     pin_not_set: 'Primero crea tu NIP de firma.',
+    face_verification_required: 'Falta verificar tu rostro.',
   };
   return map[code];
 }
