@@ -1,12 +1,13 @@
 # Sistema de diseño — MR LANA Asistencias (web)
 
-> **Identidad OFICIAL** según `docs/identidad/GUIA_MARCA_DIGITAL.md` (Manual de
-> identidad MR LANA 2026). Verde `#A0E04E`, cian `#82DBE8`, negro/blanco,
-> degradado `#A0E04E → #82DBE8`, superficie oscura `#12302B`. Tipografías
-> secundarias oficiales: **Montserrat** (interfaz) y **Baloo 2** (títulos y
-> cifras), vía `bunny()` en `vite.config.ts`. El logotipo
-> (`public/brand/logo.svg`) se usa tal cual: sin recolorear, rotar, sombras ni
-> contornos.
+> **Paleta institucional** (Revisión RH, pantalla 19, punto 4; hoja membretada):
+> verde institucional `#225C54`, dorado `#AF8B51` y superficie oscura `#15332E`.
+> Se aplica en la web, la app móvil (`Mobile/src/theme/tokens.ts`), los reportes
+> (`InstitutionalLayout`) y como color por omisión de la organización. El
+> logotipo oficial (`public/brand/logo.svg`) se usa tal cual: sin recolorear,
+> rotar, sombras ni contornos. La fuente de verdad de los valores es
+> `Web/resources/css/app.css`; esta guía describe roles y reglas. Origen de la
+> identidad: `docs/identidad/GUIA_MARCA_DIGITAL.md`.
 
 ## 1. Principios
 
@@ -22,21 +23,21 @@
 - **Poco texto** (AGENTS.md regla 12): títulos cortos y descripciones de una
   línea. Las explicaciones van en la ayuda "?" (`PageHeader :help` →
   `HelpSheet`).
-- **Nada se elimina** (regla 11): acciones "Desactivar", nunca "Eliminar".
-- Botón primario: verde de marca con texto negro. Texto/íconos verdes sobre
-  blanco usan `text-brand-strong` (#4F8A16, AA); cian sobre blanco
-  `text-cyan-strong` (#137C8B).
-- El degradado (`bg-brand-gradient`) se usa con mesura: banda superior del
-  login, `WelcomeBanner`, indicador activo de la barra lateral, ayuda.
-- El personaje (`/brand/personaje-*.webp`, copias optimizadas de los PNG
-  oficiales) sólo en login, estados vacíos principales (`EmptyState :mascot`)
-  y bienvenida (`WelcomeBanner`).
+- **Nada se elimina** (regla 11): acciones "Desactivar" o "Cancelar con motivo",
+  nunca "Eliminar".
+- Botón primario: verde institucional con texto blanco. El dorado es un
+  **acento** (indicador activo de la barra lateral, etiquetas y detalles de
+  marca); nunca fondo de texto largo. Sin degradados decorativos.
+- Los estados de asistencia usan la leyenda única `lib/attendance-status.ts`
+  (mismos colores en Asistencias, Calendario, Incidencias y Reportes).
+- El personaje (`/brand/personaje-*.webp`) sólo en login, estados vacíos
+  principales (`EmptyState :mascot`) y bienvenida.
 - Móvil: objetivos ≥ 40 px; `DataTable` se convierte en tarjetas (< md);
   la barra lateral es un panel deslizable.
 - Densidad cómoda: filas de tabla de ~56 px, tarjetas con `p-5`, espacio
   vertical `gap-6` entre bloques.
 - Modo claro y oscuro (clase `.dark` en `<html>`; preferencia en
-  `useAppearance`).
+  `useAppearance`). Si cambias la paleta, vuelve a verificar contraste AA.
 - Textos de interfaz en español (es-MX).
 
 ## 2. Tokens (`Web/resources/css/app.css`)
@@ -48,16 +49,16 @@ Definidos en `:root` (claro) y `.dark` (oscuro) y expuestos a Tailwind en
 |---|---|
 | Lienzo y texto | `--background`, `--foreground`, `--muted`, `--muted-foreground`, `--subtle-foreground` |
 | Superficies en capas | `--surface-1` (= `--card`), `--surface-2`, `--surface-3`, `--popover` → `bg-surface-2`… |
-| Primario (= verde de marca) | `--primary` (#A0E04E), `--primary-foreground` (negro), `--primary-soft`, `--primary-soft-foreground` |
-| Marca verde | `--brand`, `--brand-foreground`, `--brand-strong` (#4F8A16), `--brand-ink` (#1F3B0B), `--brand-soft` (#EEF8E0), `--brand-deep` (#12302B) |
-| Marca cian | `--cyan` (#82DBE8), `--cyan-strong` (#137C8B), `--cyan-soft`, `--cyan-soft-foreground` |
-| Degradado | `--brand-gradient` → utilidades `bg-brand-gradient`, `text-brand-gradient` |
+| Primario (= verde institucional) | `--primary` (#225C54 en claro), `--primary-foreground` (blanco), `--primary-soft`, `--primary-soft-foreground` |
+| Marca | `--brand` (= primario), `--brand-foreground`, `--brand-strong`, `--brand-ink`, `--brand-soft`, `--brand-deep` (#15332E) |
+| Dorado | `--gold` (#AF8B51), `--gold-foreground`, `--gold-strong`, `--gold-soft`, `--gold-soft-foreground` |
+| Azul petróleo (información) | `--cyan`, `--cyan-strong`, `--cyan-soft`, `--cyan-soft-foreground` |
 | Panel de marca (login) | `--brand-panel`, `--brand-panel-foreground` |
 | Estados | `--success`, `--warning`, `--danger`, `--info` + `-foreground`, `-soft`, `-soft-foreground`; `--neutral-soft(-foreground)`; `--destructive` = `--danger` |
 | Bordes | `--border`, `--border-strong`, `--input`, `--ring` |
-| Gráficas | `--chart-1` … `--chart-6` (categórico, en orden de uso) |
-| Tipografía | `font-sans` (Montserrat), `font-display` (Baloo 2; `h1`, `h2` y `[data-display]` por defecto) |
-| Sidebar (verde profundo) | `--sidebar`, `--sidebar-foreground`, `--sidebar-primary(-foreground)`, `--sidebar-accent(-foreground)`, `--sidebar-border`, `--sidebar-ring` |
+| Gráficas | `--chart-1` … `--chart-6` (categórico, en orden de uso; empieza con verde institucional y dorado) |
+| Tipografía | `font-sans` y `font-display` (Montserrat) |
+| Sidebar (superficie oscura y acento dorado) | `--sidebar`, `--sidebar-foreground`, `--sidebar-primary(-foreground)`, `--sidebar-accent(-foreground)`, `--sidebar-border`, `--sidebar-ring` |
 | Radios | `--radius` (0.625rem) → `rounded-xs/sm/md/lg/xl/2xl` |
 | Elevación | `--elev-1/2/3` → `shadow-elev-1`, `shadow-elev-2`, `shadow-elev-3` |
 | Movimiento | `--duration-fast/base/slow`, `ease-standard`, `ease-emphasized`, utilidad `transition-standard` |
@@ -75,8 +76,8 @@ Notas:
 
 ## 3. Tipografía
 
-- **Montserrat** 400–700 (interfaz) y **Baloo 2** 500–800 (títulos y cifras
-  destacadas), ambas OFL, autoalojadas en el build por el plugin de fuentes.
+- **Montserrat** (secundaria oficial, OFL) para interfaz, títulos y cifras,
+  autoalojada en el build por el plugin de fuentes (`vite.config.ts`).
 - La corporativa **Museo Sans Rounded** requiere licencia: si se adquiere,
   colocar los archivos en `Web/public/fonts/` y cambiar `--font-sans` /
   `--font-display` en `app.css` (y el plugin en `vite.config.ts`).

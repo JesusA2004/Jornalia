@@ -1,63 +1,66 @@
-# Cumplimiento: integridad, bitácora, normativa y conservación
+# Cumplimiento: alertas, integridad, bitácora y conservación
 
-Revisión RH (pantallas 04, 14–16 y 19). Estado real al 24-nov-2026.
+Revisión RH, pantallas 14–16 y reglas generales 4, 5 y 7. Modelo de amenazas y garantías técnicas: [Integridad del registro](../seguridad/INTEGRIDAD_REGISTRO.md). Normativa y cálculos: [Motor legal](../legal/MOTOR_LEGAL.md).
 
 ## Módulo «Cumplimiento»
 
-Un solo módulo con tres pestañas (menú lateral sin «Integridad» ni «Auditoría»):
+Un solo módulo con tres pestañas. El menú lateral ya no tiene «Integridad» ni «Auditoría».
 
 | Pestaña | Ruta | Permiso |
 |---|---|---|
 | Alertas legales | `/cumplimiento` | `compliance.view` (atender: `compliance.resolve`) |
-| Integridad del registro | `/cumplimiento/integridad` | `integrity.view` (verificar/anclar: `integrity.verify`) |
+| Integridad del registro | `/cumplimiento/integridad` | `integrity.view` (verificar o anclar: `integrity.verify`) |
 | Bitácora de cambios | `/cumplimiento/bitacora` | `audit.view` |
 
-Las rutas anteriores `/integridad` y `/auditoria` redirigen (conservando la cadena de consulta).
+Las rutas anteriores `/integridad` y `/auditoria` redirigen y conservan la cadena de consulta. Integridad y Bitácora: RH y Sistemas, y en sólo lectura Contraloría y Autoridad laboral.
+
+## Alertas legales
+
+| Regla | Código | Origen |
+|---|---|---|
+| Jornada diaria total superior al máximo | `daily_total_exceeded` | `ComplianceEvaluator` |
+| Jornada ordinaria semanal superior al tope | `weekly_ordinary_exceeded` | `ComplianceEvaluator` |
+| Tiempo extra ≥ 80 % del tope semanal o por encima | `overtime_near_limit` / `overtime_over_limit` | `ComplianceEvaluator` |
+| Menor de 18 con tiempo extra, trabajo nocturno o (menor de 16) más de 6 h | `minor_overtime`, `minor_night_work`, `minor_daily_limit` | `ComplianceEvaluator` |
+| Falta de descanso semanal | `no_weekly_rest` | `ComplianceEvaluator` |
+| Omisión de checada sin rectificar por más de 2 días | `unrectified_omission` | `cumplimiento:omisiones` (diario 07:00, `OmissionMonitor`); se cierra al rectificar |
+| Diferencia de hora del dispositivo > 10 min | `clock_skew` | `ClockSkewMonitor` |
+| Ubicación simulada o teléfono alterado | `mock_location`, `device_tampered` | `DeviceIntegrityMonitor` |
+| Falla de verificación o de anclaje | `integrity_failed`, `integrity_anchor_failed` | `IntegrityMonitor` |
+| Revisión trimestral de accesos abierta | `user_access_review` | `UserAccessService` |
+
+RH atiende cada alerta con nota (`compliance.resolve`); nada se borra.
 
 ## Verificación y anclaje automáticos
 
 - `asistencias:integridad diaria` (03:30): ancla y verifica las cadenas de marcajes y ajustes. `asistencias:integridad anclar` corre cada hora. El botón «Verificar ahora» es opcional.
-- Si la verificación encuentra alteraciones o el anclaje falla: alerta **crítica** en Cumplimiento (`integrity_failed` / `integrity_anchor_failed`, sin colaborador) y aviso a RH (`compliance.resolve`) y Sistemas (`integrity.verify`), una vez por día y tipo (`App\Domain\Compliance\IntegrityMonitor`).
+- Si la verificación encuentra alteraciones o el anclaje falla: alerta **crítica** sin colaborador y aviso (bandeja + push) a quienes tienen `compliance.resolve` (RH) o `integrity.verify` (Sistemas), una vez por día y tipo.
 - Cada ejecución queda en la bitácora (`integrity.verified`, `integrity.anchored`, `integrity.anchor_failed`) indicando si fue automática o manual.
 
 ### Anclaje externo (WORM) — pendiente de infraestructura
 
-Las anclas se firman con HMAC (`INTEGRITY_ANCHOR_KEY`) y se escriben en la tabla `integrity_anchors` y en el disco `INTEGRITY_ANCHOR_DISK` (por omisión `anchors`, **local**). Un anclaje local NO es externo: la pantalla lo indica como «Local · almacenamiento WORM pendiente». Para que sea externo real:
+Las anclas se firman con HMAC (`INTEGRITY_ANCHOR_KEY`) y se escriben en la tabla `integrity_anchors` y en el disco `INTEGRITY_ANCHOR_DISK` (por omisión `anchors`, **local**, ruta `INTEGRITY_ANCHOR_PATH`). Un anclaje local NO es externo: la pantalla lo indica como «Local · almacenamiento WORM pendiente». Para que sea externo:
 
-1. Crear un bucket S3 (u otro almacenamiento compatible) con **Object Lock** en modo *compliance* y retención ≥ plazo de conservación.
-2. Definir un disco `s3` en `config/filesystems.php` con credenciales de escritura sin permiso de borrado y apuntar `INTEGRITY_ANCHOR_DISK` a ese disco.
+1. Crear un bucket S3 (u otro compatible) con **Object Lock** en modo *compliance* y retención ≥ plazo de conservación.
+2. Definir el disco en `config/filesystems.php` con credenciales de escritura sin permiso de borrado y apuntar `INTEGRITY_ANCHOR_DISK` a ese disco.
 3. Custodiar `INTEGRITY_ANCHOR_KEY` fuera del servidor de base de datos.
 
 Hasta que eso exista no debe declararse que el anclaje es externo.
 
 ## Bitácora inalterable
 
-`audit_logs` es append-only (trait `Immutable` + triggers `BEFORE UPDATE/DELETE`). Cada registro guarda usuario, fecha y hora (UTC), acción, **valor anterior (`old_values`) y nuevo (`new_values`)**, IP, agente y dispositivo de la app (`device_id`) cuando la acción viene de la API. `AuditLogger` copia `before`/`after` del contexto a esas columnas.
+`audit_logs` es append-only (trait `Immutable` + triggers `BEFORE UPDATE/DELETE`). Cada registro guarda usuario, fecha y hora (UTC), acción, **valor anterior (`old_values`) y nuevo (`new_values`)**, IP, agente y dispositivo de la app (`device_id`) cuando la acción viene de la API. `AuditLogger` copia `before`/`after` del contexto a esas columnas. Se registran, entre otros: cambios de roles y permisos, normativa, configuración, documentos, horarios, decisiones de rectificaciones e incidencias, exportaciones de reportes (con folio) y depuraciones de ubicación.
 
-## Alertas mínimas
+## Conservación
 
-| Regla | Origen |
-|---|---|
-| Jornada diaria total > máximo (`daily_total_exceeded`) y semanal > máximo (`weekly_ordinary_exceeded`) | `ComplianceEvaluator` |
-| Tiempo extra cerca del tope semanal ≥ 80 % (`overtime_near_limit`) o por encima (`overtime_over_limit`) | `ComplianceEvaluator` |
-| Menor de 18 con tiempo extra (`minor_overtime`) | `ComplianceEvaluator` |
-| Falta de descanso semanal (`no_weekly_rest`) | `ComplianceEvaluator` |
-| Omisión sin rectificar por más de 2 días (`unrectified_omission`) | `cumplimiento:omisiones` (diario 07:00, `OmissionMonitor`) |
-| Diferencia de hora del dispositivo > 10 min (`clock_skew`) | `ClockSkewMonitor` (A1) |
+| Registro | Regla | Estado |
+|---|---|---|
+| Marcajes, ajustes, firmas, bitácora, anclas | Nunca se borran (triggers + `NoPhysicalDeletes`). Referencia: 5 años o 1 año después de la baja, lo que sea mayor (`database/data/legal/parametros_legales.json`). | Plazo final pendiente de Jurídico; hoy no existe purga. |
+| Recorridos de ubicación (`location_points`) | Depuración automática al vencer el plazo (90 días iniciales). Única excepción a «nada se elimina». | Plazo pendiente de Jurídico. Ver [Geolocalización](../arquitectura/GEOLOCALIZACION.md). |
+| Plantilla facial | Revocación o cancelación ARCO (vaciado de la plantilla); el registro se conserva. | Vaciado tras la baja: manual. Ver [Biometría](../seguridad/BIOMETRIA.md). |
 
-## Normativa (fuente única)
+**Configuración › Sistema** muestra las políticas de conservación vigentes, el estado de notificaciones e integraciones y los parámetros de rectificación.
 
-`legal_versions` por año (2026 48/9, 2027 46/9, 2028 44/10, 2029 42/11, 2030 40/12; diarios 8/7/7.5 h; 4 h extra por día en máx. 4 días; triples hasta 4 h/sem; 12 h totales; sin tiempo extra para menores). `LegalFramework::for(fecha)` resuelve la versión vigente, por lo que el cambio el 1 de enero de cada tramo es automático.
+## Pruebas
 
-- Edición y verificación sólo con `settings.legal_manage` (RH) en Configuración › Normativa; sólo versiones vigentes o futuras.
-- Nunca se precarga como verificada: la migración `2026_11_24_130000` regresa a «Sin verificar» toda versión sin usuario y fecha de validación; el seeder no la marca ni sobrescribe ediciones de RH.
-- «Verificada por RH» guarda `verified_by` y `verified_at` reales; cualquier edición posterior la regresa a «Sin verificar».
-- Historial append-only en `legal_version_revisions` (antes/después) y en la bitácora.
-- `LegalFramework::verificationFor(fecha)` devuelve la leyenda «Normativa en verificación» / «Verificada por RH» para Horas extra y Cumplimiento.
-
-## Ubicación y conservación de recorridos
-
-- Parámetro por puesto (`positions.location_tracking`): `on_punch` (por omisión) o `during_shift`.
-- Con `during_shift` sólo se aceptan puntos con jornada abierta, fuera de descanso/comida y antes del corte de contingencia (fin de turno + margen, 60 min por omisión; sin turno: entrada + 12 h + margen). Nunca se genera una salida.
-- **Depuración legal (única excepción a «nada se elimina»)**: la LFPDPPP exige suprimir datos personales al concluir la finalidad. `ubicacion:depurar` (diario 02:45) borra físicamente sólo `location_points` con más días que el plazo configurado (90 días iniciales, **pendiente de validar por Jurídico**). El trigger de BD rechaza cualquier DELETE salvo que la sesión active `@jornalia_location_purge = 1`, cosa que sólo hace `LocationRetention`; UPDATE sigue prohibido. Cada depuración queda en la bitácora (`location.purged`). Los marcajes y su ubicación de evidencia nunca se depuran.
-- Registros de asistencia: se conservan (5 años; ver `database/data/legal/parametros_legales.json`), sin borrado.
+`Web/tests/Feature/Web/Operacion/ComplianceModuleTest.php` (pestañas y redirecciones, acceso de Contraloría y autoridad, rutina diaria, alerta crítica por alteración y por anclaje, bitácora con valor anterior y nuevo, omisiones sin rectificar), `Web/tests/Feature/Domain/AttendanceLedgerTest.php` (triggers y detección de alteraciones).

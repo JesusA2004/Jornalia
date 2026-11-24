@@ -2,7 +2,7 @@
 
 Corte de investigación: **17 de noviembre de 2026**. Ámbito: relaciones de trabajo del Apartado A del art. 123 constitucional (sector privado) regidas por la Ley Federal del Trabajo (LFT).
 
-Parámetros consumibles por el sistema: `Web/database/data/legal/parametros_legales.json`. Este documento es su fundamento. **No es asesoría jurídica**: los puntos marcados como "requiere criterio jurídico" deben validarlos abogados laboralistas antes de producción.
+Parámetros consumibles por el sistema: `Web/database/data/legal/parametros_legales.json`. Este documento es su fundamento. La columna «Implementación en el sistema (propuesta)» es la propuesta de diseño del corte; lo efectivamente implementado está en la §6, en [Motor legal](MOTOR_LEGAL.md) y en la [trazabilidad de la Revisión RH](../cierre/TRAZABILIDAD_REVISION_RH.md). **No es asesoría jurídica**: los puntos marcados como "requiere criterio jurídico" deben validarlos abogados laboralistas antes de producción.
 
 ## 0. Fuentes primarias consultadas
 
@@ -109,3 +109,15 @@ Convenciones: **V** = verificado con URL (texto leído en la fuente primaria en 
 - No se verificó si existe un nuevo Reglamento de la LFPDPPP. Las fuentes secundarias indican que no se ha publicado y que el de 2011 se usa como referencia: **NV**.
 - No se verificó el texto de la NOM-035 en esta sesión. De la NOM-037 sólo se verificó la publicación.
 - Los trabajos especiales (Título Sexto: transporte, hogar, campo, etc.) pueden tener reglas propias de jornada que este JSON no modela.
+
+## 6. Estado de implementación (24-nov-2026, Revisión RH)
+
+| Fila | Tema | Implementado | Pendiente |
+|---|---|---|---|
+| 4, 6, 9, 10 | Jornada ordinaria, máximos diarios, tiempo extra y triples por año | Tabla versionada `legal_versions` (cambio automático el 1 de enero) y `WeeklyOvertimeCalculator` por colaborador y semana | Validación institucional («Verificada por RH»); criterio sobre 4 h/4 días en 2026 |
+| 12 | Descanso semanal | Alerta `no_weekly_rest` | — |
+| 15 | Días de descanso obligatorio | Precarga anual `asistencias:festivos` | Jornada electoral: se captura como día de empresa |
+| 20–23 | Menores de edad | Bloqueo de autorización de tiempo extra y alertas `minor_overtime`, `minor_night_work`, `minor_daily_limit`; edad mínima validada en la importación CSV | Fecha de nacimiento opcional en el alta manual |
+| 24 | Registro electrónico (art. 132 fr. XXXIV) | Marcajes append-only con hora del servidor, del dispositivo y de sincronización; sin marcajes automáticos; convenio de registro firmado en la app; rectificaciones con evidencia y firma del colaborador; reporte para inspección con verificación de integridad | Disposiciones de la STPS (no publicadas al corte); texto del convenio por RH y Jurídico |
+| 26, 27 | Conservación | Sin borrado físico de registros de asistencia; referencia de 5 años | Plazo definitivo por Jurídico |
+| 32, 33 | LFPDPPP | Aviso de privacidad en PDF firmado en la app; ubicación sólo al marcar o durante la jornada según el puesto; depuración de recorridos | Correo del responsable de datos, texto del aviso, plazo de conservación de recorridos |

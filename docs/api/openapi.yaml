@@ -1,12 +1,15 @@
 openapi: 3.1.0
 info:
   title: MR LANA Asistencias — API v1
-  version: 1.0.0
+  version: 1.1.0
   description: |
     API REST para la app móvil. Fuente de verdad de tipos: `packages/contracts/src/api.ts`.
     Fechas-hora ISO-8601 UTC con `Z`; fechas `YYYY-MM-DD`; duraciones en minutos enteros.
     Respuestas correctas `{ data, meta? }`; errores `ApiError`.
     Los marcajes son append-only: no existen operaciones PUT/PATCH/DELETE sobre ellos.
+    1.1.0 (Revisión RH, nov-2026): firma electrónica, documentos, rectificaciones en 5 etapas,
+    kiosco de sucursal, confirmación de lectura y seguimiento de ubicación por puesto. Cambios aditivos;
+    los campos de la salida automática quedan deprecados (null / 0).
 servers:
   - url: http://127.0.0.1:8000/api/v1
     description: Desarrollo local
@@ -17,6 +20,10 @@ tags:
   - name: Perfil
   - name: Asistencia
   - name: Solicitudes
+  - name: Firma electrónica
+  - name: Documentos
+  - name: Kiosco
+  - name: Comunicados
   - name: Calendario
   - name: Notificaciones
   - name: Dispositivos
@@ -249,7 +256,10 @@ paths:
     get:
       tags: [Solicitudes]
       summary: Mis solicitudes de rectificación
-      parameters: [ { $ref: '#/components/parameters/page' }, { $ref: '#/components/parameters/perPage' } ]
+      parameters:
+        - { $ref: '#/components/parameters/page' }
+        - { $ref: '#/components/parameters/perPage' }
+        - { name: stage, in: query, schema: { $ref: '#/components/schemas/RectificationStage' } }
       responses:
         '200':
           description: OK
@@ -267,14 +277,19 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
-            schema: { $ref: '#/components/schemas/RectificationRequest' }
           multipart/form-data:
             schema:
               allOf:
                 - { $ref: '#/components/schemas/RectificationRequest' }
                 - type: object
-                  properties: { evidence: { type: string, format: binary, description: 'pdf/jpg/png/heic/webp ≤ 10 MB' } }
+                  required: ['evidence[]']
+                  properties:
+                    'evidence[]':
+                      type: array
+                      minItems: 1
+                      maxItems: 5
+                      items: { type: string, format: binary }
+                      description: 'Obligatoria. JPG/PNG/WEBP/HEIC/PDF ≤ 10 MB c/u. Se acepta `evidence` único por compatibilidad.'
       responses:
         '201':
           description: Creada
@@ -528,7 +543,7 @@ paths:
   /face-verification/status:
     get:
       tags: [Sistema]
-      summary: Estado del módulo de verificación facial (available=false sin proveedor real)
+      summary: Estado del módulo de verificación facial (available=false si el microservicio no está configurado o no responde)
       responses:
         '200':
           description: OK
@@ -539,12 +554,285 @@ paths:
                 required: [data]
                 properties: { data: { $ref: '#/components/schemas/FaceVerificationStatus' } }
 
+  /face-verification/challenge:
+    post:
+      tags: [Sistema]
+      summary: Reto de verificación facial (2 pasos aleatorios, al menos un giro; vigencia 30 s)
+      description: Límite 20/min por usuario; 5 resultados no coincidentes en 15 min ⇒ face_locked. Ver docs/seguridad/BIOMETRIA.md.
+      responses:
+        '201': { description: 'FaceChallenge (ver packages/contracts/src/api.ts)' }
+        '409': { description: '`face_not_enrolled`', content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { description: '`face_unavailable`', content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
+
+  /face-verification/verify:
+    post:
+      tags: [Sistema]
+      summary: Verifica 6–10 cuadros del reto (multipart challenge_id, frames[], timestamps[], mirrored)
+      responses:
+        '200': { description: 'FaceVerificationResult; si result=match, su id se envía como face_verification_id del marcaje (2 min, un solo uso)' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /rectifications/{id}:
+    get:
+      tags: [Solicitudes]
+      summary: Detalle de una rectificación propia
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Rectification' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /rectifications/{id}/sign:
+    post:
+      tags: [Firma electrónica]
+      summary: El colaborador firma la corrección autorizada por su jefe (etapa por_firmar)
+      description: Firma con NIP o con la biometría del teléfono (HMAC del secreto del dispositivo sobre signature_payload_sha256). Fuera de plazo, en otra etapa o con NIP incorrecto ⇒ 422. Límite 20/min.
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SignRequest' } } }
+      responses:
+        '200':
+          description: Rectificación en etapa por_validar
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Rectification' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /rectifications/{id}/decline:
+    post:
+      tags: [Firma electrónica]
+      summary: El colaborador no acepta la corrección (queda rechazada como «declinada»)
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reason], properties: { reason: { type: string } } }
+      responses:
+        '200':
+          description: Rectificación rechazada
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Rectification' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  /profile/signature-pin:
+    post:
+      tags: [Firma electrónica]
+      summary: Define o cambia el NIP de firma (4 a 6 dígitos, no trivial)
+      description: Para cambiarlo se exige current_pin. 5 fallos de NIP ⇒ bloqueo de 15 min. Límite 10/min.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SignaturePinRequest' } } }
+      responses:
+        '200':
+          description: Estado del NIP
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/SignaturePinStatus' } } }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /documents/pending:
+    get:
+      tags: [Documentos]
+      summary: Convenio de registro y aviso de privacidad vigentes pendientes de firma
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/PendingDocument' } } } }
+
+  /documents:
+    get:
+      tags: [Documentos]
+      summary: Constancias de documentos firmados por el colaborador (todas las versiones)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/SignedDocument' } } } }
+
+  /documents/{id}/sign:
+    post:
+      tags: [Documentos]
+      summary: Firma la versión vigente del convenio o del aviso (idempotente)
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SignRequest' } } }
+      responses:
+        '200':
+          description: Constancia
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/DocumentSignResult' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /documents/{id}/pdf:
+    get:
+      tags: [Documentos]
+      summary: PDF del documento (Bearer)
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        '200': { description: PDF, content: { application/pdf: { schema: { type: string, format: binary } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /files/documents/{id}:
+    get:
+      tags: [Documentos]
+      summary: PDF del documento con URL firmada temporal (10 min), sin Bearer
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: signature, in: query, required: true, schema: { type: string } }
+        - { name: expires, in: query, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: PDF, content: { application/pdf: { schema: { type: string, format: binary } } } }
+        '403': { description: Firma de URL inválida o vencida }
+
+  /files/evidence/{id}:
+    get:
+      tags: [Solicitudes]
+      summary: Evidencia de una rectificación propia con URL firmada temporal (10 min), sin Bearer
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: signature, in: query, required: true, schema: { type: string } }
+        - { name: expires, in: query, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Archivo }
+        '403': { description: Firma de URL inválida o vencida }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /announcements/{id}/read:
+    post:
+      tags: [Comunicados]
+      summary: Confirma la lectura de un comunicado importante (data.requires_confirmation = "1")
+      description: Idempotente. 404 si el comunicado no existe, fue retirado o no te fue enviado.
+      parameters: [ { name: id, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '200':
+          description: Confirmación registrada
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/AnnouncementReadReceipt' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /kiosk/activate:
+    post:
+      tags: [Kiosco]
+      summary: Activa la tableta de kiosco con un código de un solo uso
+      security: []
+      description: Límite 10/min. El token del kiosco se entrega una sola vez.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/KioskActivateRequest' } } }
+      responses:
+        '200':
+          description: Kiosco activado
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/KioskActivation' } } }
+        '422': { description: '`kiosk_activation_invalid` o validación', content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /kiosk/status:
+    get:
+      tags: [Kiosco]
+      summary: Estado del kiosco
+      security: [ { kiosk: [] } ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/KioskStatus' } } }
+        '401': { description: '`kiosk_unauthenticated`', content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
+
+  /kiosk/punches:
+    post:
+      tags: [Kiosco]
+      summary: Marcaje en kiosco con número de empleado y NIP (idempotente por client_uuid; origen kiosk)
+      security: [ { kiosk: [] } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/KioskPunchRequest' } } }
+      responses:
+        '200':
+          description: Duplicado idempotente
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/KioskPunchReceipt' } } }
+        '201':
+          description: Registrado
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/KioskPunchReceipt' } } }
+        '401': { description: '`kiosk_unauthenticated`', content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
+        '422': { description: '`kiosk_invalid_credentials`, `kiosk_wrong_branch`, `kiosk_employee_inactive`, `pin_not_set`, `face_verification_required`, validación', content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
+        '423': { description: '`pin_locked`', content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /kiosk/sync:
+    post:
+      tags: [Kiosco]
+      summary: Sincroniza la cola sin conexión del kiosco (cada elemento por separado)
+      security: [ { kiosk: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [punches], properties: { punches: { type: array, items: { $ref: '#/components/schemas/KioskPunchRequest' } } } }
+      responses:
+        '200':
+          description: Resultados por elemento
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/KioskSyncResponse' } } }
+        '401': { description: '`kiosk_unauthenticated`', content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
+
+  /kiosk/face/challenge:
+    post:
+      tags: [Kiosco]
+      summary: Reto facial en kiosco (cuerpo employee_number y pin)
+      security: [ { kiosk: [] } ]
+      responses:
+        '201': { description: 'FaceChallenge' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  /kiosk/face/verify:
+    post:
+      tags: [Kiosco]
+      summary: Verificación facial en kiosco (multipart de verificación + employee_number y pin)
+      security: [ { kiosk: [] } ]
+      responses:
+        '200': { description: 'FaceVerificationResult' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
 components:
   securitySchemes:
     bearer:
       type: http
       scheme: bearer
       description: Token Sanctum `device:{device_uuid}` emitido por /auth/login.
+    kiosk:
+      type: http
+      scheme: bearer
+      description: Token del kiosco de sucursal emitido por /kiosk/activate (no es token de usuario).
 
   parameters:
     page: { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
@@ -593,7 +881,11 @@ components:
           type: string
           enum: [unauthenticated, forbidden, not_found, validation_failed, device_pending, device_revoked, device_unknown,
                  invalid_signature, challenge_expired, challenge_used, duplicate_punch, invalid_sequence, location_required,
-                 outside_geofence, policy_violation, no_employment, rate_limited, immutable_record, server_error]
+                 outside_geofence, policy_violation, no_employment, rate_limited, immutable_record, server_error,
+                 device_in_use, face_unavailable, face_not_enrolled, face_locked, face_challenge_invalid, face_challenge_expired,
+                 kiosk_unauthenticated, kiosk_activation_invalid, kiosk_invalid_credentials, kiosk_wrong_branch,
+                 kiosk_employee_inactive, pin_locked, pin_not_set, face_verification_required]
+        legacy_code: { type: string, description: 'Código anterior equivalente (compatibilidad), sólo si `code` sustituyó a uno previo' }
         errors: { type: object, additionalProperties: { type: array, items: { type: string } } }
 
     PaginationMeta:
@@ -738,6 +1030,9 @@ components:
         offline_max_hours: { type: integer }
         geofences: { type: array, items: { $ref: '#/components/schemas/Geofence' } }
         face_verification_enabled: { type: boolean }
+        location_tracking: { type: string, enum: [on_punch, during_shift], description: 'Parámetro del puesto: sólo al marcar o seguimiento durante la jornada' }
+        tracking_paused_states: { type: array, items: { type: string, enum: [break, meal] } }
+        location_contingency_minutes: { type: integer, description: 'Minutos tras el fin de turno en que se corta el seguimiento si la salida se omite' }
 
     LocationEvidence:
       type: object
@@ -771,6 +1066,7 @@ components:
         captured_offline: { type: boolean }
         location: { oneOf: [ { type: 'null' }, { $ref: '#/components/schemas/LocationEvidence' } ] }
         face_verification_id: { type: [string, 'null'], format: uuid }
+        synced_at: { type: [string, 'null'], format: date-time, description: 'Opcional: hora de envío según el reloj del dispositivo' }
 
     Punch:
       type: object
@@ -779,9 +1075,11 @@ components:
         uuid: { type: string, format: uuid }
         type: { $ref: '#/components/schemas/PunchType' }
         status: { type: string, enum: [accepted, flagged] }
-        source: { type: string, enum: [mobile, mobile_offline, web, kiosk, import] }
+        source: { type: string, enum: [mobile, mobile_offline, web, kiosk, import, system], description: '`system` sólo en marcajes históricos de la extinta salida automática' }
         server_time: { $ref: '#/components/schemas/IsoDateTime' }
         device_time: { type: [string, 'null'], format: date-time }
+        received_at: { type: [string, 'null'], format: date-time, description: 'Recepción en servidor (null en registros previos)' }
+        synced_at: { type: [string, 'null'], format: date-time }
         clock_skew_seconds: { type: [integer, 'null'] }
         timezone: { type: string }
         auth_method: { $ref: '#/components/schemas/AuthMethod' }
@@ -790,7 +1088,8 @@ components:
           type: array
           items:
             type: string
-            enum: [clock_skew, late_sync, mocked_location, outside_geofence, low_accuracy, no_location, out_of_sequence, outside_schedule, rest_day, holiday, offline_not_allowed]
+            enum: [clock_skew, late_sync, mocked_location, outside_geofence, low_accuracy, no_location, out_of_sequence, outside_schedule, rest_day, holiday, offline_not_allowed, missing_clock_out, missing_clock_in, auto_clock_out]
+            description: '`auto_clock_out` sólo en marcajes históricos'
         location: { oneOf: [ { type: 'null' }, { $ref: '#/components/schemas/LocationEvidence' } ] }
         hash: { type: string, pattern: '^[a-f0-9]{64}$' }
         sequence: { type: integer }
@@ -830,6 +1129,8 @@ components:
         break_minutes: { type: integer }
         late_minutes: { type: integer }
         excess_minutes: { type: integer }
+        auto_clock_out_at: { type: [string, 'null'], format: date-time, deprecated: true, description: 'Siempre null: la salida automática se eliminó' }
+        after_cutoff_minutes: { type: integer, deprecated: true, description: 'Siempre 0: ningún tiempo registrado se descarta' }
         incidences: { type: array, items: { $ref: '#/components/schemas/IncidenceSummary' } }
 
     PunchReceipt:
@@ -927,6 +1228,215 @@ components:
         review_comment: { type: [string, 'null'] }
         reviewed_at: { type: [string, 'null'], format: date-time }
         created_at: { $ref: '#/components/schemas/IsoDateTime' }
+        stage: { $ref: '#/components/schemas/RectificationStage' }
+        stage_label: { type: string }
+        original: { $ref: '#/components/schemas/RectificationSide' }
+        proposal: { $ref: '#/components/schemas/RectificationSide' }
+        evidences: { type: array, items: { $ref: '#/components/schemas/RectificationEvidence' } }
+        is_late: { type: boolean, description: 'Extemporánea: fecha dentro de una nómina cerrada (sólo RH la aplica)' }
+        authorized_at: { type: [string, 'null'], format: date-time }
+        signature_due_at: { type: [string, 'null'], format: date-time, description: 'Fin del plazo de firma (días hábiles configurables); vencido ⇒ rechazada' }
+        signature:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [signed_at, method, hash]
+              properties:
+                signed_at: { $ref: '#/components/schemas/IsoDateTime' }
+                method: { type: string, enum: [pin, biometric] }
+                hash: { type: string }
+        signature_statement: { type: [string, 'null'], description: 'Texto exacto a firmar (sólo en por_firmar)' }
+        signature_payload_sha256: { type: [string, 'null'], description: 'Entra en la firma HMAC biométrica (sólo en por_firmar)' }
+        can_sign: { type: boolean }
+        rejection_stage: { type: [string, 'null'], enum: [por_autorizar, por_firmar, por_validar, vencida, declinada, cancelada, null] }
+        rejection_reason: { type: [string, 'null'] }
+        applied_at: { type: [string, 'null'], format: date-time }
+
+    RectificationStage: { type: string, enum: [por_autorizar, por_firmar, por_validar, aplicada, rechazada] }
+
+    RectificationSide:
+      type: object
+      description: '«Registro original» / «Propuesta»'
+      properties:
+        summary: { type: [string, 'null'] }
+        punch_uuid: { type: [string, 'null'], format: uuid, description: 'Sólo en original' }
+        type: { oneOf: [ { type: 'null' }, { $ref: '#/components/schemas/PunchType' } ] }
+        time: { type: [string, 'null'], format: date-time }
+
+    RectificationEvidence:
+      type: object
+      required: [id, name, mime, size, sha256, url]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        mime: { type: string }
+        size: { type: integer }
+        sha256: { type: string }
+        url: { type: string, description: 'URL firmada temporal (10 min), sin Bearer' }
+
+    SignRequest:
+      type: object
+      required: [method]
+      properties:
+        method: { type: string, enum: [pin, biometric] }
+        pin: { type: string, pattern: '^[0-9]{4,6}$' }
+        device_signature: { type: string, description: 'hex(HMAC_SHA256(base64decode(device_secret), "sign|{purpose}|{signable_id}|{signature_payload_sha256}|{device_uuid}"))' }
+        device_uuid: { type: string, format: uuid, description: 'Informativo; el servidor usa el dispositivo del token' }
+        device_time: { type: string, format: date-time, description: 'Informativo' }
+
+    SignaturePinRequest:
+      type: object
+      required: [pin]
+      properties:
+        pin: { type: string, pattern: '^[0-9]{4,6}$' }
+        current_pin: { type: string, description: 'Obligatorio para cambiar un NIP existente' }
+
+    SignaturePinStatus:
+      type: object
+      required: [has_pin, set_at]
+      properties:
+        has_pin: { type: boolean }
+        set_at: { type: [string, 'null'], format: date-time }
+
+    PendingDocument:
+      type: object
+      required: [id, code, purpose, title, version, body_markdown, sha256, published_at, pdf_url, signature_statement, signature_payload_sha256]
+      properties:
+        id: { type: integer }
+        code: { type: string, enum: [CONVENIO_REGISTRO, AVISO_PRIVACIDAD] }
+        purpose: { type: string, enum: [registration_agreement, privacy_notice] }
+        title: { type: string }
+        version: { type: string }
+        body_markdown: { type: string }
+        sha256: { type: string }
+        published_at: { $ref: '#/components/schemas/IsoDateTime' }
+        pdf_url: { type: string, description: 'URL firmada temporal (10 min), sin Bearer' }
+        signature_statement: { type: string }
+        signature_payload_sha256: { type: string }
+
+    SignedDocument:
+      type: object
+      required: [id, code, title, version, body_markdown, pdf_url, signed_at, signature_method, hash]
+      properties:
+        id: { type: integer }
+        code: { type: string, enum: [CONVENIO_REGISTRO, AVISO_PRIVACIDAD] }
+        title: { type: string }
+        version: { type: string }
+        body_markdown: { type: [string, 'null'] }
+        pdf_url: { type: string }
+        signed_at: { $ref: '#/components/schemas/IsoDateTime' }
+        signature_method: { type: string, enum: [pin, biometric] }
+        hash: { type: string }
+
+    DocumentSignResult:
+      type: object
+      required: [document_id, code, signed_at, method, hash]
+      properties:
+        document_id: { type: integer }
+        code: { type: string, enum: [CONVENIO_REGISTRO, AVISO_PRIVACIDAD] }
+        signed_at: { $ref: '#/components/schemas/IsoDateTime' }
+        method: { type: string, enum: [pin, biometric] }
+        hash: { type: string }
+
+    AnnouncementReadReceipt:
+      type: object
+      required: [announcement_id, confirmed_at, read_at]
+      properties:
+        announcement_id: { type: string, format: uuid }
+        confirmed_at: { $ref: '#/components/schemas/IsoDateTime' }
+        read_at: { $ref: '#/components/schemas/IsoDateTime' }
+
+    KioskActivateRequest:
+      type: object
+      required: [activation_code, device]
+      properties:
+        activation_code: { type: string, description: 'Código de un solo uso; vence en 48 h' }
+        device:
+          type: object
+          required: [device_uuid, platform, app_version]
+          properties:
+            device_uuid: { type: string, format: uuid }
+            platform: { type: string, enum: [android, ios, web] }
+            os_version: { type: [string, 'null'] }
+            app_version: { type: string }
+            model: { type: [string, 'null'] }
+
+    KioskStatus:
+      type: object
+      required: [id, name, status, branch, organization, activated_at, last_seen_at, server_time]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        status: { type: string, enum: [pending, active, revoked] }
+        branch:
+          oneOf:
+            - type: 'null'
+            - type: object
+              properties: { id: { type: integer }, name: { type: string } }
+        organization:
+          type: object
+          properties: { id: { type: integer }, name: { type: [string, 'null'] }, timezone: { type: [string, 'null'] } }
+        activated_at: { type: [string, 'null'], format: date-time }
+        last_seen_at: { type: [string, 'null'], format: date-time }
+        server_time: { $ref: '#/components/schemas/IsoDateTime' }
+
+    KioskActivation:
+      type: object
+      required: [token, kiosk]
+      properties:
+        token: { type: string, description: 'Token del kiosco; se entrega una sola vez' }
+        kiosk: { $ref: '#/components/schemas/KioskStatus' }
+
+    KioskPunchRequest:
+      type: object
+      required: [employee_number, pin, type, client_uuid, device_time]
+      properties:
+        employee_number: { type: string }
+        pin: { type: string, description: 'NIP de firma del colaborador' }
+        type: { $ref: '#/components/schemas/PunchType' }
+        client_uuid: { type: string, format: uuid }
+        device_time: { type: string, format: date-time }
+        timezone: { type: [string, 'null'] }
+        face_verification_id: { type: [string, 'null'], format: uuid, description: 'Obligatorio si la política exige verificación facial' }
+        location:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [latitude, longitude]
+              properties:
+                latitude: { type: number }
+                longitude: { type: number }
+                accuracy_meters: { type: [number, 'null'] }
+                captured_at: { type: [string, 'null'], format: date-time }
+                is_mocked: { type: [boolean, 'null'] }
+
+    KioskPunchReceipt:
+      type: object
+      required: [id, client_uuid, type, server_time, status, captured_offline, employee_name, duplicate]
+      properties:
+        id: { type: string, format: uuid }
+        client_uuid: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/PunchType' }
+        server_time: { $ref: '#/components/schemas/IsoDateTime' }
+        status: { type: string }
+        captured_offline: { type: boolean }
+        employee_name: { type: string, description: 'Sólo el primer nombre' }
+        duplicate: { type: boolean }
+
+    KioskSyncResponse:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            required: [client_uuid, result]
+            properties:
+              client_uuid: { type: string, format: uuid }
+              result: { type: string, enum: [created, duplicate, rejected] }
+              punch: { $ref: '#/components/schemas/KioskPunchReceipt' }
+              error: { $ref: '#/components/schemas/ApiError' }
 
     RectificationRequest:
       type: object
@@ -1043,10 +1553,12 @@ components:
 
     PushTokenRequest:
       type: object
-      required: [device_uuid, expo_push_token]
+      required: [device_uuid, push_token, provider]
+      description: 'Las apps anteriores que envían `expo_push_token` siguen recibiendo 204 (proveedor expo, sin push FCM).'
       properties:
         device_uuid: { type: string, format: uuid }
-        expo_push_token: { type: string, examples: ['ExponentPushToken[xxxxxxxx]'] }
+        push_token: { type: string, description: 'Token FCM del dispositivo' }
+        provider: { type: string, enum: [fcm] }
 
     FaceVerificationStatus:
       type: object
@@ -1076,6 +1588,9 @@ components:
       type: object
       required: [window, interval_s, distance_m]
       properties:
+        mode: { type: string, enum: [on_punch, during_shift] }
+        phase: { type: string, enum: [active, paused, off] }
+        paused_states: { type: array, items: { type: string, enum: [break, meal] } }
         window:
           type: object
           required: [enabled, active_now, starts_at, ends_at, next_start_at, timezone]
@@ -1116,7 +1631,7 @@ components:
             properties:
               index: { type: integer }
               uuid: { type: [string, 'null'], format: uuid }
-              code: { type: string, enum: [invalid_point, invalid_coordinates, invalid_accuracy, future_time, too_old, outside_window] }
+              code: { type: string, enum: [invalid_point, invalid_coordinates, invalid_accuracy, future_time, too_old, outside_window, tracking_disabled, on_break, contingency_cutoff] }
         settings: { $ref: '#/components/schemas/LocationSettings' }
 
     LocationState:

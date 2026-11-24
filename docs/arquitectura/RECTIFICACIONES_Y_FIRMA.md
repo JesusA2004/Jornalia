@@ -23,7 +23,7 @@ Reglas duras (dominio, `App\Domain\Attendance\RectificationService`):
 ## Parámetros (`organization_settings`, Configuración › Incidencias, sólo RH)
 
 - `rectifications.signature` = `{business_days: 3, confirmed_by_hr: false}` — **pendiente de
-  confirmar por RH** (decisión listada en el PDF).
+  confirmar por RH** (decisión pendiente de la Revisión RH).
 - `payroll.close` = `{closed_through: 'AAAA-MM-DD' | null}` — fechas ≤ cierre son extemporáneas.
 
 ## Migración de datos existentes (2026_11_24_110100)
@@ -33,7 +33,7 @@ Reglas duras (dominio, `App\Domain\Attendance\RectificationService`):
 - `approved` → `aplicada` con `legacy_without_signature = true` (ya tenían su ajuste; no se
   exige firma retroactiva; la UI muestra «Previa al flujo»).
 - `rejected` → `rechazada` (`rejection_stage = por_autorizar`); `cancelled` → `rechazada` (`cancelada`).
-- El flujo de rectificación es fijo (PDF); `approval_flows` de `rectification` ya no aplica.
+- El flujo de rectificación es fijo (Revisión RH, pantalla 05); `approval_flows` de `rectification` ya no aplica.
 
 ## Firma electrónica (`electronic_signatures`, append-only + triggers + HashChain)
 
@@ -44,6 +44,18 @@ Reglas duras (dominio, `App\Domain\Attendance\RectificationService`):
 - Convenio `CONVENIO_REGISTRO` y aviso `AVISO_PRIVACIDAD`: cuenta sólo la versión vigente
   publicada (acuse + firma). El convenio en papel cuenta si hay adjunto del expediente con
   `attachments.category = registration_agreement`.
+
+## Dónde se opera
+
+| Paso | Web (`/rectificaciones`) | App |
+|---|---|---|
+| Solicitud | «Nueva rectificación» a nombre del colaborador (`rectifications.create`) | «Corregir este día» en Historial; adjuntar foto, galería o documento |
+| Autorización del jefe | Pestaña «Por autorizar» | — |
+| Firma | Pestaña «Por firmar colaborador» (sólo consulta; nadie firma por el colaborador) | Bandeja «Firmas»: compara «Registro original» y «Propuesta», firma con NIP o huella, o rechaza con motivo |
+| Validación RH | Pestaña «Por validar RH» | — |
+| Resultado | Pestañas «Aplicadas» y «Rechazadas»; en Asistencias el día queda «Rectificada*» con enlace | Aviso en la bandeja en cada cambio de etapa (`RectificationStageChanged`) |
+
+API para la app: `GET/POST /api/v1/rectifications`, `GET /rectifications/{id}`, `POST /rectifications/{id}/sign`, `POST /rectifications/{id}/decline`, `POST /profile/signature-pin`. Las evidencias se descargan con URL firmada temporal (`/api/v1/files/evidence/{id}`, 10 min). Detalle en [API](../api/README.md).
 
 ## Incidencias (pantalla 06)
 

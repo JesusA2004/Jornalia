@@ -2,6 +2,18 @@
 
 Fuente: `docs/identidad/MANUAL DE IDENTIDAD  MR LANA 2026 (1).pdf` (sección 5, colores; 4, tipografía; 6–8, versiones y usos).
 
+## Paleta institucional del sistema (Revisión RH)
+
+La Revisión RH (pantalla 19, punto 4) fijó para el sistema la paleta de la hoja membretada:
+
+| Rol | HEX | Uso |
+|---|---|---|
+| Verde institucional | `#225C54` | Color primario (botones, encabezados de reportes, color por omisión de la organización), con texto blanco |
+| Dorado | `#AF8B51` | Acentos: indicador activo, etiquetas y detalles. No como fondo de texto largo |
+| Superficie oscura | `#15332E` | Barra lateral y paneles de marca |
+
+Paleta permitida en Configuración › Empresa (`CompanySettingsController::PALETTE`): `#163A36`, `#225C54`, `#2F5D3A`, `#1B4B5A`, `#AF8B51`, `#7A4F1E`, `#E6D3A8`. Tokens: `Web/resources/css/app.css` y `Mobile/src/theme/tokens.ts`. El logotipo oficial no cambia. Los colores del manual que siguen se conservan como referencia de la identidad (logotipo, ícono y degradado del manual).
+
 ## Colores oficiales (manual, sección 5)
 
 | Rol | HEX | Uso |
@@ -15,7 +27,9 @@ Fuente: `docs/identidad/MANUAL DE IDENTIDAD  MR LANA 2026 (1).pdf` (sección 5, 
 
 Fondos de portadas del manual: verde/teal profundo (`#163A36` → `#24461F` aprox.), usado como superficie oscura de marca.
 
-## Tonos derivados para interfaz (accesibilidad AA)
+## Tonos derivados del manual (interfaz anterior a la Revisión RH)
+
+> Referencia histórica: la app y, desde la fase 2 de la Revisión RH, la web usan la paleta institucional de arriba como color primario, no el verde del manual. Se conserva por si se requieren piezas con la identidad del manual.
 
 Los colores base son claros: **sobre ellos el texto va en negro** (verde `#A0E04E` con negro ≈ 13:1). Para texto
 o íconos de color sobre blanco se usan tonos derivados más oscuros, de la misma familia:

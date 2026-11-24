@@ -12,6 +12,15 @@ El backend envía avisos con **FCM HTTP v1** directamente (OAuth2 con cuenta de 
    - Este archivo no es secreto, pero no lo publiques fuera del repositorio privado.
 6. **Cloud Messaging**: en **Configuración del proyecto → Cloud Messaging** confirma que **Firebase Cloud Messaging API (V1)** está **Habilitada**. Si aparece deshabilitada, usa el menú ⋮ → *Administrar API en Google Cloud Console* → **Habilitar**.
 
+### 1.1 iOS — pendiente
+
+El push en iOS **no está operativo**:
+
+- `Mobile/app.config.ts` no declara `ios.googleServicesFile` (`GoogleService-Info.plist`).
+- La app registra el token con `Notifications.getDevicePushTokenAsync()`, que en iOS entrega un token **APNs**. El backend envía por FCM HTTP v1, que necesita un token **FCM**.
+
+Para habilitarlo se requiere una cuenta de Apple Developer, una llave APNs (`.p8`) cargada en Firebase (Configuración del proyecto → Cloud Messaging → Apple), registrar la app iOS en Firebase con el bundle `mx.mrlana.asistencias` y obtener un token FCM en iOS (SDK de Firebase Messaging), o bien implementar el envío directo por APNs en el backend. Mientras tanto, en iOS los avisos y acuses llegan sólo a la bandeja de la app.
+
 ## 2. Backend: cuenta de servicio
 
 1. **Configuración del proyecto → Cuentas de servicio → Firebase Admin SDK → Generar nueva clave privada** → descarga el JSON.
@@ -80,7 +89,7 @@ POST /api/v1/devices/push-token
 |---|---|---|
 | `notification_id` | sí | UUID del aviso en la bandeja (`POST /notifications/{id}/read` al abrirlo). |
 | `category` | sí | `message` · `reminder` · `request` · `attendance` · `system` |
-| `kind` | sí | `announcement`, `attendance.punch_receipt`, `reminder.late_clock_in`, `reminder.clock_out`, `request.approved/rejected`, `integrity.verification_failed`, `integrity.anchor_failed`, `device.approved/revoked` |
+| `kind` | sí | `announcement`, `attendance.punch_receipt`, `reminder.late_clock_in`, `reminder.clock_out`, `request.approved/rejected`, `rectification.<evento>` (cambio de etapa de una rectificación), `schedule.change_scheduled` / `schedule.change_cancelled`, `integrity.verification_failed`, `integrity.anchor_failed`, `device.approved/revoked` |
 | `priority` | sí | `normal` · `high` |
 | `announcement_id`, `requires_confirmation` | comunicados | UUID del comunicado, `"1"`/`"0"` |
 | `punch_uuid`, `date`, `type`, `receipt_code` | acuse de marcaje | UUID del marcaje, fecha local, tipo, folio |

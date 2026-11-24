@@ -1,40 +1,20 @@
 # Instalación y despliegue
 
-## Requisitos
+Instalación nueva de producción y referencia de operación. Para actualizar la instalación existente desde `f26d36f` use [Actualización de producción](ACTUALIZACION_PRODUCCION.md). Integración continua: [CI](CI.md). Desarrollo local: [README raíz](../../README.md#instalación-local).
 
-- Ubuntu 24.04 LTS, Nginx, PHP 8.4-FPM (extensiones: pdo_mysql, mbstring, intl, gd, zip, bcmath, openssl, sodium), Composer 2.
-- MariaDB 11.4 LTS (InnoDB; `character-set-server=utf8mb4`).
-- Node.js 22+ (sólo para compilar assets).
+## Requisitos del servidor
+
+- Ubuntu 24.04 LTS, Nginx, PHP 8.4-FPM (extensiones: `pdo_mysql`, `mbstring`, `intl`, `gd`, `zip`, `bcmath`, `openssl`, `sodium`, `curl`, `xml`), Composer 2.
+- MariaDB 11.4 LTS (InnoDB; `character-set-server=utf8mb4`, `collation-server=utf8mb4_unicode_ci`).
+- Node.js 22 o superior para compilar los assets (el build ejecuta `php artisan` por el plugin de Wayfinder).
 - Supervisor (workers de cola) y cron (scheduler).
+- Opcional: Python 3.12 para el microservicio facial (`services/face`).
 
-## Desarrollo local (Windows + WAMP)
-
-> Causa del error `1071 Specified key was too long; max key length is 1000 bytes`: el servidor de WAMP
-> tiene `default_storage_engine=MyISAM`. El proyecto fuerza `DB_ENGINE=InnoDB` en `config/database.php`;
-> además usa MariaDB (puerto 3307 en WAMP).
-
-```bash
-cd Web
-cp .env.example .env        # DB_CONNECTION=mariadb, DB_PORT=3307 en WAMP
-composer install && npm install
-php artisan key:generate
-# Generar INTEGRITY_CHAIN_KEY e INTEGRITY_ANCHOR_KEY:
-php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
-php artisan migrate
-php artisan asistencias:instalar          # organización + primer administrador (contraseña interactiva)
-composer run dev                          # servidor, Vite y logs
-php artisan serve --host=0.0.0.0 --port=8000   # accesible desde el teléfono (adb reverse tcp:8000 tcp:8000)
-```
-
-Pruebas: crear la BD `jornalia_test` y ejecutar `php artisan test` (usa MariaDB real para probar triggers).
-
-## Producción
-
-### Base de datos
+## Base de datos
 
 ```sql
 CREATE DATABASE jornalia CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
--- Usuario de migraciones (sólo durante despliegues)
+-- Usuario de migraciones (sólo durante despliegues; necesita TRIGGER para crear los disparadores)
 CREATE USER 'jornalia_migrator'@'localhost' IDENTIFIED BY '<secreto>';
 GRANT ALL PRIVILEGES ON jornalia.* TO 'jornalia_migrator'@'localhost';
 -- Usuario de la aplicación: privilegios mínimos, sin TRIGGER/ALTER/DROP/SUPER
@@ -42,82 +22,111 @@ CREATE USER 'jornalia_app'@'localhost' IDENTIFIED BY '<secreto>';
 GRANT SELECT, INSERT, UPDATE, DELETE ON jornalia.* TO 'jornalia_app'@'localhost';
 ```
 
-Los triggers bloquean UPDATE/DELETE en tablas inmutables aunque el usuario tenga esos privilegios.
+Los triggers bloquean UPDATE/DELETE en tablas inmutables aunque el usuario tenga esos privilegios. Con registro binario activo, crear triggers requiere `log_bin_trust_function_creators=1` o `SUPER` para el usuario de migraciones. Detalle de tablas y triggers: [Base de datos](../arquitectura/BASE_DE_DATOS.md).
 
-### Aplicación
+## Aplicación
 
 ```bash
-git clone … /var/www/asistencias && cd /var/www/asistencias/Web
-composer install --no-dev --optimize-autoloader
+sudo git clone <repositorio> /var/www/asistencias && cd /var/www/asistencias/Web
+composer install --no-dev --optimize-autoloader --no-interaction
 npm ci && npm run build
-cp .env.example .env   # APP_ENV=production, APP_DEBUG=false, claves y BD
-php artisan key:generate
-DB_USERNAME=jornalia_migrator DB_PASSWORD=… php artisan migrate --force
-php artisan asistencias:instalar
-php artisan config:cache route:cache view:cache event:cache
-chown -R www-data:www-data storage bootstrap/cache
+cp .env.example .env
+#   APP_ENV=production, APP_DEBUG=false, APP_URL=https://asistencias.mr-lana.com
+#   DB_* con jornalia_app; DEVICE_AUTO_APPROVE_FIRST=false
+php artisan key:generate                      # SÓLO en una instalación nueva
+php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"   # dos veces: INTEGRITY_CHAIN_KEY e INTEGRITY_ANCHOR_KEY
+DB_USERNAME=jornalia_migrator DB_PASSWORD='…' php artisan migrate --force
+php artisan asistencias:instalar              # organización + primer usuario (Administrador de plataforma)
+php artisan asistencias:datos-oficiales       # razón social, RFC, domicilio fiscal y nombre comercial
+php artisan asistencias:festivos
+php artisan storage:link
+php artisan optimize
+sudo chown -R www-data:www-data storage bootstrap/cache
 ```
 
-### Nginx (extracto)
+`APP_KEY`, `INTEGRITY_CHAIN_KEY` e `INTEGRITY_ANCHOR_KEY` se guardan en un gestor de secretos con respaldo cifrado fuera del servidor. Nunca se regeneran en una instalación con datos. Después de instalar, el administrador de plataforma configura su doble factor y crea el usuario de RH con «Administrador RH» (separación de funciones).
+
+## Nginx (extracto)
 
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name asistencias.ejemplo.mx;
+    server_name asistencias.mr-lana.com;
     root /var/www/asistencias/Web/public;
-    ssl_certificate     /etc/letsencrypt/live/asistencias.ejemplo.mx/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/asistencias.ejemplo.mx/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/asistencias.mr-lana.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/asistencias.mr-lana.com/privkey.pem;
     add_header Strict-Transport-Security "max-age=31536000" always;
     add_header X-Content-Type-Options nosniff;
     add_header X-Frame-Options DENY;
-    client_max_body_size 12M;
+    client_max_body_size 55M;    # evidencias: hasta 5 archivos de 10 MB
     index index.php;
     location / { try_files $uri $uri/ /index.php?$query_string; }
     location ~ \.php$ { include snippets/fastcgi-php.conf; fastcgi_pass unix:/run/php/php8.4-fpm.sock; }
     location ~ /\.(?!well-known) { deny all; }
 }
+server { listen 80; server_name asistencias.mr-lana.com; return 301 https://$host$request_uri; }
 ```
 
-### Colas (Supervisor)
+Ajuste `upload_max_filesize` y `post_max_size` de PHP-FPM al mismo límite.
+
+## Colas (Supervisor)
+
+`/etc/supervisor/conf.d/asistencias-worker.conf`:
 
 ```ini
 [program:asistencias-worker]
+process_name=%(program_name)s_%(process_num)02d
 command=php /var/www/asistencias/Web/artisan queue:work --sleep=2 --tries=5 --max-time=3600
 numprocs=2
 user=www-data
 autostart=true
 autorestart=true
 stopwaitsecs=3600
+stdout_logfile=/var/log/asistencias-worker.log
 ```
 
-`QUEUE_CONNECTION=database` (o redis). Los jobs de recálculo son idempotentes y únicos por colaborador/fecha.
+`QUEUE_CONNECTION=database` (o `redis`). Jobs: recálculo de jornada (`RecomputeWorkday`, idempotente y único por colaborador y fecha), reportes grandes (`GenerateReportExport`), comunicados y push. Los workers no procesan jobs en modo mantenimiento.
 
-### Scheduler (cron)
+## Scheduler (cron)
 
 ```
 * * * * * www-data cd /var/www/asistencias/Web && php artisan schedule:run >> /dev/null 2>&1
 ```
 
-Tareas: cierre diario de jornadas (01:15), re-evaluación cada 4 h, anclaje de integridad cada hora,
-verificación diaria (03:30), limpieza de desafíos y tokens vencidos.
+Tareas definidas en `Web/routes/console.php` (lista completa en [Arquitectura](../arquitectura/ARQUITECTURA.md#procesos-programados)). Ninguna crea marcajes. Verificar con `php artisan schedule:list`.
 
-### Respaldos y recuperación
+## Almacenamiento
 
-- `mariadb-dump --single-transaction --routines --triggers jornalia | gzip` diario, cifrado y fuera del servidor; retención ≥ 5 años para tablas de asistencia (ver matriz legal).
-- Respaldo independiente de `storage/app/anchors`, `storage/app/evidence` y de las claves de integridad.
-- Restauración: restaurar BD → `php artisan asistencias:integridad verificar` → comparar contra anclas externas.
+| Ruta | Contenido | Respaldo |
+|---|---|---|
+| `storage/app/private/evidence/{org}/…` | Evidencias de rectificaciones e incidencias (con SHA-256) | Sí, diario |
+| `storage/app/private/expedientes/{org}/convenios` | Convenios firmados en papel | Sí |
+| `storage/app/private/policy-documents/{org}` | PDF del aviso de privacidad y del convenio (inmutables) | Sí |
+| `storage/app/private/reports/{org}` | Exportaciones de reportes | Opcional (se regeneran) |
+| `storage/app/public/brand` | Logotipos cargados (`php artisan storage:link`) | Sí |
+| `storage/app/anchors` o `INTEGRITY_ANCHOR_PATH` | Anclas de integridad | Sí, fuera del servidor (ideal: WORM) |
 
-### Actualización y rollback
+## Microservicio facial (opcional)
 
-1. `php artisan down --render="errors::503"`  2. `git pull` / nueva release en directorio versionado
-3. `composer install --no-dev` · `npm ci && npm run build` · `php artisan migrate --force`
-4. `php artisan optimize` · `php artisan queue:restart` · `php artisan up`
+`services/face` (FastAPI) escucha sólo en `127.0.0.1:8090` con token compartido (`FACE_SERVICE_URL`, `FACE_SERVICE_TOKEN`). Instalación, unidad systemd y calibración: [Biometría §8](../seguridad/BIOMETRIA.md#8-cómo-correr-el-servicio).
 
-Rollback: apuntar el symlink a la release anterior y `php artisan queue:restart`. Las migraciones de tablas
-inmutables no se revierten en producción (no hay `down` destructivo sobre datos de asistencia).
+## Respaldos y recuperación
 
-### Salud y observabilidad
+- Diario: `mariadb-dump --single-transaction --routines --triggers --events --hex-blob jornalia | gzip`, cifrado y fuera del servidor. Retención: la que defina Jurídico (referencia ≥ 5 años para asistencia).
+- Respaldo independiente de `storage/app` (o `INTEGRITY_ANCHOR_PATH`), `.env` cifrado, credenciales de Firebase y claves de integridad.
+- Restauración: restaurar en una base nueva → apuntar `DB_DATABASE` → `php artisan asistencias:integridad verificar` → comparar contra las anclas externas.
+- Probar la restauración al menos cada trimestre.
+
+## Actualización y rollback
+
+Procedimiento completo, validaciones y recuperación: [Actualización de producción](ACTUALIZACION_PRODUCCION.md). Resumen:
+
+1. `php artisan down` y detener workers. 2. Respaldo (BD con triggers, `storage/app`, `.env`). 3. `git checkout <commit>`, `composer install --no-dev --optimize-autoloader`, `npm ci && npm run build`. 4. `php artisan migrate --force` con el usuario de migraciones. 5. `php artisan optimize`, `php artisan queue:restart`, iniciar workers, `php artisan up`.
+
+Nunca `migrate:fresh`, `migrate:refresh`, `db:wipe` ni `migrate:rollback` en producción. Una vez que los usuarios operan con la versión nueva, se corrige hacia adelante: los registros de asistencia son append-only.
+
+## Salud y observabilidad
 
 - `GET /up` (Laravel) y `GET /api/v1/health`.
-- Logs estructurados en `storage/logs`; no se registran secretos ni identificadores oficiales.
-- Monitorear: jobs fallidos (`php artisan queue:failed`), resultado de la verificación de integridad, colas atrasadas.
+- Logs en `storage/logs`; no se registran secretos ni identificadores oficiales. Vista en desarrollo: `php artisan pail`.
+- Monitorear: jobs fallidos (`php artisan queue:failed`), alertas críticas de integridad (llegan a RH y Sistemas), tamaño de la cola, espacio en disco y vencimiento del certificado TLS.

@@ -1,7 +1,12 @@
 # Verificación facial 1:1 — MR LANA Asistencias
 
-Estado: **funcional en servidor y web** (pruebas automatizadas en verde); **prueba
-E2E con un rostro real pendiente** en el teléfono del usuario (ver §9).
+Estado: implementado en servidor, web (enrolamiento), app del colaborador (pantalla
+`rostro`, `Mobile/src/features/face/*`) y kiosco de sucursal (`POST /api/v1/kiosk/face/*`,
+con número de empleado + NIP). Cubierto con pruebas automatizadas (pytest, Pest y Jest);
+los resultados de la última corrida se registran en `docs/PROGRESO_IMPLEMENTACION.md`.
+**Prueba E2E con un rostro real pendiente** y calibración de umbrales en teléfonos reales
+(ver §9). Sólo opera si el microservicio está desplegado y la política lo exige; sin él,
+`available = false` y la política no puede exigir rostro.
 
 > **Aviso honesto.** No es una solución certificada ISO/IEC 30107-3 (PAD) ni
 > NIST FRVT. Es un factor adicional robusto contra fotos impresas y pantallas
