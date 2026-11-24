@@ -47,3 +47,7 @@ yarn-error.log
 /tests/e2e/.resultados
 /tests/e2e/.capturas
 /tests/e2e/*.tmp.*
+
+# Entorno E2E local (contiene APP_KEY)
+/.env.e2e
+/.env.w
