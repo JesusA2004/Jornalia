@@ -17,6 +17,8 @@ use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Validation\ValidationException;
+use Inertia\Inertia;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -100,5 +102,39 @@ return Application::configure(basePath: dirname(__DIR__))
             $status = $e->getStatusCode();
 
             return $error($status === 403 ? 'forbidden' : ($status >= 500 ? 'server_error' : 'not_found'), $e->getMessage() ?: 'Error', $status);
+        });
+
+        // Páginas de error propias para la web (sin rastro del framework). La API conserva
+        // el formato `ApiError`; en desarrollo los 500 muestran el detalle de depuración.
+        $exceptions->respond(function (SymfonyResponse $response, Throwable $e, Request $request) use ($isApi) {
+            $status = $response->getStatusCode();
+
+            if ($isApi($request) || ! in_array($status, [403, 404, 419, 429, 500, 503], true)) {
+                return $response;
+            }
+
+            if ($status >= 500 && config('app.debug')) {
+                return $response;
+            }
+
+            // CSRF vencido en un formulario: regresar con aviso en lugar de una página de error.
+            if ($status === 419 && $request->header('X-Inertia')) {
+                Inertia::flash('toast', ['type' => 'warning', 'message' => 'La sesión expiró. Vuelve a intentarlo.']);
+
+                return back();
+            }
+
+            // Mantenimiento: vista Blade autónoma (no depende de los assets compilados).
+            if ($status === 503) {
+                return $response;
+            }
+
+            try {
+                return Inertia::render('errors/Error', ['status' => $status])
+                    ->toResponse($request)
+                    ->setStatusCode($status);
+            } catch (Throwable) {
+                return $response;
+            }
         });
     })->create();
