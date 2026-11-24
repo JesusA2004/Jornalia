@@ -833,13 +833,32 @@ function setShiftKind(value: unknown): void {
                                 :class="
                                     check.ok
                                         ? 'border-success/25 bg-success-soft text-success-soft-foreground'
-                                        : 'border-danger/25 bg-danger-soft text-danger-soft-foreground'
+                                        : check.future
+                                          ? 'border-warning/25 bg-warning-soft text-warning-soft-foreground'
+                                          : 'border-danger/25 bg-danger-soft text-danger-soft-foreground'
                                 "
                             >
-                                {{ check.ok ? 'Cumple' : 'Excede' }}
+                                {{
+                                    check.ok
+                                        ? 'Cumple'
+                                        : check.future
+                                          ? 'Ajustar antes'
+                                          : 'Excede'
+                                }}
                             </Badge>
                         </li>
                     </ul>
+
+                    <p
+                        v-if="evaluation?.outlook?.warning"
+                        class="flex gap-2 border-t bg-warning-soft/40 px-5 py-3 text-xs text-warning-soft-foreground"
+                    >
+                        <CalendarClock
+                            class="mt-0.5 icon-xs shrink-0"
+                            aria-hidden="true"
+                        />
+                        {{ evaluation.outlook.warning }}
+                    </p>
 
                     <ul
                         v-if="violations.length > 0"

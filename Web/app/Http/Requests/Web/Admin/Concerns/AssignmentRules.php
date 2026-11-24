@@ -22,7 +22,6 @@ trait AssignmentRules
             $prefix.'supervisor_employee_id' => ['nullable', 'integer', $this->existsInOrg('employees')],
             $prefix.'schedule_id' => ['nullable', 'integer', $this->existsInOrg('schedules')],
             $prefix.'attendance_policy_id' => ['nullable', 'integer', $this->existsInOrg('attendance_policies')],
-            $prefix.'auto_clock_out_at' => ['nullable', 'date_format:H:i'],
         ];
     }
 
@@ -39,7 +38,6 @@ trait AssignmentRules
             $prefix.'supervisor_employee_id' => 'supervisor',
             $prefix.'schedule_id' => 'horario',
             $prefix.'attendance_policy_id' => 'política de asistencia',
-            $prefix.'auto_clock_out_at' => 'salida automática personal',
         ];
     }
 }

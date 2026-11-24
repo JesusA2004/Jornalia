@@ -5,7 +5,6 @@ import TimeField from './TimeField.vue';
 
 /**
  * Hora opcional (HH:MM o null): un interruptor la activa y muestra el selector.
- * Se usa para la salida automática en puestos, políticas y expedientes.
  */
 const props = withDefaults(
     defineProps<{
@@ -17,7 +16,7 @@ const props = withDefaults(
         offLabel?: string;
         ariaLabel?: string;
     }>(),
-    { fallback: '20:00', offLabel: 'Sin cierre automático', ariaLabel: 'Hora' },
+    { fallback: '20:00', offLabel: 'Sin hora', ariaLabel: 'Hora' },
 );
 
 const model = defineModel<string | null>({ default: null });

@@ -6,7 +6,9 @@ use App\Domain\Audit\AuditLogger;
 use App\Domain\Security\AccessScope;
 use App\Domain\Security\DeviceService;
 use App\Enums\DeviceStatus;
+use App\Models\Branch;
 use App\Models\Device;
+use App\Models\Kiosk;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -75,6 +77,8 @@ class DeviceController extends AdminController
                 'app_version' => $d->app_version,
                 'model' => $d->model,
                 'biometric_available' => $d->biometric_available,
+                'integrity_flags' => array_values((array) ($d->integrity_flags ?? [])),
+                'integrity_reported_at' => $d->integrity_reported_at?->toIso8601String(),
                 'is_corporate' => $d->is_corporate,
                 'status' => $d->status->value,
                 'created_at' => $d->created_at?->toIso8601String(),
@@ -103,7 +107,11 @@ class DeviceController extends AdminController
             'can' => [
                 'approve' => $user->can('devices.approve'),
                 'revoke' => $user->can('devices.revoke'),
+                'kiosk' => $user->can('devices.kiosk'),
             ],
+            'kiosks' => $this->kiosks($user),
+            'branches' => $user->can('devices.kiosk') ? $this->kioskBranches($user) : [],
+            'kiosk_activation' => $request->session()->get('kiosk_activation'),
         ]);
     }
 
@@ -140,6 +148,49 @@ class DeviceController extends AdminController
         $this->toast($device->is_corporate ? 'Marcado como dispositivo corporativo.' : 'Marcado como dispositivo personal.');
 
         return back();
+    }
+
+    /**
+     * Kioscos de sucursal visibles según el alcance (todas o sus sucursales).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function kiosks(User $user): array
+    {
+        $query = Kiosk::query()->with('branch:id,name,code')->orderByRaw("FIELD(status, 'pending', 'active', 'revoked')")->orderBy('name');
+        if (! $this->scope->hasFullAccess($user)) {
+            $query->whereIn('branch_id', $user->branches()->pluck('branches.id')->all() ?: [0]);
+        }
+
+        return $query->limit(500)->get()->map(fn (Kiosk $k) => [
+            'id' => $k->id,
+            'name' => $k->name,
+            'status' => $k->status,
+            'status_label' => $k->statusLabel(),
+            'branch' => $k->branch?->name,
+            'model' => $k->model,
+            'platform' => $k->platform,
+            'os_version' => $k->os_version,
+            'app_version' => $k->app_version,
+            'activated_at' => $k->activated_at?->toIso8601String(),
+            'last_seen_at' => $k->last_seen_at?->toIso8601String(),
+            'activation_expires_at' => $k->activation_expires_at?->toIso8601String(),
+            'revoked_at' => $k->revoked_at?->toIso8601String(),
+            'revoke_reason' => $k->revoke_reason,
+        ])->values()->all();
+    }
+
+    /**
+     * @return list<array{value:string, label:string, description?:string}>
+     */
+    private function kioskBranches(User $user): array
+    {
+        $query = Branch::query()->where('active', true)->orderBy('name');
+        if (! $this->scope->hasFullAccess($user)) {
+            $query->whereIn('id', $user->branches()->pluck('branches.id')->all() ?: [0]);
+        }
+
+        return $this->options($query->get(['id', 'name', 'code']));
     }
 
     /**

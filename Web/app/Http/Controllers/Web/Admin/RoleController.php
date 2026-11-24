@@ -24,7 +24,7 @@ class RoleController extends AdminController
     use GuardsAdministrators;
 
     /** Roles que el sistema usa por nombre: no se renombran ni eliminan. */
-    private const PROTECTED = ['Administrador de empresa', 'Colaborador'];
+    private const PROTECTED = [PermissionCatalog::ROLE_PLATFORM_ADMIN, PermissionCatalog::ROLE_HR_ADMIN, PermissionCatalog::ROLE_AUTHORITY, PermissionCatalog::ROLE_EMPLOYEE];
 
     public function __construct(private readonly AuditLogger $audit) {}
 
@@ -91,16 +91,21 @@ class RoleController extends AdminController
         }
 
         $before = $model->permissions()->pluck('name')->all();
+        $beforeName = $model->name;
         $snapshot = $this->adminSnapshot($actor, $org);
 
         DB::transaction(function () use ($model, $data, $actor, $org, $snapshot) {
             $model->update(['name' => $data['name']]);
             $model->syncPermissions($this->permissions($data['permissions']));
             $this->assertAdministratorsRemain($actor, $org, $snapshot);
+            $this->assertHoldersSegregated($model, $org);
         });
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
+        // Bitácora con valor anterior y nuevo.
         $this->audit->log('role.updated', $model, "Rol actualizado: {$model->name}", [
+            'before' => ['name' => $beforeName, 'permissions' => $before],
+            'after' => ['name' => $data['name'], 'permissions' => $data['permissions']],
             'added' => array_values(array_diff($data['permissions'], $before)),
             'removed' => array_values(array_diff($before, $data['permissions'])),
         ]);
@@ -155,7 +160,42 @@ class RoleController extends AdminController
         $data['name'] = trim($data['name']);
         $data['permissions'] = array_values(array_unique($data['permissions']));
 
+        // Separación de funciones dentro del propio rol.
+        $conflicts = PermissionCatalog::segregationConflicts($data['permissions']);
+        if ($conflicts !== []) {
+            throw ValidationException::withMessages(['permissions' => 'Separación de funciones: un rol que administra usuarios no puede autorizar, validar ni rectificar asistencia ('.implode(', ', array_slice($conflicts, 0, 4)).').']);
+        }
+        $name = $role !== null ? $role->name : $data['name'];
+        if ($name === PermissionCatalog::ROLE_PLATFORM_ADMIN && array_intersect($data['permissions'], PermissionCatalog::OPERATIONAL) !== []) {
+            throw ValidationException::withMessages(['permissions' => 'El administrador de plataforma no autoriza ni rectifica asistencia.']);
+        }
+        if (in_array($name, [PermissionCatalog::ROLE_AUTHORITY, PermissionCatalog::ROLE_COMPTROLLER], true)) {
+            $writes = array_filter($data['permissions'], fn (string $p) => ! str_ends_with($p, '.view') && ! str_ends_with($p, '.export') && $p !== 'settings.legal');
+            if ($writes !== []) {
+                throw ValidationException::withMessages(['permissions' => "«{$name}» es de sólo lectura."]);
+            }
+        }
+
         return $data;
+    }
+
+    /**
+     * Ningún usuario con este rol puede quedar combinando administración de usuarios y permisos operativos.
+     */
+    private function assertHoldersSegregated(Role $role, int $org): void
+    {
+        $holderIds = DB::table('model_has_roles')->where('role_id', $role->id)->where('organization_id', $org)->pluck('model_id');
+        foreach ($holderIds as $userId) {
+            $permissions = DB::table('model_has_roles as mr')
+                ->join('role_has_permissions as rp', 'rp.role_id', '=', 'mr.role_id')
+                ->join('permissions as p', 'p.id', '=', 'rp.permission_id')
+                ->join('roles as r', fn ($j) => $j->on('r.id', '=', 'mr.role_id')->whereNull('r.deleted_at'))
+                ->where('mr.organization_id', $org)->where('mr.model_id', $userId)
+                ->pluck('p.name')->unique()->all();
+            if (PermissionCatalog::segregationConflicts($permissions) !== []) {
+                throw ValidationException::withMessages(['permissions' => 'Algún usuario con este rol quedaría administrando usuarios y autorizando asistencia a la vez. Ajusta sus roles primero.']);
+            }
+        }
     }
 
     /**

@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Web\Admin;
 use App\Domain\Integrations\People\CsvPeopleSource;
 use App\Domain\Integrations\People\HttpPeopleSource;
 use App\Domain\Integrations\People\PeopleSynchronizer;
+use App\Domain\Workforce\EmployeeImportValidator;
+use App\Domain\Workforce\ValidatedImportSource;
 use App\Models\Employee;
 use App\Models\IntegrationRun;
 use Illuminate\Http\RedirectResponse;
@@ -34,7 +36,7 @@ class EmployeeImportController extends AdminController
             'columns' => collect(CsvPeopleSource::ALIASES)->map(fn ($aliases, $key) => [
                 'key' => $key,
                 'header' => $aliases[0],
-                'required' => in_array($key, ['employee_number', 'first_name', 'last_name', 'starts_on'], true),
+                'required' => in_array($key, ['employee_number', 'first_name', 'last_name', 'starts_on', 'birth_date', 'branch_code', 'position_code', 'schedule_code'], true),
             ])->values(),
         ]);
     }
@@ -49,7 +51,7 @@ class EmployeeImportController extends AdminController
         }, 'plantilla_colaboradores.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, EmployeeImportValidator $validator): RedirectResponse
     {
         $this->authorize('import', Employee::class);
         $request->validate([
@@ -57,7 +59,11 @@ class EmployeeImportController extends AdminController
             'dry_run' => ['sometimes', 'boolean'],
         ], ['file.mimes' => 'El archivo debe ser CSV.'], ['file' => 'archivo']);
 
-        $run = $this->synchronizer->run($this->actor($request), new CsvPeopleSource($request->file('file')->getRealPath()), $request->boolean('dry_run'));
+        // Validación por fila (fecha de nacimiento, sucursal, puesto y horario): las filas
+        // con errores no se importan y se reportan en la corrida.
+        $source = new ValidatedImportSource(new CsvPeopleSource($request->file('file')->getRealPath()), $validator);
+        $run = $this->synchronizer->run($this->actor($request), $source, $request->boolean('dry_run'));
+        $this->mergeRejected($run, $source->rejected());
         $this->toastFor($run);
 
         return to_route('colaboradores.import', ['run' => $run->id]);
@@ -76,6 +82,29 @@ class EmployeeImportController extends AdminController
         $this->toastFor($run);
 
         return to_route('colaboradores.import', ['run' => $run->id]);
+    }
+
+    /**
+     * Agrega a la corrida las filas rechazadas por la validación previa.
+     *
+     * @param  list<array<string, mixed>>  $rejected
+     */
+    private function mergeRejected(IntegrationRun $run, array $rejected): void
+    {
+        if ($rejected === [] || $run->status === 'failed') {
+            return;
+        }
+        $stats = $run->stats ?? [];
+        $stats['total'] = (int) ($stats['total'] ?? 0) + count($rejected);
+        $stats['conflicts'] = (int) ($stats['conflicts'] ?? 0) + count($rejected);
+        $conflicts = array_merge($rejected, array_values($run->conflicts ?? []));
+        usort($conflicts, fn ($a, $b) => ($a['line'] ?? 0) <=> ($b['line'] ?? 0));
+
+        $run->forceFill([
+            'stats' => $stats,
+            'conflicts' => array_slice($conflicts, 0, 500),
+            'status' => $run->status === 'simulated' ? 'simulated' : 'partial',
+        ])->save();
     }
 
     private function toastFor(IntegrationRun $run): void

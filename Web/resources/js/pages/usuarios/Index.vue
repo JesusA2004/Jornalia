@@ -3,6 +3,7 @@ import { Link, router } from '@inertiajs/vue3';
 import {
     Archive,
     ArchiveRestore,
+    ClipboardCheck,
     Globe2,
     KeyRound,
     Landmark,
@@ -169,10 +170,52 @@ const help: HelpStep[] = [
     },
     {
         title: 'Autoridad laboral',
-        text: 'Acceso de sólo lectura para inspecciones, con vigencia.',
+        text: 'Sólo lectura, con vigencia; puedes revocarlo cuando quieras.',
         icon: Landmark,
     },
+    {
+        title: 'Separación de funciones',
+        text: 'Quien administra usuarios no autoriza ni rectifica asistencia.',
+        icon: ShieldEllipsis,
+    },
+    {
+        title: 'Doble factor',
+        text: 'Obligatorio para roles administrativos.',
+        icon: KeyRound,
+    },
+    {
+        title: 'Revisión trimestral',
+        text: 'Confirma o desactiva cada usuario activo.',
+        icon: ClipboardCheck,
+    },
 ];
+
+const revokeOpen = ref(false);
+
+function askRevoke(user: OrgUserRow): void {
+    target.value = user;
+    revokeOpen.value = true;
+}
+
+function revokeAuthority(): void {
+    if (!target.value) {
+        return;
+    }
+
+    busy.value = true;
+    router.post(
+        `/usuarios/${target.value.id}/autoridad/revocar`,
+        { reason: 'Revocación manual' },
+        {
+            preserveScroll: true,
+            onError,
+            onFinish: () => {
+                busy.value = false;
+                revokeOpen.value = false;
+            },
+        },
+    );
+}
 </script>
 
 <template>
@@ -184,6 +227,12 @@ const help: HelpStep[] = [
         help-title="Usuarios y accesos"
     >
         <template #actions>
+            <Button variant="outline" as-child>
+                <Link href="/usuarios/revision">
+                    <ClipboardCheck />
+                    <span class="hidden sm:inline">Revisión</span>
+                </Link>
+            </Button>
             <Button variant="outline" as-child>
                 <Link :href="RoleController.index.url()">
                     <ShieldEllipsis />
@@ -222,7 +271,7 @@ const help: HelpStep[] = [
                 >Crear acceso para autoridad laboral</span
             >
             <span class="block text-sm text-muted-foreground"
-                >Sólo lectura, con vigencia opcional.</span
+                >Sólo lectura, con vigencia obligatoria.</span
             >
         </span>
         <span
@@ -230,6 +279,19 @@ const help: HelpStep[] = [
             >Crear</span
         >
     </button>
+
+    <Link
+        v-if="open_review"
+        href="/usuarios/revision"
+        class="mb-6 flex items-center gap-3 rounded-2xl border border-warning/30 bg-warning-soft p-4 text-sm"
+    >
+        <ClipboardCheck class="size-5 shrink-0" aria-hidden="true" />
+        <span class="flex-1"
+            >Revisión trimestral {{ open_review.period }} pendiente · vence
+            {{ formatDate(open_review.due_on, 'date') }}</span
+        >
+        <span class="font-semibold">Revisar</span>
+    </Link>
 
     <EmptyState
         v-if="users.total === 0 && activeCount === 0"
@@ -344,8 +406,18 @@ const help: HelpStep[] = [
                 v-if="isAuthority(row) && row.authority_expires_on"
                 class="mt-1 text-xs text-muted-foreground"
             >
-                Vigente hasta {{ formatDate(row.authority_expires_on, 'date') }}
+                <template v-if="row.authority_revoked_at">Revocado</template>
+                <template v-else
+                    >Vigente hasta
+                    {{ formatDate(row.authority_expires_on, 'date') }}</template
+                >
             </p>
+            <Badge
+                v-if="row.two_factor_required && !row.two_factor"
+                variant="destructive"
+                class="mt-1"
+                >Sin doble factor</Badge
+            >
         </template>
 
         <template #cell-scope="{ row }">
@@ -409,6 +481,13 @@ const help: HelpStep[] = [
                     <template v-if="!row.is_self">
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
+                            v-if="isAuthority(row) && row.status === 'active'"
+                            @select="askRevoke(row)"
+                        >
+                            <Landmark />
+                            Revocar autoridad
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
                             v-if="row.status === 'active'"
                             @select="askDeactivate(row)"
                         >
@@ -441,6 +520,18 @@ const help: HelpStep[] = [
     />
     <AuthorityDialog v-if="can.manage" v-model:open="authorityOpen" />
     <TemporaryPasswordDialog :credentials="flash_password" />
+
+    <ConfirmDialog
+        v-model:open="revokeOpen"
+        :title="`¿Revocar el acceso de ${target?.name ?? ''}?`"
+        description="Se cierra de inmediato. Para volver a entrar necesitará una nueva vigencia."
+        confirm-label="Revocar"
+        tone="danger"
+        :icon="Landmark"
+        :loading="busy"
+        :close-on-confirm="false"
+        @confirm="revokeAuthority"
+    />
 
     <ConfirmDialog
         v-model:open="confirmOpen"

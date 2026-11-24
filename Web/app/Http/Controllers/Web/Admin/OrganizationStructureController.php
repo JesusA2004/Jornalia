@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Web\Admin;
 
 use App\Domain\Audit\AuditLogger;
-use App\Domain\Workforce\AutoClockOutAdvisor;
 use App\Domain\Workforce\MexicanStates;
 use App\Http\Requests\Web\Admin\Concerns\OrganizationRules;
 use App\Models\Branch;
@@ -28,6 +27,15 @@ class OrganizationStructureController extends AdminController
 {
     use OrganizationRules;
 
+    /** Radio permitido de geocerca (m) y rango sugerido por RH (PDF pantalla 17). */
+    public const RADIUS_MIN = 30;
+
+    public const RADIUS_MAX = 1000;
+
+    public const RADIUS_SUGGESTED_MIN = 100;
+
+    public const RADIUS_SUGGESTED_MAX = 150;
+
     public const ENTITY_PATTERN = 'razones-sociales|centros-trabajo|sucursales|departamentos|puestos|geocercas';
 
     /** @var array<string, array{model: class-string<Model>, label: string, tab: string, title: string}> */
@@ -50,7 +58,7 @@ class OrganizationStructureController extends AdminController
         /** @var Model $model */
         $model = $def['model']::query()->create($data);
         $this->audit->log('organization.'.$def['tab'].'.created', $model, "{$def['label']} registrado(a): {$model->getAttribute($def['title'])}", $this->safeContext($data));
-        $this->toastWithClockOutWarning($entity, $model, "«{$model->getAttribute($def['title'])}» se registró correctamente.");
+        $this->toastWithWarnings($entity, $model, "«{$model->getAttribute($def['title'])}» se registró correctamente.");
 
         return back();
     }
@@ -68,7 +76,7 @@ class OrganizationStructureController extends AdminController
         $model->save();
 
         $this->audit->log('organization.'.$def['tab'].'.updated', $model, "{$def['label']} actualizado(a): {$model->getAttribute($def['title'])}", ['changed' => $this->safeContext($changes)]);
-        $this->toastWithClockOutWarning($entity, $model, "Cambios guardados en «{$model->getAttribute($def['title'])}».");
+        $this->toastWithWarnings($entity, $model, "Cambios guardados en «{$model->getAttribute($def['title'])}».");
 
         return back();
     }
@@ -144,6 +152,7 @@ class OrganizationStructureController extends AdminController
                 'work_center_id' => ['nullable', 'integer', $this->existsInOrg('work_centers')],
                 'region' => ['nullable', 'string', 'max:80'],
                 'address' => ['nullable', 'string', 'max:255'],
+                'employer_registration' => ['nullable', 'string', 'max:20', 'regex:/^[A-Z0-9]{8,20}$/'],
                 'latitude' => ['nullable', 'required_with:longitude', 'numeric', 'between:-90,90'],
                 'longitude' => ['nullable', 'required_with:latitude', 'numeric', 'between:-180,180'],
                 'active' => ['boolean'],
@@ -158,7 +167,6 @@ class OrganizationStructureController extends AdminController
                 'name' => ['required', 'string', 'max:160'],
                 'code' => [...$code, $this->uniqueInOrg('positions', 'code', $ignore)],
                 'department_id' => ['nullable', 'integer', $this->existsInOrg('departments')],
-                'auto_clock_out_at' => ['nullable', 'date_format:H:i'],
                 'active' => ['boolean'],
             ],
             'geocercas' => [
@@ -166,7 +174,7 @@ class OrganizationStructureController extends AdminController
                 'branch_id' => ['nullable', 'integer', $this->existsInOrg('branches')],
                 'latitude' => ['required', 'numeric', 'between:-90,90'],
                 'longitude' => ['required', 'numeric', 'between:-180,180'],
-                'radius_meters' => ['required', 'integer', 'min:20', 'max:5000'],
+                'radius_meters' => ['required', 'integer', 'min:'.self::RADIUS_MIN, 'max:'.self::RADIUS_MAX],
                 'active' => ['boolean'],
             ],
         };
@@ -184,13 +192,14 @@ class OrganizationStructureController extends AdminController
             'rfc.unique' => 'Ya existe una razón social con ese RFC.',
             'code.unique' => 'La clave ya está en uso.',
             'code.regex' => 'La clave sólo admite letras, números, punto, guion y guion bajo.',
-            'radius_meters.min' => 'El radio mínimo es de 20 m: la precisión del GPS en teléfonos rara vez es mejor.',
-            'radius_meters.max' => 'El radio máximo es de 5 km.',
+            'radius_meters.min' => 'El radio mínimo es de '.self::RADIUS_MIN.' m: la precisión del GPS en teléfonos rara vez es mejor.',
+            'radius_meters.max' => 'El radio máximo es de '.self::RADIUS_MAX.' m.',
+            'employer_registration.regex' => 'El registro patronal sólo admite letras y números (8 a 20).',
         ], [
             'legal_name' => 'razón social', 'employer_registration' => 'registro patronal', 'fiscal_address' => 'domicilio fiscal',
             'name' => 'nombre', 'code' => 'clave', 'legal_entity_id' => 'razón social', 'address' => 'domicilio', 'state_code' => 'entidad federativa',
             'timezone' => 'zona horaria', 'work_center_id' => 'centro de trabajo', 'region' => 'región', 'latitude' => 'latitud', 'longitude' => 'longitud',
-            'parent_id' => 'departamento superior', 'department_id' => 'departamento', 'branch_id' => 'sucursal', 'radius_meters' => 'radio', 'auto_clock_out_at' => 'salida automática',
+            'parent_id' => 'departamento superior', 'department_id' => 'departamento', 'branch_id' => 'sucursal', 'radius_meters' => 'radio',
         ]);
 
         if ($entity === 'departamentos' && $model !== null && ! empty($data['parent_id'])) {
@@ -202,10 +211,14 @@ class OrganizationStructureController extends AdminController
         return $data;
     }
 
-    private function toastWithClockOutWarning(string $entity, Model $model, string $message): void
+    /**
+     * Geocerca fuera del radio sugerido por RH (100–150 m): se permite, pero se advierte.
+     */
+    private function toastWithWarnings(string $entity, Model $model, string $message): void
     {
-        $warning = $entity === 'puestos'
-            ? app(AutoClockOutAdvisor::class)->warningForAssigned('position_id', (int) $model->getKey(), $model->getAttribute('auto_clock_out_at') ? substr((string) $model->getAttribute('auto_clock_out_at'), 0, 5) : null)
+        $radius = (int) $model->getAttribute('radius_meters');
+        $warning = $entity === 'geocercas' && ($radius < self::RADIUS_SUGGESTED_MIN || $radius > self::RADIUS_SUGGESTED_MAX)
+            ? 'el radio sugerido es de '.self::RADIUS_SUGGESTED_MIN.' a '.self::RADIUS_SUGGESTED_MAX.' m.'
             : null;
         $this->toast($warning ? $message.' Atención: '.$warning : $message, $warning ? 'warning' : 'success');
     }

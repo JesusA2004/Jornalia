@@ -116,6 +116,7 @@ return [
 
     'limiters' => [
         'login' => 'login',
+        'two-factor' => 'two-factor',
     ],
 
     /*
@@ -144,6 +145,11 @@ return [
 
     'features' => [
         Features::resetPasswords(),
+        // Doble factor (TOTP). Obligatorio para roles administrativos (RequireTwoFactor).
+        Features::twoFactorAuthentication([
+            'confirm' => true,
+            'confirmPassword' => false,
+        ]),
     ],
 
 ];

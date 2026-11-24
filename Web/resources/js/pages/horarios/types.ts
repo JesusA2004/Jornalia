@@ -15,6 +15,8 @@ export type LegalCheck = {
     version: string;
     weekly_max: number;
     ok: boolean;
+    /** Tramo futuro: sólo advierte, no bloquea. */
+    future?: boolean;
 };
 
 export type ScheduleData = {
@@ -35,7 +37,16 @@ export type ScheduleData = {
     checks: LegalCheck[];
     compliant_today: boolean;
     violations: string[];
+    /** Pronóstico contra tramos futuros: advierte, no bloquea. */
+    outlook: ScheduleOutlook;
     assigned?: number;
+};
+
+export type ScheduleOutlook = {
+    adjust_before: string | null;
+    adjust_weekly_max: number | null;
+    compliant_until: string | null;
+    warning: string | null;
 };
 
 export type LegalSummary = {
@@ -54,6 +65,7 @@ export type LegalEvaluation = {
     weekly_minutes: number;
     checks: LegalCheck[];
     violations: Record<string, string[]>;
+    outlook?: ScheduleOutlook;
 };
 
 export type AssignmentRow = {
@@ -98,8 +110,18 @@ export type ScheduleExceptionRow = {
     ends_at: string | null;
     break_minutes: number;
     reason: string;
+    reason_code: string | null;
+    reason_label: string;
+    status: ScheduleChangeStatus;
     created_by: string | null;
+    created_by_id: number | null;
+    approved_by: string | null;
+    rejected_by: string | null;
+    rejection_reason: string | null;
+    notified_at: string | null;
 };
+
+export type ScheduleChangeStatus = 'pending' | 'approved' | 'rejected';
 
 export type ScheduleExceptionPaginator = LaravelPaginator<ScheduleExceptionRow>;
 

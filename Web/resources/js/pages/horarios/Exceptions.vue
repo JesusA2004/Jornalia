@@ -3,12 +3,16 @@ import { router, useForm } from '@inertiajs/vue3';
 import {
     Ban,
     BedDouble,
-    CalendarX2,
+    BellRing,
+    CalendarClock,
+    Check,
     Clock3,
+    History,
     Plus,
     Save,
-    Undo2,
+    ShieldCheck,
     UserRound,
+    X,
 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import ScheduleExceptionController from '@/actions/App/Http/Controllers/Web/Admin/ScheduleExceptionController';
@@ -20,8 +24,18 @@ import DateRangePicker from '@/components/app/DateRangePicker.vue';
 import FilterBar from '@/components/app/FilterBar.vue';
 import FormField from '@/components/app/FormField.vue';
 import PageHeader from '@/components/app/PageHeader.vue';
+import SelectField from '@/components/app/SelectField.vue';
+import StatusBadge from '@/components/app/StatusBadge.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import {
     Sheet,
     SheetContent,
@@ -40,45 +54,69 @@ import type { DataTableColumn, HelpStep, SelectOption } from '@/types';
 import NumberInput from './components/NumberInput.vue';
 import TimeField from './components/TimeField.vue';
 import { crossesMidnight, hoursLabel, segmentMinutes } from './types';
-import type { ScheduleExceptionPaginator, ScheduleExceptionRow } from './types';
+import type {
+    ScheduleChangeStatus,
+    ScheduleExceptionPaginator,
+    ScheduleExceptionRow,
+} from './types';
 
 defineOptions({
     layout: {
         breadcrumbs: [
             { title: 'Personal' },
             { title: 'Horarios', href: '/horarios' },
-            { title: 'Excepciones' },
+            { title: 'Cambios programados' },
         ],
     },
 });
 
 const props = defineProps<{
     exceptions: ScheduleExceptionPaginator;
-    filters: { from: string; to: string; employee_id: string | null };
+    filters: {
+        from: string;
+        to: string;
+        employee_id: string | null;
+        status: ScheduleChangeStatus | null;
+    };
+    pending_count: number;
     employees: SelectOption[];
-    can: { manage: boolean };
+    reasons: SelectOption[];
+    /** Primer día permitido (mañana): nunca retroactivo. */
+    min_date: string;
+    current_user_id: number;
+    can: { manage: boolean; approve: boolean };
 }>();
 
 const help: HelpStep[] = [
     {
-        title: 'Excepción puntual',
-        text: 'Sustituye el horario asignado sólo en esa fecha.',
-        icon: CalendarX2,
+        title: 'Sólo a futuro',
+        text: 'Desde mañana. Nunca retroactivo.',
+        icon: CalendarClock,
     },
     {
-        title: 'Descanso o jornada especial',
-        text: 'Marca el día como descanso o define otra entrada y salida.',
+        title: 'Motivo de catálogo',
+        text: 'Guardia, inventario, capacitación, lactancia, cambio de turno o festivo laborado.',
         icon: BedDouble,
     },
     {
-        title: 'Límite legal',
-        text: 'La jornada especial no puede exceder el máximo diario vigente.',
-        icon: Clock3,
+        title: 'Autoriza RH',
+        text: 'Sólo surte efecto una vez autorizado. Quien lo solicita no lo autoriza.',
+        icon: ShieldCheck,
     },
     {
-        title: 'Anular',
-        text: 'Sólo excepciones de hoy en adelante; las pasadas se conservan.',
-        icon: Undo2,
+        title: 'Aviso y bitácora',
+        text: 'Se notifica al colaborador en la app y queda registrado.',
+        icon: BellRing,
+    },
+    {
+        title: 'Sin efecto en el pasado',
+        text: 'No modifica marcajes ni borra retardos u horas extra ya generados.',
+        icon: History,
+    },
+    {
+        title: 'Límite legal',
+        text: 'La jornada no puede exceder el máximo diario vigente.',
+        icon: Clock3,
     },
 ];
 
@@ -87,30 +125,42 @@ const { filters, activeCount, reset } = useFilters(
         from: props.filters.from,
         to: props.filters.to,
         employee_id: props.filters.employee_id,
+        status: props.filters.status,
     },
-    { only: ['exceptions', 'filters'] },
+    { only: ['exceptions', 'filters', 'pending_count'] },
 );
 
-const today = new Date().toISOString().slice(0, 10);
+const statusOptions: SelectOption[] = [
+    { value: 'pending', label: 'Por autorizar' },
+    { value: 'approved', label: 'Autorizados' },
+    { value: 'rejected', label: 'Rechazados' },
+];
+
+const STATUS_LABEL: Record<ScheduleChangeStatus, string> = {
+    pending: 'Por autorizar',
+    approved: 'Autorizado',
+    rejected: 'Rechazado',
+};
 
 const columns: DataTableColumn<ScheduleExceptionRow>[] = [
     { key: 'date', label: 'Fecha', class: 'w-36', mobile: 'title' },
     { key: 'employee', label: 'Colaborador' },
     { key: 'shift', label: 'Jornada' },
     { key: 'reason', label: 'Motivo', hideBelow: 'lg', mobile: 'full' },
-    { key: 'created_by', label: 'Registró', hideBelow: 'xl' },
-    { key: 'actions', label: '', align: 'right', class: 'w-24' },
+    { key: 'status', label: 'Estado', class: 'w-36' },
+    { key: 'actions', label: '', align: 'right', class: 'w-40' },
 ];
 
 /* --------------------------------------------------------- Alta -- */
 const sheetOpen = ref(false);
 const form = useForm({
     employee_id: null as string | null,
-    date: today as string | null,
+    date: props.min_date as string | null,
     is_rest_day: false,
     starts_at: '09:00',
     ends_at: '18:00',
     break_minutes: 60,
+    reason_code: null as string | null,
     reason: '',
 });
 
@@ -126,6 +176,7 @@ const preview = computed(() =>
 
 function openCreate(): void {
     form.reset();
+    form.date = props.min_date;
     form.clearErrors();
     sheetOpen.value = true;
 }
@@ -145,10 +196,62 @@ function submit(): void {
     });
 }
 
+/* --------------------------------------------- Autorizar / rechazar -- */
+const busyId = ref<number | null>(null);
+
+function canDecide(row: ScheduleExceptionRow): boolean {
+    return (
+        props.can.approve &&
+        row.status === 'pending' &&
+        row.created_by_id !== props.current_user_id
+    );
+}
+
+function approve(row: ScheduleExceptionRow): void {
+    router.visit(ScheduleExceptionController.approve(row.id), {
+        preserveScroll: true,
+        onStart: () => (busyId.value = row.id),
+        onFinish: () => (busyId.value = null),
+    });
+}
+
+const rejectOpen = ref(false);
+const rejectTarget = ref<ScheduleExceptionRow | null>(null);
+const rejectForm = useForm({ reason: '' });
+
+function askReject(row: ScheduleExceptionRow): void {
+    rejectTarget.value = row;
+    rejectForm.reset();
+    rejectForm.clearErrors();
+    rejectOpen.value = true;
+}
+
+function confirmReject(): void {
+    if (!rejectTarget.value) {
+        return;
+    }
+
+    rejectForm.submit(
+        ScheduleExceptionController.reject(rejectTarget.value.id),
+        {
+            preserveScroll: true,
+            onSuccess: () => (rejectOpen.value = false),
+        },
+    );
+}
+
 /* --------------------------------------------------------- Anular -- */
 const target = ref<ScheduleExceptionRow | null>(null);
 const confirmOpen = ref(false);
 const cancelling = ref(false);
+
+function canCancel(row: ScheduleExceptionRow): boolean {
+    return (
+        (props.can.manage || props.can.approve) &&
+        row.status !== 'rejected' &&
+        row.date >= props.min_date
+    );
+}
 
 function askCancel(row: ScheduleExceptionRow): void {
     target.value = row;
@@ -174,17 +277,21 @@ function confirmCancel(): void {
 <template>
     <div class="space-y-6">
         <PageHeader
-            title="Excepciones de horario"
-            description="Cambios puntuales por colaborador y día."
-            :icon="CalendarX2"
+            title="Cambios de horario programados"
+            description="Sólo a futuro, con motivo y autorización de RH."
+            :icon="CalendarClock"
             :help="help"
+            help-title="Cambios de horario programados"
             back-href="/horarios"
             back-label="Horarios"
         >
             <template #actions>
+                <Badge v-if="pending_count > 0" variant="secondary">
+                    {{ pending_count }} por autorizar
+                </Badge>
                 <Button v-if="can.manage" @click="openCreate">
                     <Plus aria-hidden="true" />
-                    Nueva excepción
+                    Programar cambio
                 </Button>
             </template>
         </PageHeader>
@@ -203,17 +310,26 @@ function confirmCancel(): void {
                 clearable
                 class="w-72"
             />
+            <SelectField
+                v-model="filters.status"
+                :options="statusOptions"
+                placeholder="Estado"
+                prefix="Estado:"
+                size="sm"
+                clearable
+                class="w-48"
+            />
         </FilterBar>
 
         <DataTable
             :rows="exceptions.data"
             :columns="columns"
             :pagination="toPaginationMeta(exceptions)"
-            :only="['exceptions', 'filters']"
-            :empty-icon="CalendarX2"
-            empty-title="Sin excepciones en el periodo"
-            empty-description="Registra descansos o jornadas especiales cuando se necesiten."
-            caption="Excepciones de horario"
+            :only="['exceptions', 'filters', 'pending_count']"
+            :empty-icon="CalendarClock"
+            empty-title="Sin cambios en el periodo"
+            empty-description="Programa guardias, inventarios o cambios de turno a futuro."
+            caption="Cambios de horario programados"
         >
             <template #cell-date="{ row }">
                 <span class="font-semibold">{{
@@ -254,26 +370,79 @@ function confirmCancel(): void {
                     >
                 </span>
             </template>
-            <template #cell-created_by="{ row }">
-                <span class="text-muted-foreground">{{
-                    row.created_by ?? '—'
-                }}</span>
+            <template #cell-reason="{ row }">
+                <p class="font-medium">{{ row.reason_label }}</p>
+                <p
+                    v-if="row.reason && row.reason !== row.reason_label"
+                    class="truncate text-xs text-muted-foreground"
+                >
+                    {{ row.reason }}
+                </p>
+                <p class="text-xs text-subtle-foreground">
+                    Solicitó {{ row.created_by ?? '—' }}
+                </p>
+            </template>
+            <template #cell-status="{ row }">
+                <StatusBadge
+                    :status="row.status"
+                    :label="STATUS_LABEL[row.status]"
+                    size="sm"
+                />
+                <p
+                    v-if="row.status === 'approved' && row.approved_by"
+                    class="mt-1 text-xs text-muted-foreground"
+                >
+                    {{ row.approved_by }}
+                    <BellRing
+                        v-if="row.notified_at"
+                        class="inline size-3"
+                        aria-label="Notificado"
+                    />
+                </p>
+                <p
+                    v-if="row.status === 'rejected' && row.rejection_reason"
+                    class="mt-1 truncate text-xs text-muted-foreground"
+                    :title="row.rejection_reason"
+                >
+                    {{ row.rejection_reason }}
+                </p>
             </template>
             <template #cell-actions="{ row }">
-                <Button
-                    v-if="can.manage && row.date >= today"
-                    variant="ghost"
-                    size="sm"
-                    @click="askCancel(row)"
-                >
-                    <Ban aria-hidden="true" />
-                    Anular
-                </Button>
+                <div class="flex justify-end gap-1">
+                    <template v-if="canDecide(row)">
+                        <Button
+                            size="sm"
+                            :disabled="busyId === row.id"
+                            @click="approve(row)"
+                        >
+                            <Spinner v-if="busyId === row.id" class="size-4" />
+                            <Check v-else aria-hidden="true" />
+                            Autorizar
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label="Rechazar"
+                            @click="askReject(row)"
+                        >
+                            <X />
+                        </Button>
+                    </template>
+                    <Button
+                        v-else-if="canCancel(row)"
+                        variant="ghost"
+                        size="sm"
+                        @click="askCancel(row)"
+                    >
+                        <Ban aria-hidden="true" />
+                        Anular
+                    </Button>
+                </div>
             </template>
             <template #empty-actions>
                 <Button v-if="can.manage" variant="outline" @click="openCreate">
                     <Plus aria-hidden="true" />
-                    Nueva excepción
+                    Programar cambio
                 </Button>
             </template>
         </DataTable>
@@ -281,9 +450,10 @@ function confirmCancel(): void {
         <Sheet v-model:open="sheetOpen">
             <SheetContent class="flex w-full flex-col gap-0 sm:max-w-md">
                 <SheetHeader>
-                    <SheetTitle>Nueva excepción</SheetTitle>
+                    <SheetTitle>Programar cambio</SheetTitle>
                     <SheetDescription
-                        >Aplica sólo a la fecha indicada.</SheetDescription
+                        >Desde mañana; requiere autorización de
+                        RH.</SheetDescription
                     >
                 </SheetHeader>
 
@@ -317,8 +487,22 @@ function confirmCancel(): void {
                         <DatePicker
                             :id="id"
                             v-model="form.date"
-                            :min="today"
+                            :min="min_date"
                             :invalid="!!form.errors.date"
+                        />
+                    </FormField>
+
+                    <FormField
+                        label="Motivo"
+                        :error="form.errors.reason_code"
+                        required
+                        v-slot="{ id }"
+                    >
+                        <SelectField
+                            :id="id"
+                            v-model="form.reason_code"
+                            :options="reasons"
+                            placeholder="Elige el motivo"
                         />
                     </FormField>
 
@@ -400,16 +584,16 @@ function confirmCancel(): void {
                     </template>
 
                     <FormField
-                        label="Motivo"
+                        label="Detalle"
                         :error="form.errors.reason"
-                        required
+                        hint="Opcional"
                         v-slot="{ id, describedBy }"
                     >
                         <Textarea
                             :id="id"
                             v-model="form.reason"
-                            rows="3"
-                            placeholder="Cambio de turno acordado"
+                            rows="2"
+                            placeholder="Inventario anual de sucursal"
                             :aria-describedby="describedBy"
                         />
                     </FormField>
@@ -426,18 +610,55 @@ function confirmCancel(): void {
                     >
                         <Spinner v-if="form.processing" class="size-4" />
                         <Save v-else aria-hidden="true" />
-                        Guardar
+                        Enviar a RH
                     </Button>
                 </SheetFooter>
             </SheetContent>
         </Sheet>
 
+        <Dialog v-model:open="rejectOpen">
+            <DialogContent class="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Rechazar cambio</DialogTitle>
+                    <DialogDescription>
+                        {{ rejectTarget?.employee.name }} ·
+                        {{
+                            rejectTarget
+                                ? formatDate(rejectTarget.date, 'date')
+                                : ''
+                        }}
+                    </DialogDescription>
+                </DialogHeader>
+                <FormField
+                    label="Motivo"
+                    :error="rejectForm.errors.reason"
+                    required
+                    v-slot="{ id }"
+                >
+                    <Textarea :id="id" v-model="rejectForm.reason" rows="3" />
+                </FormField>
+                <DialogFooter>
+                    <Button variant="outline" @click="rejectOpen = false"
+                        >Cancelar</Button
+                    >
+                    <Button
+                        variant="destructive"
+                        :disabled="rejectForm.processing"
+                        @click="confirmReject"
+                    >
+                        <Spinner v-if="rejectForm.processing" class="size-4" />
+                        Rechazar
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
         <ConfirmDialog
             v-model:open="confirmOpen"
-            title="¿Anular excepción?"
+            title="¿Anular cambio?"
             :description="
                 target
-                    ? `${target.employee.name} volverá a su horario asignado el ${formatDate(target.date, 'date')}.`
+                    ? `${target.employee.name} conserva su horario asignado el ${formatDate(target.date, 'date')}.`
                     : ''
             "
             confirm-label="Anular"

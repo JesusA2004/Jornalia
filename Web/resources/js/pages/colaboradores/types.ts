@@ -19,7 +19,16 @@ export type EmployeeBase = {
     has_account: boolean;
 };
 
+/** Alta de registro electrónico: app vinculada y convenio firmado. */
+export type RegistrationState = {
+    app: boolean;
+    agreement: boolean;
+    complete: boolean;
+};
+
 export type EmployeeListRow = EmployeeBase & {
+    registration: RegistrationState | null;
+    display_status: EmployeeStatus | 'onboarding';
     branch: string | null;
     department: string | null;
     position: string | null;
@@ -35,6 +44,7 @@ export type EmployeeFilters = {
     department_id?: string | null;
     position_id?: string | null;
     account?: string | null;
+    registration?: string | null;
     sort?: string | null;
     direction?: 'asc' | 'desc' | null;
 };
@@ -46,6 +56,7 @@ export type EmployeeIndexProps = {
         active: number;
         terminated: number;
         without_account: number;
+        registration_incomplete: number;
         hired_this_month: number;
     };
     options: {
@@ -98,7 +109,6 @@ export type Assignment = {
     supervisor_employee_id: number | null;
     attendance_policy: string | null;
     attendance_policy_id: number | null;
-    auto_clock_out_at: string | null;
     reason: string | null;
     created_by: string | null;
     created_at: string | null;
@@ -155,6 +165,7 @@ export type ScheduleExceptionRow = {
     ends_at: string | null;
     break_minutes: number;
     reason: string;
+    status?: 'pending' | 'approved' | 'rejected';
 };
 
 export type EmployeeDevice = {
@@ -203,6 +214,18 @@ export type HistoryEntry = {
     actor: string | null;
 };
 
+export type EmployeeRegistration = RegistrationState & {
+    display_status: EmployeeStatus | 'onboarding';
+    papers: {
+        id: number;
+        name: string;
+        size: number;
+        sha256: string;
+        uploaded_at: string | null;
+        uploaded_by: string | null;
+    }[];
+};
+
 export type EmployeeShowProps = {
     employee: EmployeeBase & {
         birth_date: string | null;
@@ -213,12 +236,12 @@ export type EmployeeShowProps = {
         created_at: string | null;
     };
     current: Assignment | null;
-    auto_clock_out: AutoClockOut;
     timezone: string;
     employments: Employment[];
     schedule: CurrentSchedule | null;
     week: WeekDay[];
     exceptions: ScheduleExceptionRow[];
+    registration: EmployeeRegistration;
     devices: EmployeeDevice[];
     vacations: VacationBalance | null;
     vacations_error: string | null;
@@ -292,16 +315,6 @@ export type AssignmentModel = {
     supervisor_employee_id: string | null;
     schedule_id: string | null;
     attendance_policy_id: string | null;
-    /** Salida automática personal HH:MM (null = hereda de puesto o política). */
-    auto_clock_out_at?: string | null;
 };
 
 export type AssignmentField = keyof AssignmentModel;
-
-/** Salida automática vigente y su origen (persona > puesto > política). */
-export type AutoClockOut = {
-    time: string | null;
-    source: 'person' | 'position' | 'policy' | null;
-    label: string | null;
-    warning: string | null;
-};

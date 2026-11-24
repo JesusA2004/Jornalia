@@ -7,6 +7,7 @@ use App\Domain\Attendance\DeviceSignature;
 use App\Domain\Audit\AuditLogger;
 use App\Enums\AlertSeverity;
 use App\Enums\DeviceStatus;
+use App\Enums\EmployeeStatus;
 use App\Models\ComplianceAlert;
 use App\Models\Device;
 use App\Models\Employee;
@@ -138,6 +139,12 @@ final class DeviceService
      */
     public function approve(User $by, Device $device): Device
     {
+        // Vínculo uno a uno sólo con personal activo: tras la baja no se autorizan teléfonos.
+        $employee = $device->employee_id !== null ? Employee::query()->withoutGlobalScopes()->find($device->employee_id) : null;
+        if ($employee !== null && $employee->status === EmployeeStatus::Terminated) {
+            throw new AttendanceException('employee_terminated', 'El colaborador está dado de baja: no se pueden autorizar dispositivos.', 422);
+        }
+
         $device->forceFill([
             'status' => DeviceStatus::Approved,
             'approved_at' => now(),
@@ -175,6 +182,36 @@ final class DeviceService
         $this->audit->log('device.revoked', $device, 'Dispositivo revocado: '.$device->name, ['reason' => $reason]);
 
         return $device;
+    }
+
+    /**
+     * Baja del colaborador: revoca el mismo día todos sus dispositivos (autorizados o
+     * pendientes) y cierra todas las sesiones de API de su usuario (PDF pantallas 09 y 11).
+     *
+     * @return int número de dispositivos revocados
+     */
+    public function revokeAllForEmployee(User $by, Employee $employee, string $reason): int
+    {
+        $devices = Device::query()->withoutGlobalScopes()
+            ->where('organization_id', $employee->organization_id)
+            ->where(function ($q) use ($employee) {
+                $q->where('employee_id', $employee->id);
+                if ($employee->user_id !== null) {
+                    $q->orWhere('user_id', $employee->user_id);
+                }
+            })
+            ->whereIn('status', [DeviceStatus::Approved, DeviceStatus::Pending])
+            ->get();
+
+        foreach ($devices as $device) {
+            $this->revoke($by, $device, $reason);
+        }
+
+        if ($employee->user_id !== null) {
+            User::query()->find($employee->user_id)?->tokens()->delete();
+        }
+
+        return $devices->count();
     }
 
     public function challenge(Device $device): PunchChallenge

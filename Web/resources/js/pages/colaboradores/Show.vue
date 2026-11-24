@@ -47,6 +47,7 @@ import AccountPanel from './components/AccountPanel.vue';
 import EditEmployeeSheet from './components/EditEmployeeSheet.vue';
 import IdentifiersCard from './components/IdentifiersCard.vue';
 import MoveSheet from './components/MoveSheet.vue';
+import RegistrationCard from './components/RegistrationCard.vue';
 import RehireSheet from './components/RehireSheet.vue';
 import TerminateDialog from './components/TerminateDialog.vue';
 import {
@@ -112,7 +113,9 @@ const canRehire = computed(
 );
 
 const status = computed(
-    () => EMPLOYEE_STATUS[props.employee.status] ?? EMPLOYEE_STATUS.inactive,
+    () =>
+        EMPLOYEE_STATUS[props.registration.display_status] ??
+        EMPLOYEE_STATUS.inactive,
 );
 
 const personal = computed<KeyValueItem[]>(() => [
@@ -303,24 +306,9 @@ const help: HelpStep[] = [
         text: 'Envía un enlace o genera una contraseña temporal que se muestra una sola vez.',
         icon: KeyRound,
     },
-    {
-        title: 'Salida automática',
-        text: 'Si el colaborador no marca salida, el sistema la registra a esta hora. El tiempo posterior no cuenta como horas extra.',
-        icon: Clock3,
-    },
 ];
 
-const AUTO_SOURCE: Record<string, string> = {
-    person: 'Persona',
-    position: 'Puesto',
-    policy: 'Política',
-};
 const movePreset = ref<AssignmentField | null>(null);
-
-function openAutoClockOut(): void {
-    movePreset.value = 'auto_clock_out_at';
-    moveOpen.value = true;
-}
 
 watch(moveOpen, (isOpen) => {
     if (!isOpen) {
@@ -342,7 +330,7 @@ watch(moveOpen, (isOpen) => {
                 class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"
             >
                 <StatusBadge
-                    :status="employee.status"
+                    :status="registration.display_status"
                     :label="status.label"
                     :tone="status.tone"
                 />
@@ -468,6 +456,11 @@ watch(moveOpen, (isOpen) => {
             class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]"
         >
             <div class="grid gap-6">
+                <RegistrationCard
+                    :employee-id="employee.id"
+                    :registration="registration"
+                    :can-upload="can.update"
+                />
                 <SectionCard title="Asignación vigente" :icon="MapPin" divided>
                     <template v-if="canMove" #actions>
                         <Button
@@ -489,50 +482,6 @@ watch(moveOpen, (isOpen) => {
                         :icon="MapPin"
                         title="Sin asignación"
                     />
-                </SectionCard>
-                <SectionCard title="Salida automática" :icon="Clock3" divided>
-                    <template v-if="canMove" #actions>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            @click="openAutoClockOut"
-                        >
-                            <ArrowRightLeft aria-hidden="true" />
-                            Cambiar
-                        </Button>
-                    </template>
-                    <div
-                        v-if="auto_clock_out.time"
-                        class="flex flex-wrap items-center gap-3"
-                    >
-                        <span class="font-display numeric text-2xl font-bold">{{
-                            auto_clock_out.time
-                        }}</span>
-                        <StatusBadge
-                            :label="
-                                AUTO_SOURCE[auto_clock_out.source ?? ''] ??
-                                'Origen'
-                            "
-                            :tone="
-                                auto_clock_out.source === 'person'
-                                    ? 'brand'
-                                    : 'neutral'
-                            "
-                        />
-                        <span class="text-sm text-muted-foreground">{{
-                            auto_clock_out.label
-                        }}</span>
-                    </div>
-                    <p v-else class="text-sm text-muted-foreground">
-                        Sin salida automática.
-                    </p>
-                    <p
-                        v-if="auto_clock_out.warning"
-                        class="mt-3 rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-sm text-warning-soft-foreground"
-                        role="status"
-                    >
-                        {{ auto_clock_out.warning }}
-                    </p>
                 </SectionCard>
                 <SectionCard
                     title="Relación laboral"
@@ -773,7 +722,7 @@ watch(moveOpen, (isOpen) => {
             </EmptyState>
 
             <SectionCard
-                title="Excepciones"
+                title="Cambios de horario programados"
                 :icon="CalendarClock"
                 divided
                 padding="none"
@@ -781,7 +730,7 @@ watch(moveOpen, (isOpen) => {
                 <template v-if="can.schedule" #actions>
                     <Button variant="ghost" size="sm" as-child>
                         <Link
-                            :href="`/horarios/excepciones?employee_id=${employee.id}`"
+                            :href="`/horarios/cambios?employee_id=${employee.id}`"
                             >Administrar</Link
                         >
                     </Button>
@@ -798,6 +747,14 @@ watch(moveOpen, (isOpen) => {
                             </p>
                             <p class="text-xs text-muted-foreground">
                                 {{ x.reason }}
+                                <template v-if="x.status && x.status !== 'approved'">
+                                    ·
+                                    {{
+                                        x.status === 'pending'
+                                            ? 'Por autorizar'
+                                            : 'Rechazado'
+                                    }}
+                                </template>
                             </p>
                         </div>
                         <Badge v-if="x.is_rest_day" variant="secondary"
@@ -812,7 +769,7 @@ watch(moveOpen, (isOpen) => {
                     v-else
                     size="sm"
                     :icon="CalendarClock"
-                    title="Sin excepciones recientes"
+                    title="Sin cambios programados"
                 />
             </SectionCard>
         </TabsContent>

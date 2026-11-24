@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Domain\Audit\AuditLogger;
+use App\Domain\Security\DeviceIntegrityMonitor;
 use App\Domain\Security\DeviceService;
 use App\Http\Controllers\Api\V1\Support\ApiContext;
 use App\Http\Controllers\Api\V1\Support\OrganizationResolver;
@@ -73,6 +74,8 @@ final class AuthController extends ApiController
         });
 
         $device = $registration['device'];
+        // Señales de integridad (root/jailbreak/emulador) reportadas por la app ⇒ alerta en Cumplimiento.
+        app(DeviceIntegrityMonitor::class)->inspectDevice($device, $request->integritySignals());
         $this->audit->log('auth.login', $device, 'Inicio de sesión en la app móvil', [
             'channel' => 'mobile',
             'device_status' => $device->status->value,

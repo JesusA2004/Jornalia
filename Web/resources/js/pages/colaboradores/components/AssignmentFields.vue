@@ -3,7 +3,6 @@ import { computed, watch } from 'vue';
 import ComboboxField from '@/components/app/ComboboxField.vue';
 import FormField from '@/components/app/FormField.vue';
 import SelectField from '@/components/app/SelectField.vue';
-import OptionalTimeField from '@/pages/horarios/components/OptionalTimeField.vue';
 import type { SelectOption } from '@/types';
 import type {
     AssignmentField,
@@ -178,24 +177,5 @@ watch(
             />
         </FormField>
 
-        <FormField
-            v-if="only?.includes('auto_clock_out_at')"
-            label="Salida automática personal"
-            description="Desactívala para heredar la del puesto o la política."
-            :error="errors.auto_clock_out_at"
-            class="sm:col-span-2"
-            v-slot="{ id, invalid }"
-        >
-            <OptionalTimeField
-                :id="id"
-                :model-value="model.auto_clock_out_at ?? null"
-                :invalid="invalid"
-                off-label="Hereda de puesto o política"
-                aria-label="Salida automática personal"
-                @update:model-value="
-                    (v: string | null) => (model.auto_clock_out_at = v)
-                "
-            />
-        </FormField>
     </div>
 </template>

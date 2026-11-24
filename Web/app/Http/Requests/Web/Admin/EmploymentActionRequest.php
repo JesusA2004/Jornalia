@@ -104,7 +104,7 @@ class EmploymentActionRequest extends FormRequest
         $changes = [];
         foreach ((array) $this->validated('fields', []) as $field) {
             $value = $this->validated($field);
-            $changes[$field] = $value === null || $value === '' ? null : ($field === 'auto_clock_out_at' ? (string) $value : (int) $value);
+            $changes[$field] = $value === null || $value === '' ? null : (int) $value;
         }
 
         return $changes;

@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Web\Admin;
 
-use App\Domain\Workforce\AutoClockOutAdvisor;
 use App\Domain\Workforce\WorkforceService;
 use App\Http\Requests\Web\Admin\EmploymentActionRequest;
 use App\Models\Employee;
@@ -48,10 +47,9 @@ class EmploymentController extends AdminController
             abort_unless(array_keys($changes) === ['schedule_id'], 403);
         }
 
-        $assignment = $this->workforce->move($this->actor($request), $employee, (string) $request->validated('effective_from'), $changes, $request->validated('reason'));
+        $this->workforce->move($this->actor($request), $employee, (string) $request->validated('effective_from'), $changes, $request->validated('reason'));
         $message = 'Movimiento registrado con vigencia a partir del '.CarbonImmutable::parse((string) $request->validated('effective_from'))->format('d/m/Y').'.';
-        $warning = app(AutoClockOutAdvisor::class)->effective($employee, $assignment)['warning'];
-        $this->toast($warning ? $message.' Atención: '.$warning : $message, $warning ? 'warning' : 'success');
+        $this->toast($message);
 
         return back();
     }

@@ -36,6 +36,8 @@ export const EMPLOYEE_STATUS: Record<string, { label: string; tone: Tone }> = {
     active: { label: 'Activo', tone: 'success' },
     inactive: { label: 'Inactivo', tone: 'neutral' },
     terminated: { label: 'Baja', tone: 'neutral' },
+    // Activo con alta de registro incompleta (sin app vinculada o sin convenio).
+    onboarding: { label: 'Alta en proceso', tone: 'warning' },
 };
 
 export const RUN_STATUS: Record<string, { label: string; tone: Tone }> = {

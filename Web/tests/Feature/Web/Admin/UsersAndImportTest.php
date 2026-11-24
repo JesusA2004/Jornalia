@@ -1,8 +1,10 @@
 <?php
 
+use App\Domain\Security\PermissionCatalog;
 use App\Models\Branch;
 use App\Models\Employee;
 use App\Models\IntegrationRun;
+use App\Models\Position;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
@@ -20,14 +22,14 @@ it('no permite quitarse a sí mismo el último rol administrador', function () {
     $org = $this->organization();
     $admin = $this->userIn($org, 'Administrador de empresa', allBranches: true);
 
-    $this->actingAs($admin)->put("/usuarios/{$admin->id}", ['status' => 'active', 'roles' => ['Recursos Humanos'], 'access_all_branches' => true])
+    $this->actingAs($admin)->put("/usuarios/{$admin->id}", ['status' => 'active', 'roles' => [PermissionCatalog::ROLE_HR_ADMIN], 'access_all_branches' => true])
         ->assertSessionHasErrors('roles');
 
     app(PermissionRegistrar::class)->setPermissionsTeamId($org->id);
-    expect($admin->fresh()->hasRole('Administrador de empresa'))->toBeTrue();
+    expect($admin->fresh()->hasRole(PermissionCatalog::ROLE_PLATFORM_ADMIN))->toBeTrue();
 
     // Tampoco quitando el permiso al propio rol.
-    $role = Role::query()->where('organization_id', $org->id)->where('name', 'Administrador de empresa')->firstOrFail();
+    $role = Role::query()->where('organization_id', $org->id)->where('name', PermissionCatalog::ROLE_PLATFORM_ADMIN)->firstOrFail();
     $this->actingAs($admin)->put("/usuarios/roles/{$role->id}", ['name' => $role->name, 'permissions' => ['dashboard.view']])
         ->assertSessionHasErrors('roles');
 });
@@ -70,10 +72,11 @@ it('impide que un usuario sin users.roles otorgue roles superiores', function ()
     $org = $this->organization();
     $rh = $this->userIn($org, 'Recursos Humanos', allBranches: true);
 
+    // RH no administra usuarios (separación de funciones): ni siquiera puede invitar.
     $this->actingAs($rh)->post('/usuarios', [
         'name' => 'Escalada', 'email' => 'escalada@example.com', 'mode' => 'reset',
-        'roles' => ['Administrador de empresa'], 'access_all_branches' => true,
-    ])->assertSessionHasErrors('roles');
+        'roles' => [PermissionCatalog::ROLE_PLATFORM_ADMIN], 'access_all_branches' => true,
+    ])->assertForbidden();
 
     $this->actingAs($rh)->post('/usuarios/roles', ['name' => 'Nuevo', 'permissions' => []])->assertForbidden();
 });
@@ -99,16 +102,18 @@ it('importa colaboradores desde CSV detectando duplicados y registra la ejecuci�
     $org = $this->organization();
     $admin = $this->userIn($org, 'Administrador de empresa', allBranches: true);
     Branch::query()->create(['code' => 'MTY', 'name' => 'Monterrey']);
+    Position::query()->create(['code' => 'ASE', 'name' => 'Asesor']);
+    $hc = $this->schedule()->code;
     $existing = $this->employee($org);
 
     $csv = implode("\n", [
-        'numero_empleado,nombre,apellido_paterno,apellido_materno,correo,fecha_ingreso,sucursal,id_externo',
-        '1001,Mario,López,Díaz,mario@example.com,2026-10-01,MTY,P-1',
-        '1002,Sofía,Ramos,,sofia@example.com,01/10/2026,MTY,P-2',
-        '1001,Mario,Duplicado,,,2026-10-01,MTY,P-3',
-        "{$existing->employee_number},Ana,Prueba,,,2026-10-01,MTY,",
-        '1003,Pedro,Sin Sucursal,,,2026-10-01,NOEXISTE,P-4',
-        '1004,Fecha,Mala,,,31/31/2026,MTY,P-5',
+        'numero_empleado,nombre,apellido_paterno,apellido_materno,correo,fecha_ingreso,fecha_nacimiento,sucursal,puesto,horario,id_externo',
+        "1001,Mario,López,Díaz,mario@example.com,2026-10-01,1990-05-10,MTY,ASE,{$hc},P-1",
+        "1002,Sofía,Ramos,,sofia@example.com,01/10/2026,12/03/1995,MTY,ASE,{$hc},P-2",
+        "1001,Mario,Duplicado,,,2026-10-01,1990-05-10,MTY,ASE,{$hc},P-3",
+        "{$existing->employee_number},Ana,Prueba,,,2026-10-01,1990-01-01,MTY,ASE,{$hc},",
+        "1003,Pedro,Sin Sucursal,,,2026-10-01,1990-01-01,NOEXISTE,ASE,{$hc},P-4",
+        "1004,Fecha,Mala,,,31/31/2026,1990-01-01,MTY,ASE,{$hc},P-5",
     ]);
 
     // Simulación: nada se escribe.
@@ -122,14 +127,15 @@ it('importa colaboradores desde CSV detectando duplicados y registra la ejecuci�
     expect($run->status)->toBe('partial')
         ->and($run->stats['created'])->toBe(2)
         ->and($run->stats['conflicts'])->toBe(4)
-        ->and(collect($run->conflicts)->pluck('type')->sort()->values()->all())->toBe(['duplicate', 'duplicate_in_file', 'invalid', 'unknown_reference']);
+        ->and(collect($run->conflicts)->pluck('type')->sort()->values()->all())->toBe(['duplicate', 'duplicate_in_file', 'invalid', 'invalid'])
+        ->and(collect($run->conflicts)->firstWhere('line', 6)['message'])->toContain('sucursal');
 
     $mario = Employee::query()->where('employee_number', '1001')->firstOrFail();
     expect($mario->external_source)->toBe('people')->and($mario->external_id)->toBe('P-1')
         ->and($mario->employments()->count())->toBe(1);
 
     // Re-importar vincula por id externo y actualiza en lugar de duplicar.
-    $update = "numero_empleado,nombre,apellido_paterno,correo,fecha_ingreso,id_externo\n1001,Mario,López,mario.nuevo@example.com,2026-10-01,P-1";
+    $update = "numero_empleado,nombre,apellido_paterno,correo,fecha_ingreso,fecha_nacimiento,sucursal,puesto,horario,id_externo\n1001,Mario,López,mario.nuevo@example.com,2026-10-01,1990-05-10,MTY,ASE,{$hc},P-1";
     $this->actingAs($admin)->post('/colaboradores/importar', ['file' => UploadedFile::fake()->createWithContent('personal.csv', $update)]);
     $run = IntegrationRun::query()->latest('id')->firstOrFail();
     expect($run->stats['updated'])->toBe(1)
@@ -142,4 +148,38 @@ it('niega la importación sin permiso', function () {
     $user = $this->userIn($org, 'Gerente de sucursal');
 
     $this->actingAs($user)->get('/colaboradores/importar')->assertForbidden();
+});
+
+it('valida por fila la fecha de nacimiento, sucursal, puesto y horario', function () {
+    $org = $this->organization();
+    $admin = $this->userIn($org, 'Recursos Humanos', allBranches: true);
+    Branch::query()->create(['code' => 'MTY', 'name' => 'Monterrey']);
+    Branch::query()->create(['code' => 'OLD', 'name' => 'Cerrada', 'active' => false]);
+    Position::query()->create(['code' => 'ASE', 'name' => 'Asesor']);
+    $hc = $this->schedule()->code;
+
+    $csv = implode("\n", [
+        'numero_empleado,nombre,apellido_paterno,fecha_ingreso,fecha_nacimiento,sucursal,puesto,horario',
+        "2001,Bien,Capturado,2026-10-01,1990-05-10,MTY,ASE,{$hc}",
+        "2002,Sin,Nacimiento,2026-10-01,,MTY,ASE,{$hc}",
+        "2003,Menor,Edad,2026-10-01,2015-01-01,MTY,ASE,{$hc}",
+        "2004,Nacimiento,Futuro,2026-10-01,2099-01-01,MTY,ASE,{$hc}",
+        "2005,Sucursal,Inactiva,2026-10-01,1990-05-10,OLD,ASE,{$hc}",
+        "2006,Puesto,Inexistente,2026-10-01,1990-05-10,MTY,NOPE,{$hc}",
+        '2007,Horario,Inexistente,2026-10-01,1990-05-10,MTY,ASE,NOPE',
+    ]);
+
+    $this->actingAs($admin)->post('/colaboradores/importar', ['file' => UploadedFile::fake()->createWithContent('personal.csv', $csv)])->assertRedirect();
+
+    $run = IntegrationRun::query()->latest('id')->firstOrFail();
+    $byLine = collect($run->conflicts)->keyBy('line');
+    expect($run->stats['created'])->toBe(1)
+        ->and(Employee::query()->where('employee_number', '2001')->exists())->toBeTrue()
+        ->and(Employee::query()->whereIn('employee_number', ['2002', '2003', '2004', '2005', '2006', '2007'])->count())->toBe(0)
+        ->and($byLine[3]['message'])->toContain('nacimiento')
+        ->and($byLine[4]['message'])->toContain('15 años')
+        ->and($byLine[5]['message'])->toContain('futura')
+        ->and($byLine[6]['message'])->toContain('inactiva')
+        ->and($byLine[7]['message'])->toContain('puesto')
+        ->and($byLine[8]['message'])->toContain('horario');
 });

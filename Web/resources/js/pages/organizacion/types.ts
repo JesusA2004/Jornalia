@@ -37,6 +37,10 @@ export type BranchRow = {
     address: string | null;
     latitude: string | null;
     longitude: string | null;
+    /** Registro patronal IMSS del centro de trabajo (null = pendiente). */
+    employer_registration: string | null;
+    /** Identificador de Mr. Lana People (null = sólo local). */
+    external_id: string | null;
     active: boolean;
     deleted: boolean;
     work_center_id: number | null;
@@ -53,6 +57,7 @@ export type DepartmentRow = {
     deleted: boolean;
     parent_id: number | null;
     parent: string | null;
+    external_id: string | null;
     positions_count: number;
     employees_count: number;
 };
@@ -66,8 +71,7 @@ export type PositionRow = {
     department_id: number | null;
     department: string | null;
     employees_count: number;
-    /** Salida automática HH:MM (null = sin cierre). */
-    auto_clock_out_at: string | null;
+    external_id: string | null;
 };
 
 export type GeofenceRow = {
@@ -92,7 +96,24 @@ export type OrganizationPageProps = {
     geofences: GeofenceRow[];
     states: SelectOption[];
     timezones: SelectOption[];
-    can: { manage: boolean };
+    /** Comparación con los datos oficiales (simulación, sin cambios). */
+    official: {
+        status: 'applied' | 'unchanged' | 'conflict' | 'skipped';
+        changes: { field: string; before: string | null; after: string }[];
+        conflicts: { field: string; current: string | null; official: string }[];
+        message: string;
+    };
+    people: {
+        configured: boolean;
+        last_run: { status: string; finished_at: string | null } | null;
+    };
+    geofence_radius: {
+        min: number;
+        max: number;
+        suggested_min: number;
+        suggested_max: number;
+    };
+    can: { manage: boolean; integrations: boolean };
 };
 
 /** Slug de ruta de OrganizationStructureController. */

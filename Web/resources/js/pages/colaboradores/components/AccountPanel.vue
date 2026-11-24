@@ -302,8 +302,8 @@ async function copy(): Promise<void> {
             :icon="KeyRound"
             bordered
             class="rounded-2xl"
-            title="Sin cuenta de acceso"
-            description="Un administrador puede crearla."
+            title="Alta de registro incompleta"
+            description="Sin cuenta no puede vincular la app. Un administrador puede crearla."
         />
 
         <ConfirmDialog

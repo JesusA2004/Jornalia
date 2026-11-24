@@ -7,9 +7,12 @@ import {
     Clock,
     Fingerprint,
     KeyRound,
+    MonitorSmartphone,
+    ShieldAlert,
     ShieldCheck,
     ShieldOff,
     Smartphone,
+    UserX,
 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import DeviceController from '@/actions/App/Http/Controllers/Web/Admin/DeviceController';
@@ -46,6 +49,7 @@ import { useFilters } from '@/composables/useFilters';
 import { toPaginationMeta } from '@/lib/pagination';
 import { cn } from '@/lib/utils';
 import type { DataTableColumn, HelpStep } from '@/types';
+import KiosksPanel from './components/KiosksPanel.vue';
 import type {
     DeviceBrief,
     DevicePendingReason,
@@ -67,14 +71,29 @@ const props = defineProps<DevicesPageProps>();
 
 const help: HelpStep[] = [
     {
-        title: 'Vinculación',
-        text: 'El colaborador vincula su teléfono desde la app; queda pendiente.',
+        title: 'Uno a uno',
+        text: 'Un teléfono por colaborador. Un teléfono nuevo queda «Pendiente».',
         icon: Smartphone,
     },
     {
-        title: 'Autoriza',
-        text: 'Sólo los dispositivos autorizados pueden registrar marcajes.',
+        title: 'Autoriza RH',
+        text: 'Sin autorización no marca; el día queda como omisión. Al autorizar, el anterior se revoca.',
         icon: ShieldCheck,
+    },
+    {
+        title: 'Baja',
+        text: 'La baja del colaborador revoca su teléfono y sesiones ese mismo día.',
+        icon: UserX,
+    },
+    {
+        title: 'Alertas',
+        text: 'Ubicación simulada o teléfono alterado generan alerta en Cumplimiento. La detección depende de lo que reporta el teléfono: no es infalible.',
+        icon: ShieldAlert,
+    },
+    {
+        title: 'Kiosco',
+        text: 'Tableta de sucursal para quien no tiene celular: número de empleado + NIP.',
+        icon: MonitorSmartphone,
     },
     {
         title: 'Revoca',
@@ -232,6 +251,15 @@ const approveDescription = computed(() => {
 
     return `${row.name} podrá registrar marcajes de ${row.employee?.name ?? row.user?.name ?? 'su usuario'}.`;
 });
+
+const INTEGRITY_LABEL: Record<string, string> = {
+    rooted: 'Teléfono alterado (root)',
+    jailbroken: 'Teléfono alterado (jailbreak)',
+    emulator: 'Emulador',
+    mock_location: 'Ubicación simulada',
+};
+
+const integrityLabel = (flag: string) => INTEGRITY_LABEL[flag] ?? flag;
 
 const platformLabel = (p: string) =>
     p === 'ios' ? 'iOS' : p === 'android' ? 'Android' : p;
@@ -424,6 +452,14 @@ const platformLabel = (p: string) =>
                         </p>
                     </template>
                     <p
+                        v-for="flag in row.integrity_flags"
+                        :key="flag"
+                        class="flex items-center gap-1 text-xs font-medium text-danger"
+                    >
+                        <ShieldAlert class="icon-xs" aria-hidden="true" />
+                        {{ integrityLabel(flag) }}
+                    </p>
+                    <p
                         v-if="row.status === 'revoked' && row.replaced_by"
                         class="max-w-52 truncate text-xs text-muted-foreground"
                     >
@@ -557,5 +593,13 @@ const platformLabel = (p: string) =>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+
+        <KiosksPanel
+            v-if="can.kiosk || kiosks.length > 0"
+            :kiosks="kiosks"
+            :branches="branches"
+            :activation="kiosk_activation"
+            :can-manage="can.kiosk"
+        />
     </div>
 </template>

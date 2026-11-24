@@ -3,6 +3,7 @@
 namespace App\Domain\Workforce;
 
 use App\Domain\Audit\AuditLogger;
+use App\Domain\Security\DeviceService;
 use App\Enums\EmployeeStatus;
 use App\Models\Employee;
 use App\Models\Employment;
@@ -27,12 +28,13 @@ use Illuminate\Validation\ValidationException;
 final class WorkforceService
 {
     /** Campos de asignación con vigencia. */
-    public const ASSIGNMENT_FIELDS = ['work_center_id', 'branch_id', 'department_id', 'position_id', 'supervisor_employee_id', 'schedule_id', 'attendance_policy_id', 'auto_clock_out_at'];
+    public const ASSIGNMENT_FIELDS = ['work_center_id', 'branch_id', 'department_id', 'position_id', 'supervisor_employee_id', 'schedule_id', 'attendance_policy_id'];
 
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly ScheduleLegalValidator $validator,
         private readonly CurrentOrganization $current,
+        private readonly DeviceService $devices,
     ) {}
 
     /**
@@ -87,13 +89,6 @@ final class WorkforceService
 
             $employee->forceFill(['status' => EmployeeStatus::Terminated])->save();
 
-            if ($employee->user_id !== null) {
-                DB::table('organization_user')
-                    ->where('organization_id', $employee->organization_id)
-                    ->where('user_id', $employee->user_id)
-                    ->update(['status' => 'inactive', 'updated_at' => now()]);
-            }
-
             $this->audit->log('employee.terminated', $employee, 'Baja de colaborador: '.$employee->fullName(), [
                 'employment_id' => $employment->id,
                 'ends_on' => $date,
@@ -101,8 +96,48 @@ final class WorkforceService
                 'by' => $by->id,
             ]);
 
+            // PDF RH pantalla 09/11: el acceso a la app y el dispositivo se revocan el mismo
+            // día de la baja. Si la fecha es futura, lo hace `asistencias:revocar-bajas`.
+            if ($date <= $this->todayFor($employee)) {
+                $this->revokeAccess($by, $employee, 'Baja del colaborador');
+            }
+
             return $employment->refresh();
         });
+    }
+
+    /**
+     * Revoca el acceso de un colaborador dado de baja: membresía de la organización
+     * inactiva, dispositivos revocados y sesiones de API cerradas. No borra nada:
+     * el historial, los marcajes y la bitácora se conservan. Idempotente.
+     *
+     * @return int dispositivos revocados
+     */
+    public function revokeAccess(User $by, Employee $employee, string $reason): int
+    {
+        if ($employee->user_id !== null) {
+            DB::table('organization_user')
+                ->where('organization_id', $employee->organization_id)
+                ->where('user_id', $employee->user_id)
+                ->update(['status' => 'inactive', 'updated_at' => now()]);
+        }
+        $devices = $this->devices->revokeAllForEmployee($by, $employee, $reason);
+
+        $this->audit->log('employee.access_revoked', $employee, 'Acceso a la app revocado por baja: '.$employee->fullName(), [
+            'devices_revoked' => $devices, 'reason' => $reason,
+        ], $employee->organization_id);
+
+        return $devices;
+    }
+
+    /**
+     * Fecha civil de hoy en la zona de la organización del colaborador.
+     */
+    public function todayFor(Employee $employee): string
+    {
+        $timezone = $employee->organization?->timezone ?? config('app.timezone', 'UTC');
+
+        return CarbonImmutable::now($timezone)->toDateString();
     }
 
     /**

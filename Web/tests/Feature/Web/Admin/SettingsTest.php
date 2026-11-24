@@ -29,21 +29,22 @@ it('rechaza prestaciones de vacaciones inferiores a la ley', function () {
     expect(VacationPolicy::query()->where('name', 'Superior')->value('premium_percent'))->toBe('50.00');
 });
 
-it('protege el catálogo de incidencias del sistema y versiona las nuevas', function () {
+it('el catálogo de incidencias es cerrado: RH ajusta tipos, no crea ni borra', function () {
     $org = $this->organization();
-    $admin = $this->userIn($org, 'Administrador de empresa', allBranches: true);
-    $system = IncidenceType::query()->where('is_system', true)->firstOrFail();
-    $payload = ['code' => 'capacitacion', 'name' => 'Capacitación externa', 'category' => 'leave', 'operational_effect' => 'paid_absence', 'requires_evidence' => true, 'requires_approval' => true, 'affects_payroll' => false, 'employee_requestable' => true, 'active' => true, 'valid_from' => '2026-11-01'];
+    $hr = $this->userIn($org, 'Recursos Humanos', allBranches: true);
+    $type = IncidenceType::query()->where('code', 'PERMISO_CON_GOCE')->firstOrFail();
+    $payload = ['requires_evidence' => true, 'evidence_kind' => 'authorized_form', 'requires_folio' => false, 'approval_route' => 'manager', 'employee_requestable' => true, 'external_code' => null];
 
-    $this->actingAs($admin)->put("/configuracion/incidencias/{$system->id}", ['code' => $system->code] + $payload)->assertSessionHasErrors('type');
-    $this->actingAs($admin)->post("/configuracion/incidencias/{$system->id}/desactivar")->assertSessionHasErrors('type');
+    // No existen rutas de alta ni de borrado en el catálogo cerrado.
+    $this->actingAs($hr)->post('/configuracion/incidencias', ['code' => 'CAPACITACION'])->assertStatus(405);
 
-    $this->actingAs($admin)->post('/configuracion/incidencias', $payload)->assertSessionHasNoErrors();
-    $type = IncidenceType::query()->where('code', 'CAPACITACION')->firstOrFail();
-    expect($type->valid_from->toDateString())->toBe('2026-11-01');
+    $this->actingAs($hr)->put("/configuracion/incidencias/{$type->id}", $payload)->assertSessionHasNoErrors();
+    expect($type->fresh()->approval_route)->toBe('manager');
 
-    $this->actingAs($admin)->post("/configuracion/incidencias/{$type->id}/desactivar")->assertSessionHasNoErrors();
-    expect(IncidenceType::withTrashed()->find($type->id)->trashed())->toBeTrue();
+    $this->actingAs($hr)->post("/configuracion/incidencias/{$type->id}/desactivar")->assertSessionHasNoErrors();
+    expect($type->fresh()->active)->toBeFalse()->and($type->fresh()->trashed())->toBeFalse();
+    $this->actingAs($hr)->post("/configuracion/incidencias/{$type->id}/reactivar")->assertSessionHasNoErrors();
+    expect($type->fresh()->active)->toBeTrue();
 });
 
 it('los festivos oficiales son de sólo lectura', function () {
@@ -93,7 +94,11 @@ it('sube el logotipo validando imagen y audita cambios de empresa', function () 
     expect($path)->toStartWith('brand/');
     Storage::disk('public')->assertExists($path);
 
-    $this->actingAs($admin)->put('/configuracion/empresa', ['name' => 'Nueva Razón', 'timezone' => 'America/Monterrey', 'privacy_contact_email' => 'privacidad@example.com'])->assertSessionHasNoErrors();
+    $this->actingAs($admin)->put('/configuracion/empresa', [
+        'name' => 'Mr. Lana', 'legal_name' => 'PRODUCTOS Y SERVICIOS MR LANA, S.A.P.I. de C.V.', 'rfc' => 'PSM2311289J2',
+        'fiscal_address' => 'Subida del Club 114, Col. Reforma, C.P. 62260, Cuernavaca, Morelos',
+        'timezone' => 'America/Monterrey', 'privacy_contact_email' => null, 'brand_primary_color' => '#225C54',
+    ])->assertSessionHasNoErrors();
     $this->assertDatabaseHas('audit_logs', ['action' => 'organization.updated', 'organization_id' => $org->id]);
 });
 

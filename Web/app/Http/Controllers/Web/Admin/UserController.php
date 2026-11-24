@@ -4,6 +4,10 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Domain\Audit\AuditLogger;
 use App\Domain\Organization\OrganizationProvisioner;
+use App\Domain\Security\PermissionCatalog;
+use App\Domain\Security\TwoFactorPolicy;
+use App\Domain\Security\UserAccessService;
+use App\Enums\EmployeeStatus;
 use App\Http\Controllers\Web\Admin\Concerns\GuardsAdministrators;
 use App\Http\Requests\Web\Admin\Concerns\OrganizationRules;
 use App\Models\Branch;
@@ -12,6 +16,8 @@ use App\Models\Organization;
 use App\Models\OrganizationSetting;
 use App\Models\Role;
 use App\Models\User;
+use App\Models\UserAccessReview;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -30,12 +36,19 @@ class UserController extends AdminController
 {
     use GuardsAdministrators, OrganizationRules;
 
-    public const AUTHORITY_ROLE = 'Autoridad laboral';
+    public const AUTHORITY_ROLE = PermissionCatalog::ROLE_AUTHORITY;
 
-    /** organization_settings.key con {user_id: {expires_on, granted_by, granted_at}}. */
-    public const AUTHORITY_SETTING = 'authority_access';
+    /** organization_settings.key con {user_id: {expires_on, granted_by, granted_at, revoked_at}}. */
+    public const AUTHORITY_SETTING = UserAccessService::AUTHORITY_SETTING;
 
-    public function __construct(private readonly AuditLogger $audit) {}
+    /** Sólo storeAuthority puede otorgar el rol de autoridad laboral (siempre con vigencia). */
+    private bool $grantingAuthority = false;
+
+    public function __construct(
+        private readonly AuditLogger $audit,
+        private readonly UserAccessService $access,
+        private readonly TwoFactorPolicy $twoFactor,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -50,7 +63,7 @@ class UserController extends AdminController
             ->join('organization_user as ou', fn ($j) => $j->on('ou.user_id', '=', 'users.id')->where('ou.organization_id', $org))
             ->select('users.*', 'ou.status as membership_status', 'ou.access_all_branches', 'ou.created_at as linked_at')
             ->with([
-                'roles' => fn ($q) => $q->where('roles.organization_id', $org),
+                'roles' => fn ($q) => $q->where('roles.organization_id', $org)->with('permissions:id,name'),
                 'branches' => fn ($q) => $q->where('branch_user.organization_id', $org),
             ])
             ->when($filters['search'] ?? null, function ($q, $t) {
@@ -68,6 +81,10 @@ class UserController extends AdminController
 
         $users->through(fn (User $u) => [
             'authority_expires_on' => $authority[(string) $u->id]['expires_on'] ?? null,
+            'authority_revoked_at' => $authority[(string) $u->id]['revoked_at'] ?? null,
+            'two_factor_required' => $this->twoFactor->enforced() && PermissionCatalog::requiresTwoFactor(
+                $u->roles->flatMap(fn (Role $r) => $r->permissions->pluck('name'))->all()
+            ),
             'id' => $u->id,
             'name' => $u->name,
             'email' => $u->email,
@@ -93,6 +110,11 @@ class UserController extends AdminController
                 ->map(fn (Employee $e) => ['value' => (string) $e->id, 'label' => $e->fullName(), 'description' => $e->employee_number, 'email' => $e->email])->values(),
             'can' => ['manage' => $request->user()?->can('users.manage') ?? false, 'roles' => $request->user()?->can('users.roles') ?? false],
             'flash_password' => $request->session()->get('temporary_password'),
+            'scoped_roles' => PermissionCatalog::BRANCH_SCOPED_ROLES,
+            'authority_max_days' => UserAccessService::AUTHORITY_MAX_DAYS,
+            'open_review' => ($review = UserAccessReview::query()->where('status', 'open')->latest('id')->first())
+                ? ['id' => $review->id, 'period' => $review->period, 'due_on' => $review->due_on->toDateString()]
+                : null,
         ]);
     }
 
@@ -109,6 +131,7 @@ class UserController extends AdminController
         ], [], $this->labels());
 
         $this->assertCanGrant($this->actor($request), $data['roles'], $org);
+        $this->assertRoleRules($data, $org);
         $existing = User::query()->where('email', $data['email'])->first();
         if ($existing !== null && $existing->organizations()->where('organizations.id', $org)->exists()) {
             throw ValidationException::withMessages(['email' => 'Ese usuario ya pertenece a la organización.']);
@@ -179,8 +202,18 @@ class UserController extends AdminController
         if ($user->id === $actor->id && $data['status'] !== 'active') {
             throw ValidationException::withMessages(['status' => 'No puedes desactivar tu propio acceso.']);
         }
+        $currentRoles = $user->roles()->where('roles.organization_id', $org)->pluck('name')->all();
+        // El rol de autoridad laboral sólo se otorga con vigencia (storeAuthority); aquí puede conservarse o retirarse.
+        $this->grantingAuthority = in_array(self::AUTHORITY_ROLE, $currentRoles, true);
+        $this->assertRoleRules($data, $org);
 
-        $before = ['roles' => $user->roles()->where('roles.organization_id', $org)->pluck('name')->all()];
+        $membership = DB::table('organization_user')->where('organization_id', $org)->where('user_id', $user->id)->first();
+        $before = [
+            'roles' => $currentRoles,
+            'status' => $membership?->status,
+            'access_all_branches' => (bool) $membership?->access_all_branches,
+            'branch_ids' => DB::table('branch_user')->where('organization_id', $org)->where('user_id', $user->id)->pluck('branch_id')->map(fn ($id) => (int) $id)->sort()->values()->all(),
+        ];
         $snapshot = $this->adminSnapshot($actor, $org);
 
         DB::transaction(function () use ($user, $org, $data, $actor, $snapshot) {
@@ -194,9 +227,16 @@ class UserController extends AdminController
             $user->tokens()->delete();
         }
 
+        $after = [
+            'roles' => array_values($data['roles']),
+            'status' => $data['status'],
+            'access_all_branches' => (bool) $data['access_all_branches'],
+            'branch_ids' => $data['access_all_branches'] ? [] : collect($data['branch_ids'] ?? [])->map(fn ($id) => (int) $id)->sort()->values()->all(),
+        ];
+        // Bitácora con valor anterior y nuevo (PDF regla general 5).
         $this->audit->log('user.access_updated', $user, 'Accesos actualizados: '.$user->email, [
-            'roles_before' => $before['roles'], 'roles_after' => $data['roles'], 'status' => $data['status'],
-            'access_all_branches' => (bool) $data['access_all_branches'], 'branch_ids' => $data['branch_ids'] ?? [],
+            'before' => $before, 'after' => $after,
+            'roles_before' => $before['roles'], 'roles_after' => $after['roles'],
         ]);
         $this->toast('Accesos actualizados.');
 
@@ -219,12 +259,10 @@ class UserController extends AdminController
 
         $snapshot = $this->adminSnapshot($actor, $org);
         DB::transaction(function () use ($user, $org, $actor, $snapshot) {
-            DB::table('organization_user')->where('organization_id', $org)->where('user_id', $user->id)->update(['status' => 'inactive', 'updated_at' => now()]);
+            $this->access->deactivate($user, $org, 'Desactivación manual', $actor);
             $this->assertAdministratorsRemain($actor, $org, $snapshot);
         });
-        $user->tokens()->delete();
 
-        $this->audit->log('user.deactivated', $user, 'Acceso desactivado en la organización: '.$user->email);
         $this->toast('Acceso desactivado. Su historial y bitácora se conservan.');
 
         return back();
@@ -234,8 +272,21 @@ class UserController extends AdminController
     {
         $org = $this->organizationId();
         $this->ensureMember($user, $org);
+        $roles = $user->roles()->where('roles.organization_id', $org)->pluck('name')->all();
+        $this->assertCanGrant($this->actor($request), $roles, $org, 'No puedes reactivar a un usuario con permisos superiores a los tuyos.');
+
+        if (Employee::query()->where('user_id', $user->id)->where('status', EmployeeStatus::Terminated)->exists()) {
+            throw ValidationException::withMessages(['user' => 'El colaborador está dado de baja: su acceso no puede reactivarse.']);
+        }
+        if (in_array(self::AUTHORITY_ROLE, $roles, true)) {
+            $grant = $this->access->authorityGrants($org)[(string) $user->id] ?? null;
+            if ($grant === null || ($grant['revoked_at'] ?? null) !== null || (string) ($grant['expires_on'] ?? '') < now()->toDateString()) {
+                throw ValidationException::withMessages(['user' => 'Otorga una nueva vigencia desde «Acceso para autoridad laboral».']);
+            }
+        }
+
         DB::table('organization_user')->where('organization_id', $org)->where('user_id', $user->id)->update(['status' => 'active', 'updated_at' => now()]);
-        $this->audit->log('user.restored', $user, 'Acceso reactivado en la organización: '.$user->email);
+        $this->audit->log('user.restored', $user, 'Acceso reactivado en la organización: '.$user->email, ['before' => ['status' => 'inactive'], 'after' => ['status' => 'active']]);
         $this->toast('Acceso reactivado.');
 
         return back();
@@ -251,7 +302,8 @@ class UserController extends AdminController
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255'],
-            'expires_on' => ['nullable', 'date', 'after_or_equal:today'],
+            // Vigencia obligatoria (sólo lectura temporal para una inspección).
+            'expires_on' => ['required', 'date', 'after_or_equal:today', 'before_or_equal:'.now()->addDays(UserAccessService::AUTHORITY_MAX_DAYS)->toDateString()],
             'mode' => ['required', Rule::in(['password', 'reset'])],
         ], [], ['name' => 'nombre', 'email' => 'correo', 'expires_on' => 'vigencia', 'mode' => 'método de acceso']);
 
@@ -259,19 +311,47 @@ class UserController extends AdminController
             $provisioner->syncRoles(Organization::query()->findOrFail($org));
         }
 
+        // Nueva vigencia para una autoridad ya registrada (vencida o revocada).
+        $existing = User::query()->where('email', $data['email'])->first();
+        if ($existing !== null && DB::table('organization_user')->where('organization_id', $org)->where('user_id', $existing->id)->exists()) {
+            app(PermissionRegistrar::class)->setPermissionsTeamId($org);
+            if (! $existing->hasRole(self::AUTHORITY_ROLE) || $existing->roles()->where('roles.organization_id', $org)->count() > 1) {
+                throw ValidationException::withMessages(['email' => 'Ese correo ya tiene otro acceso en la organización.']);
+            }
+            DB::table('organization_user')->where('organization_id', $org)->where('user_id', $existing->id)->update(['status' => 'active', 'updated_at' => now()]);
+            $this->access->grantAuthority($existing, $org, CarbonImmutable::parse($data['expires_on'])->toDateString(), $this->actor($request));
+            $this->toast('Vigencia de autoridad laboral renovada.');
+
+            return back();
+        }
+
         $request->merge(['roles' => [self::AUTHORITY_ROLE], 'access_all_branches' => true, 'branch_ids' => [], 'employee_id' => null]);
+        $this->grantingAuthority = true;
         $response = $this->store($request);
 
         $user = User::query()->where('email', $data['email'])->first();
         if ($user !== null) {
-            $setting = OrganizationSetting::query()->firstOrNew(['key' => self::AUTHORITY_SETTING]);
-            $value = (array) ($setting->value ?? []);
-            $value[(string) $user->id] = ['expires_on' => $data['expires_on'] ?? null, 'granted_by' => $request->user()?->id, 'granted_at' => now()->toIso8601String()];
-            $setting->forceFill(['value' => $value, 'updated_by' => $request->user()?->id])->save();
-            $this->audit->log('user.authority_access_granted', $user, 'Acceso de autoridad laboral otorgado: '.$user->email, ['expires_on' => $data['expires_on'] ?? null]);
+            $this->access->grantAuthority($user, $org, CarbonImmutable::parse($data['expires_on'])->toDateString(), $this->actor($request));
         }
 
         return $response;
+    }
+
+    /**
+     * Revoca de inmediato el acceso de autoridad laboral (antes del fin de su vigencia).
+     */
+    public function revokeAuthority(Request $request, User $user): RedirectResponse
+    {
+        $org = $this->organizationId();
+        $this->ensureMember($user, $org);
+        $data = $request->validate(['reason' => ['required', 'string', 'max:255']], [], ['reason' => 'motivo']);
+        app(PermissionRegistrar::class)->setPermissionsTeamId($org);
+        abort_unless($user->hasRole(self::AUTHORITY_ROLE), 404);
+
+        $this->access->revokeAuthority($user, $org, $this->actor($request), $data['reason']);
+        $this->toast('Acceso de autoridad laboral revocado.');
+
+        return back();
     }
 
     public function reset(Request $request, User $user): RedirectResponse
@@ -339,6 +419,36 @@ class UserController extends AdminController
         $own = $actor->getAllPermissions()->pluck('name');
         if ($granted->diff($own)->isNotEmpty()) {
             throw ValidationException::withMessages(['roles' => $message]);
+        }
+    }
+
+    /**
+     * Reglas de asignación de roles (PDF pantalla 18):
+     *  - Separación de funciones: administrar usuarios/roles y autorizar o rectificar asistencia no se combinan.
+     *  - Gerentes y responsables regionales requieren alcance por sucursal (nunca «todas»).
+     *  - El rol de autoridad laboral sólo se otorga con vigencia (flujo dedicado).
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function assertRoleRules(array $data, int $org): void
+    {
+        /** @var list<string> $roles */
+        $roles = array_values($data['roles'] ?? []);
+
+        if (in_array(self::AUTHORITY_ROLE, $roles, true) && ! $this->grantingAuthority) {
+            throw ValidationException::withMessages(['roles' => 'La autoridad laboral se otorga desde «Acceso para autoridad laboral», con vigencia.']);
+        }
+
+        $permissions = Role::query()->where('organization_id', $org)->whereIn('name', $roles)->with('permissions:id,name')->get()
+            ->flatMap(fn (Role $r) => $r->permissions->pluck('name'))->unique()->values()->all();
+        $conflicts = PermissionCatalog::segregationConflicts($permissions);
+        if ($conflicts !== []) {
+            throw ValidationException::withMessages(['roles' => 'Separación de funciones: quien administra usuarios no puede autorizar, validar ni rectificar asistencia ('.implode(', ', array_slice($conflicts, 0, 4)).').']);
+        }
+
+        $scoped = array_values(array_intersect($roles, PermissionCatalog::BRANCH_SCOPED_ROLES));
+        if ($scoped !== [] && ((bool) ($data['access_all_branches'] ?? false) || empty($data['branch_ids']))) {
+            throw ValidationException::withMessages(['branch_ids' => '«'.implode('», «', $scoped).'» requiere elegir sus sucursales (no «todas»).']);
         }
     }
 

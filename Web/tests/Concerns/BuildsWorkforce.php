@@ -7,6 +7,7 @@ use App\Domain\Attendance\PolicyResolver;
 use App\Domain\Attendance\PunchInput;
 use App\Domain\Attendance\PunchRecorder;
 use App\Domain\Organization\OrganizationProvisioner;
+use App\Domain\Security\PermissionCatalog;
 use App\Enums\AuthMethod;
 use App\Enums\DeviceStatus;
 use App\Enums\PunchSource;
@@ -56,7 +57,18 @@ trait BuildsWorkforce
         $user->organizations()->attach($org->id, ['status' => 'active', 'access_all_branches' => $allBranches]);
         if ($role !== null) {
             app(PermissionRegistrar::class)->setPermissionsTeamId($org->id);
-            $user->assignRole($role);
+            // Compatibilidad de pruebas con los nombres de rol anteriores (ver PermissionCatalog::LEGACY_ROLES).
+            // «Administrador de empresa» equivalía a todos los permisos: en pruebas se modela como
+            // plataforma + RH (en producción la separación de funciones impide asignar ambos).
+            $roles = match ($role) {
+                'Administrador de empresa' => [PermissionCatalog::ROLE_PLATFORM_ADMIN, PermissionCatalog::ROLE_HR_ADMIN],
+                default => [PermissionCatalog::LEGACY_ROLES[$role] ?? $role],
+            };
+            $user->assignRole($roles);
+            // Los roles administrativos exigen doble factor: en pruebas se da por configurado.
+            if ($role !== PermissionCatalog::ROLE_EMPLOYEE) {
+                $user->forceFill(['two_factor_secret' => encrypt('TESTSECRET'), 'two_factor_confirmed_at' => now()])->save();
+            }
         }
 
         return $user;

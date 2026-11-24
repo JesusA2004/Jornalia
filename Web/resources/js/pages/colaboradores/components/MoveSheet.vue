@@ -25,7 +25,7 @@ const props = defineProps<{
     options: EmployeeFormOptions;
     /** Sin permiso de edición sólo se permite cambiar el horario. */
     scheduleOnly: boolean;
-    /** Campo preseleccionado al abrir (p. ej. salida automática). */
+    /** Campo preseleccionado al abrir. */
     preset?: AssignmentField | null;
 }>();
 
@@ -39,7 +39,6 @@ const FIELD_LABELS: Record<AssignmentField, string> = {
     schedule_id: 'Horario',
     supervisor_employee_id: 'Supervisor',
     attendance_policy_id: 'Política de asistencia',
-    auto_clock_out_at: 'Salida automática',
 };
 
 const available = computed<AssignmentField[]>(() =>
@@ -53,7 +52,6 @@ const available = computed<AssignmentField[]>(() =>
               'supervisor_employee_id',
               'work_center_id',
               'attendance_policy_id',
-              'auto_clock_out_at',
           ],
 );
 
@@ -71,7 +69,6 @@ const values = reactive<AssignmentModel>({
     supervisor_employee_id: null,
     schedule_id: null,
     attendance_policy_id: null,
-    auto_clock_out_at: null,
 });
 
 const errors = computed(() => form.errors as Record<string, string>);
@@ -94,7 +91,6 @@ watch(open, (isOpen) => {
     values.supervisor_employee_id = str(props.current?.supervisor_employee_id);
     values.schedule_id = str(props.current?.schedule_id);
     values.attendance_policy_id = str(props.current?.attendance_policy_id);
-    values.auto_clock_out_at = props.current?.auto_clock_out_at ?? null;
     if (props.preset) {
         form.fields = [props.preset];
     }

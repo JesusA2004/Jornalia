@@ -111,12 +111,12 @@ const sourceLabel = (source: string) =>
 const help: HelpStep[] = [
     {
         title: 'Descarga la plantilla',
-        text: 'Columnas mínimas: número, nombre, apellido paterno y fecha de ingreso.',
+        text: 'Obligatorias: número, nombre, apellido, ingreso, nacimiento, sucursal, puesto y horario.',
         icon: Download,
     },
     {
         title: 'Simula primero',
-        text: 'La simulación valida todo sin guardar y muestra los conflictos.',
+        text: 'Valida edad mínima, sucursal, puesto y horario vigentes; las filas con error no se importan y se listan por línea.',
         icon: FlaskConical,
     },
     {

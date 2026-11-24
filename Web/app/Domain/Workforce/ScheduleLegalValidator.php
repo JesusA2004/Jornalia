@@ -7,6 +7,7 @@ use App\Domain\Legal\LegalParameters;
 use App\Domain\Legal\ShiftClassifier;
 use App\Domain\Scheduling\ScheduleResolver;
 use App\Enums\ShiftKind;
+use App\Models\LegalVersion;
 use App\Models\Schedule;
 use App\Models\ScheduleSegment;
 use Carbon\CarbonImmutable;
@@ -99,6 +100,51 @@ final class ScheduleLegalValidator
         }
 
         return $result['weekly_minutes'];
+    }
+
+    /**
+     * Fechas de entrada en vigor de los próximos tramos legales (reducción gradual de
+     * la jornada; fuente única: tabla `legal_versions`).
+     *
+     * @return list<string>
+     */
+    public function futureTramoDates(int $limit = 6): array
+    {
+        return LegalVersion::query()->whereDate('valid_from', '>', CarbonImmutable::today())
+            ->orderBy('valid_from')->limit($limit)->pluck('valid_from')
+            ->map(fn ($d) => CarbonImmutable::parse($d)->toDateString())->values()->all();
+    }
+
+    /**
+     * Pronóstico contra los tramos futuros (PDF RH pantalla 10, punto 5): no bloquea,
+     * sólo ADVIERTE si el horario dejará de cumplir en un tramo siguiente.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @param  list<array{day_index:int, ordinal?:int, starts_at:string, ends_at:string, break_minutes?:int}>  $segments
+     * @param  list<string>|null  $dates  fechas de tramos futuros (por omisión, las de `legal_versions`)
+     * @return array{adjust_before:string|null, adjust_weekly_max:int|null, compliant_until:string|null, warning:string|null}
+     */
+    public function outlook(array $attributes, array $segments, ?array $dates = null): array
+    {
+        $dates ??= $this->futureTramoDates();
+        $lastOk = null;
+        foreach ($dates as $date) {
+            $result = $this->evaluate($attributes, $segments, [$date]);
+            if ($result['violations'] !== []) {
+                $params = $this->law->for($date);
+                $year = CarbonImmutable::parse($date)->year;
+
+                return [
+                    'adjust_before' => $date,
+                    'adjust_weekly_max' => $params->weeklyOrdinaryMaxMinutes,
+                    'compliant_until' => $lastOk,
+                    'warning' => sprintf('Cumple hoy, pero deberá ajustarse antes del %s (máximo %s semanales en %d).', CarbonImmutable::parse($date)->format('d/m/Y'), self::hours($params->weeklyOrdinaryMaxMinutes), $year),
+                ];
+            }
+            $lastOk = $date;
+        }
+
+        return ['adjust_before' => null, 'adjust_weekly_max' => null, 'compliant_until' => $lastOk, 'warning' => null];
     }
 
     /**

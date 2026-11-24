@@ -2,12 +2,17 @@
 
 namespace App\Http\Controllers\Web\Admin;
 
+use App\Domain\Integrations\People\PeopleStructureSource;
+use App\Domain\Integrations\People\PeopleStructureSynchronizer;
+use App\Domain\Organization\OfficialCompanyData;
 use App\Domain\Workforce\MexicanStates;
 use App\Models\Branch;
 use App\Models\Department;
 use App\Models\EmploymentAssignment;
 use App\Models\Geofence;
+use App\Models\IntegrationRun;
 use App\Models\LegalEntity;
+use App\Models\Organization;
 use App\Models\Position;
 use App\Models\WorkCenter;
 use Carbon\CarbonImmutable;
@@ -21,7 +26,7 @@ use Inertia\Response;
  */
 class OrganizationController extends AdminController
 {
-    public function index(Request $request): Response
+    public function index(Request $request, OfficialCompanyData $official, PeopleStructureSource $people): Response
     {
         $today = CarbonImmutable::today()->toDateString();
         $active = fn (string $column) => EmploymentAssignment::query()
@@ -53,20 +58,20 @@ class OrganizationController extends AdminController
                 ->map(fn (Branch $b) => [
                     'id' => $b->id, 'name' => $b->name, 'code' => $b->code, 'region' => $b->region, 'address' => $b->address,
                     'latitude' => $b->latitude, 'longitude' => $b->longitude, 'active' => $b->active && ! $b->trashed(), 'deleted' => $b->trashed(),
+                    'employer_registration' => $b->employer_registration, 'external_id' => $b->external_id,
                     'work_center_id' => $b->work_center_id, 'work_center' => $b->workCenter?->name,
                     'geofences_count' => $b->geofences_count, 'employees_count' => (int) ($byBranch[$b->id] ?? 0),
                 ]),
             'departments' => Department::query()->withTrashed()->with(['parent' => fn ($q) => $q->withTrashed()->select('id', 'name')])->withCount('positions')->orderBy('name')->get()
                 ->map(fn (Department $d) => [
-                    'id' => $d->id, 'name' => $d->name, 'code' => $d->code, 'active' => $d->active && ! $d->trashed(), 'deleted' => $d->trashed(),
+                    'id' => $d->id, 'name' => $d->name, 'code' => $d->code, 'active' => $d->active && ! $d->trashed(), 'deleted' => $d->trashed(), 'external_id' => $d->external_id,
                     'parent_id' => $d->parent_id, 'parent' => $d->parent?->name,
                     'positions_count' => $d->positions_count, 'employees_count' => (int) ($byDepartment[$d->id] ?? 0),
                 ]),
             'positions' => Position::query()->withTrashed()->with(['department' => fn ($q) => $q->withTrashed()->select('id', 'name')])->orderBy('name')->get()
                 ->map(fn (Position $p) => [
                     'id' => $p->id, 'name' => $p->name, 'code' => $p->code, 'active' => $p->active && ! $p->trashed(), 'deleted' => $p->trashed(),
-                    'department_id' => $p->department_id,
-                    'auto_clock_out_at' => $p->auto_clock_out_at ? substr((string) $p->auto_clock_out_at, 0, 5) : null, 'department' => $p->department?->name,
+                    'department_id' => $p->department_id, 'department' => $p->department?->name, 'external_id' => $p->external_id,
                     'employees_count' => (int) ($byPosition[$p->id] ?? 0),
                 ]),
             'geofences' => Geofence::query()->withTrashed()->with(['branch' => fn ($q) => $q->withTrashed()->select('id', 'name')])->orderBy('name')->get()
@@ -77,7 +82,21 @@ class OrganizationController extends AdminController
                 ]),
             'states' => MexicanStates::options(),
             'timezones' => MexicanStates::timezones(),
-            'can' => ['manage' => $request->user()?->can('organization.manage') ?? false],
+            'official' => $official->apply(Organization::query()->findOrFail($this->organizationId()), dryRun: true),
+            'people' => [
+                'configured' => $people->isConfigured(),
+                'last_run' => ($run = IntegrationRun::query()->where('source', PeopleStructureSynchronizer::RUN_SOURCE)->latest('started_at')->first()) ? [
+                    'status' => $run->status, 'finished_at' => $run->finished_at?->toIso8601String(),
+                ] : null,
+            ],
+            'geofence_radius' => [
+                'min' => OrganizationStructureController::RADIUS_MIN, 'max' => OrganizationStructureController::RADIUS_MAX,
+                'suggested_min' => OrganizationStructureController::RADIUS_SUGGESTED_MIN, 'suggested_max' => OrganizationStructureController::RADIUS_SUGGESTED_MAX,
+            ],
+            'can' => [
+                'manage' => $request->user()?->can('organization.manage') ?? false,
+                'integrations' => $request->user()?->can('integrations.view') ?? false,
+            ],
         ]);
     }
 }

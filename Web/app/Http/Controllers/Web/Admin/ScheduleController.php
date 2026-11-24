@@ -9,7 +9,6 @@ use App\Enums\ScheduleType;
 use App\Enums\ShiftKind;
 use App\Http\Requests\Web\Admin\ScheduleRequest;
 use App\Models\EmploymentAssignment;
-use App\Models\LegalVersion;
 use App\Models\Schedule;
 use App\Models\ScheduleSegment;
 use Carbon\CarbonImmutable;
@@ -111,8 +110,17 @@ class ScheduleController extends AdminController
             'segments.*.break_minutes' => ['required', 'integer', 'min:0', 'max:240'],
         ]);
 
-        $dates = array_values(array_unique(array_filter([CarbonImmutable::today()->toDateString(), isset($data['applies_from']) ? CarbonImmutable::parse($data['applies_from'])->toDateString() : null, ...$this->outlookDates()])));
-        $result = $this->validator->evaluate($data, array_values($data['segments'] ?? []), $dates);
+        $segments = array_values($data['segments'] ?? []);
+        // Bloquea sólo lo vigente (hoy y fecha de aplicación); los tramos futuros sólo advierten.
+        $blocking = array_values(array_unique(array_filter([CarbonImmutable::today()->toDateString(), isset($data['applies_from']) ? CarbonImmutable::parse($data['applies_from'])->toDateString() : null])));
+        $result = $this->validator->evaluate($data, $segments, $blocking);
+        $futureDates = array_values(array_diff($this->outlookDates(), $blocking));
+        $future = $futureDates === [] ? ['checks' => []] : $this->validator->evaluate($data, $segments, $futureDates);
+        $result['checks'] = [
+            ...array_map(fn (array $c) => [...$c, 'future' => false], $result['checks']),
+            ...array_map(fn (array $c) => [...$c, 'future' => true], $future['checks']),
+        ];
+        $result['outlook'] = $this->validator->outlook($data, $segments, $futureDates);
 
         return response()->json($result);
     }
@@ -130,8 +138,10 @@ class ScheduleController extends AdminController
             return $schedule;
         });
 
-        $this->audit->log('schedule.created', $schedule, "Horario creado: {$schedule->name}", ['code' => $schedule->code, 'segments' => count($segments)]);
-        $this->toast("Horario «{$schedule->name}» creado.");
+        // Bloquea lo vigente (assertValid) y sólo ADVIERTE por tramos futuros.
+        $outlook = $this->validator->outlook($data, $segments);
+        $this->audit->log('schedule.created', $schedule, "Horario creado: {$schedule->name}", ['code' => $schedule->code, 'segments' => count($segments), 'adjust_before' => $outlook['adjust_before']]);
+        $this->toast(trim("Horario «{$schedule->name}» creado. ".($outlook['warning'] ?? '')), $outlook['warning'] !== null ? 'warning' : 'success');
 
         return to_route('horarios.index');
     }
@@ -159,7 +169,8 @@ class ScheduleController extends AdminController
             'segments_before' => $before,
             'segments_after' => $segments,
         ]);
-        $this->toast('Horario actualizado. Los cálculos de días pasados ya consolidados no se modifican.');
+        $outlook = $this->validator->outlook($data, $segments);
+        $this->toast('Horario actualizado. Los cálculos de días pasados ya consolidados no se modifican.'.($outlook['warning'] !== null ? ' '.$outlook['warning'] : ''), $outlook['warning'] !== null ? 'warning' : 'success');
 
         return to_route('horarios.index');
     }
@@ -252,9 +263,7 @@ class ScheduleController extends AdminController
      */
     private function outlookDates(): array
     {
-        return LegalVersion::query()->whereDate('valid_from', '>', CarbonImmutable::today())
-            ->orderBy('valid_from')->limit(4)->pluck('valid_from')
-            ->map(fn ($d) => CarbonImmutable::parse($d)->toDateString())->values()->all();
+        return $this->validator->futureTramoDates(4);
     }
 
     /**
@@ -319,6 +328,7 @@ class ScheduleController extends AdminController
             'checks' => $evaluation['checks'],
             'compliant_today' => $this->validator->evaluate(['cycle_length_days' => $s->cycle_length_days, 'shift_kind' => $s->shift_kind->value], $segments, [CarbonImmutable::today()->toDateString()])['violations'] === [],
             'violations' => $evaluation['violations']['segments'] ?? [],
+            'outlook' => $this->validator->outlook(['cycle_length_days' => $s->cycle_length_days, 'shift_kind' => $s->shift_kind->value], $segments, $outlook),
         ];
     }
 

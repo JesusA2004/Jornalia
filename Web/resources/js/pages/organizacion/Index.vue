@@ -5,9 +5,11 @@ import {
     ArchiveRestore,
     Briefcase,
     Building2,
+    FileCheck2,
     Factory,
     FolderTree,
     Landmark,
+    Link2,
     MapPin,
     MoreHorizontal,
     Pencil,
@@ -18,6 +20,7 @@ import {
 import type { LucideIcon } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import { toast } from 'vue-sonner';
+import OrganizationSetupController from '@/actions/App/Http/Controllers/Web/Admin/OrganizationSetupController';
 import OrganizationStructureController from '@/actions/App/Http/Controllers/Web/Admin/OrganizationStructureController';
 import ConfirmDialog from '@/components/app/ConfirmDialog.vue';
 import DataTable from '@/components/app/DataTable.vue';
@@ -25,6 +28,7 @@ import EmptyState from '@/components/app/EmptyState.vue';
 import PageHeader from '@/components/app/PageHeader.vue';
 import SearchInput from '@/components/app/SearchInput.vue';
 import StatusBadge from '@/components/app/StatusBadge.vue';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
@@ -97,6 +101,13 @@ const opt = (rows: Row[], label: string, desc?: string): SelectOption[] =>
 const asRows = (rows: unknown[]): Row[] => rows as Row[];
 const str = (v: unknown): string | null =>
     v === null || v === undefined || v === '' ? null : String(v);
+const orPending = (v: unknown): string => str(v) ?? 'Pendiente';
+const origin: Extra = {
+    key: 'origin',
+    label: 'Origen',
+    value: (r) => (r.external_id ? 'People' : 'Local'),
+    hideBelow: 'lg',
+};
 
 const tabs = computed<TabConfig[]>(() => {
     const legalOptions = opt(asRows(props.legal_entities), 'legal_name', 'rfc');
@@ -270,8 +281,14 @@ const tabs = computed<TabConfig[]>(() => {
                 {
                     key: 'work_center',
                     label: 'Centro',
-                    value: (r) => str(r.work_center),
+                    value: (r) => orPending(r.work_center),
                     hideBelow: 'md',
+                },
+                {
+                    key: 'employer_registration',
+                    label: 'Registro patronal',
+                    value: (r) => orPending(r.employer_registration),
+                    hideBelow: 'lg',
                 },
                 {
                     key: 'coords',
@@ -290,6 +307,7 @@ const tabs = computed<TabConfig[]>(() => {
                     numeric: true,
                     hideBelow: 'sm',
                 },
+                origin,
                 {
                     key: 'employees_count',
                     label: 'Personal',
@@ -321,6 +339,13 @@ const tabs = computed<TabConfig[]>(() => {
                 },
                 { key: 'address', label: 'Domicilio', type: 'textarea' },
                 {
+                    key: 'employer_registration',
+                    label: 'Registro patronal IMSS',
+                    type: 'text',
+                    uppercase: true,
+                    full: true,
+                },
+                {
                     key: 'latitude',
                     label: 'Latitud',
                     type: 'text',
@@ -342,6 +367,7 @@ const tabs = computed<TabConfig[]>(() => {
                 region: null,
                 work_center_id: null,
                 address: null,
+                employer_registration: null,
                 latitude: null,
                 longitude: null,
                 active: true,
@@ -372,6 +398,7 @@ const tabs = computed<TabConfig[]>(() => {
                     numeric: true,
                     hideBelow: 'sm',
                 },
+                origin,
                 {
                     key: 'employees_count',
                     label: 'Personal',
@@ -414,12 +441,7 @@ const tabs = computed<TabConfig[]>(() => {
                     value: (r) => str(r.department),
                     hideBelow: 'sm',
                 },
-                {
-                    key: 'auto_clock_out_at',
-                    label: 'Salida auto.',
-                    value: (r) => str(r.auto_clock_out_at),
-                    hideBelow: 'md',
-                },
+                origin,
                 {
                     key: 'employees_count',
                     label: 'Personal',
@@ -442,20 +464,12 @@ const tabs = computed<TabConfig[]>(() => {
                     type: 'combobox',
                     options: departmentOptions,
                 },
-                {
-                    key: 'auto_clock_out_at',
-                    label: 'Salida automática',
-                    type: 'time',
-                    full: true,
-                    hint: 'Si no marca salida, se registra a esta hora. No cuenta como horas extra.',
-                },
                 active,
             ],
             defaults: {
                 name: null,
                 code: null,
                 department_id: null,
-                auto_clock_out_at: null,
                 active: true,
             },
         },
@@ -521,10 +535,10 @@ const tabs = computed<TabConfig[]>(() => {
                     label: 'Radio (m)',
                     type: 'number',
                     required: true,
-                    min: 20,
-                    max: 5000,
+                    min: props.geofence_radius.min,
+                    max: props.geofence_radius.max,
                     step: 10,
-                    hint: 'Entre 20 m y 5 km',
+                    hint: `Sugerido: ${props.geofence_radius.suggested_min} a ${props.geofence_radius.suggested_max} m`,
                 },
                 active,
             ],
@@ -533,7 +547,7 @@ const tabs = computed<TabConfig[]>(() => {
                 branch_id: null,
                 latitude: null,
                 longitude: null,
-                radius_meters: 100,
+                radius_meters: 120,
                 active: true,
             },
             map: (r) => osmUrl(r.latitude as string, r.longitude as string),
@@ -686,6 +700,44 @@ function restore(tab: TabConfig, row: Row): void {
     );
 }
 
+/* ---------------------------------------------- Datos oficiales y centros -- */
+const FIELD_LABELS: Record<string, string> = {
+    legal_name: 'Razón social',
+    rfc: 'RFC',
+    fiscal_address: 'Domicilio fiscal',
+    name: 'Nombre comercial',
+};
+const officialPending = computed(
+    () =>
+        props.can.manage &&
+        ['applied', 'conflict'].includes(props.official.status),
+);
+const forceOpen = ref(false);
+
+function loadOfficial(force: boolean): void {
+    busy.value = true;
+    router.post(
+        OrganizationSetupController.officialData.url(),
+        { force },
+        {
+            preserveScroll: true,
+            onError: showErrors,
+            onFinish: () => {
+                busy.value = false;
+                forceOpen.value = false;
+            },
+        },
+    );
+}
+
+function makeWorkCenter(row: Row): void {
+    router.post(
+        OrganizationSetupController.branchWorkCenter.url({ id: row.id }),
+        {},
+        { preserveScroll: true, onError: showErrors },
+    );
+}
+
 const help: HelpStep[] = [
     {
         title: 'Razón social',
@@ -698,9 +750,24 @@ const help: HelpStep[] = [
         icon: Factory,
     },
     {
-        title: 'Sucursales y geocercas',
-        text: 'La geocerca delimita dónde se acepta el marcaje.',
+        title: 'Datos oficiales',
+        text: 'Razón social, RFC y domicilio fiscal de la Constancia de Situación Fiscal. Si ya hay datos distintos, se piden confirmar antes de reemplazarlos.',
+        icon: FileCheck2,
+    },
+    {
+        title: 'Sucursal = centro de trabajo',
+        text: 'Cada sucursal lleva domicilio y registro patronal. «Pendiente» indica un dato por capturar.',
+        icon: Store,
+    },
+    {
+        title: 'Geocercas',
+        text: 'Delimitan dónde se acepta el marcaje. Radio sugerido: 100 a 150 m.',
         icon: MapPin,
+    },
+    {
+        title: 'Mr. Lana People',
+        text: 'Departamentos, puestos y sucursales con origen «People» se actualizan desde Integraciones.',
+        icon: Link2,
     },
     {
         title: 'Nada se borra',
@@ -717,7 +784,56 @@ const help: HelpStep[] = [
         :icon="Building2"
         :help="help"
         help-title="Estructura de la organización"
-    />
+    >
+        <template v-if="can.integrations" #actions>
+            <Button variant="outline" as-child>
+                <a href="/integraciones">
+                    <Link2 />
+                    Integraciones
+                </a>
+            </Button>
+        </template>
+    </PageHeader>
+
+    <Alert v-if="officialPending" class="mb-5">
+        <FileCheck2 />
+        <AlertTitle>Datos oficiales pendientes</AlertTitle>
+        <AlertDescription>
+            <ul class="mt-1 space-y-0.5">
+                <li v-for="c in official.changes" :key="c.field">
+                    {{ FIELD_LABELS[c.field] ?? c.field }}:
+                    <span class="font-medium">{{ c.after }}</span>
+                </li>
+                <li v-for="c in official.conflicts" :key="c.field">
+                    {{ FIELD_LABELS[c.field] ?? c.field }}: capturado «{{
+                        c.current
+                    }}» · oficial «<span class="font-medium">{{
+                        c.official
+                    }}</span
+                    >»
+                </li>
+            </ul>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <Button
+                    v-if="official.changes.length > 0"
+                    size="sm"
+                    :disabled="busy"
+                    @click="loadOfficial(false)"
+                >
+                    Cargar datos oficiales
+                </Button>
+                <Button
+                    v-if="official.conflicts.length > 0"
+                    size="sm"
+                    variant="outline"
+                    :disabled="busy"
+                    @click="forceOpen = true"
+                >
+                    Reemplazar con oficiales
+                </Button>
+            </div>
+        </AlertDescription>
+    </Alert>
 
     <Tabs v-model="activeTab" class="gap-5">
         <div
@@ -880,11 +996,21 @@ const help: HelpStep[] = [
                                 <MoreHorizontal />
                             </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" class="w-44">
+                        <DropdownMenuContent align="end" class="w-56">
                             <template v-if="!row.deleted">
                                 <DropdownMenuItem @select="openEdit(tab, row)">
                                     <Pencil />
                                     Editar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                    v-if="
+                                        tab.key === 'branches' &&
+                                        !row.work_center_id
+                                    "
+                                    @select="makeWorkCenter(row)"
+                                >
+                                    <Factory />
+                                    Registrar centro de trabajo
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
@@ -929,5 +1055,16 @@ const help: HelpStep[] = [
         :loading="busy"
         :close-on-confirm="false"
         @confirm="deactivate"
+    />
+
+    <ConfirmDialog
+        v-model:open="forceOpen"
+        title="¿Reemplazar con los datos oficiales?"
+        description="Se sustituirán los valores capturados. El cambio queda en la bitácora."
+        confirm-label="Reemplazar"
+        :icon="FileCheck2"
+        :loading="busy"
+        :close-on-confirm="false"
+        @confirm="loadOfficial(true)"
     />
 </template>

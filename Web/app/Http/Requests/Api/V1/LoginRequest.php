@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Domain\Security\DeviceIntegrityMonitor;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -31,7 +32,21 @@ final class LoginRequest extends FormRequest
             'device.app_version' => ['required', 'string', 'max:40'],
             'device.model' => ['nullable', 'string', 'max:120'],
             'device.biometric_available' => ['required', 'boolean'],
+            'device.integrity' => ['nullable', 'array', 'max:10'],
+            'device.integrity.*' => ['string', 'max:30'],
         ];
+    }
+
+    /**
+     * Señales de integridad reportadas por la app (root, jailbroken, emulator, mock_location).
+     *
+     * @return list<string>
+     */
+    public function integritySignals(): array
+    {
+        $values = array_map('strval', (array) $this->input('device.integrity', []));
+
+        return DeviceIntegrityMonitor::parseHeader(implode(',', $values));
     }
 
     /**

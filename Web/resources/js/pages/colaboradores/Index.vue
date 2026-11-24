@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
 import {
+    FileSignature,
     FileUp,
-    KeyRound,
     Search,
+    TriangleAlert,
     UserCheck,
     UserMinus,
     UserPlus,
@@ -53,7 +54,7 @@ const { filters, activeCount, reset, processing } = useFilters(
         position_id: props.filters.position_id
             ? String(props.filters.position_id)
             : null,
-        account: props.filters.account ?? null,
+        registration: props.filters.registration ?? null,
     },
     { only: ['employees', 'filters', 'stats'], defaults: { search: '' } },
 );
@@ -74,7 +75,9 @@ const columns: DataTableColumn<EmployeeListRow>[] = [
     { key: 'position', label: 'Puesto', hideBelow: 'lg' },
     { key: 'schedule', label: 'Horario', hideBelow: 'xl' },
     { key: 'starts_on', label: 'Ingreso', hideBelow: 'lg', class: 'w-32' },
-    { key: 'status', label: 'Estado', sortable: true, class: 'w-28' },
+    { key: 'app', label: 'App', hideBelow: 'md', class: 'w-28' },
+    { key: 'agreement', label: 'Convenio de registro', hideBelow: 'md', class: 'w-36' },
+    { key: 'status', label: 'Estado', sortable: true, class: 'w-32' },
 ];
 
 const statusOptions = [
@@ -83,9 +86,11 @@ const statusOptions = [
     { value: 'inactive', label: 'Inactivos' },
 ];
 
-const accountOptions = [
-    { value: 'with', label: 'Con cuenta' },
-    { value: 'without', label: 'Sin cuenta' },
+const registrationOptions = [
+    { value: 'complete', label: 'Completo' },
+    { value: 'incomplete', label: 'Incompleto' },
+    { value: 'no_app', label: 'Sin app' },
+    { value: 'no_agreement', label: 'Sin convenio' },
 ];
 
 const pagination = computed(() => toPaginationMeta(props.employees));
@@ -106,6 +111,11 @@ const help: HelpStep[] = [
         title: 'Bajas y reingresos',
         text: 'La baja cierra la relación laboral. Un reingreso abre una nueva y conserva la anterior.',
         icon: UserMinus,
+    },
+    {
+        title: 'Alta de registro',
+        text: 'Pasa a «Activo» cuando tiene la app vinculada y el convenio de registro firmado (en la app o adjunto en papel).',
+        icon: FileSignature,
     },
     {
         title: 'Importación',
@@ -153,10 +163,11 @@ const help: HelpStep[] = [
             tone="brand"
         />
         <KpiTile
-            label="Sin cuenta de acceso"
-            :value="stats.without_account"
-            :icon="KeyRound"
-            :tone="stats.without_account > 0 ? 'warning' : 'neutral'"
+            label="Alta de registro incompleta"
+            :value="stats.registration_incomplete"
+            :icon="TriangleAlert"
+            :tone="stats.registration_incomplete > 0 ? 'warning' : 'neutral'"
+            hint="Sin app vinculada o sin convenio firmado"
         />
         <KpiTile
             label="Bajas"
@@ -230,10 +241,10 @@ const help: HelpStep[] = [
                     clearable
                 />
                 <SelectField
-                    v-model="filters.account"
-                    :options="accountOptions"
-                    placeholder="Cuenta"
-                    prefix="Cuenta:"
+                    v-model="filters.registration"
+                    :options="registrationOptions"
+                    placeholder="Registro electrónico"
+                    prefix="Registro:"
                     size="sm"
                     clearable
                 />
@@ -256,11 +267,29 @@ const help: HelpStep[] = [
                 row.starts_on ? formatDate(row.starts_on, 'date-short') : '—'
             }}</span>
         </template>
+        <template #cell-app="{ row }">
+            <StatusBadge
+                v-if="row.registration"
+                :status="row.registration.app ? 'linked' : 'pending'"
+                :label="row.registration.app ? 'Vinculada' : 'Pendiente'"
+                :tone="row.registration.app ? 'success' : 'danger'"
+                size="sm"
+            />
+        </template>
+        <template #cell-agreement="{ row }">
+            <StatusBadge
+                v-if="row.registration"
+                :status="row.registration.agreement ? 'signed' : 'pending'"
+                :label="row.registration.agreement ? 'Firmado' : 'Pendiente'"
+                :tone="row.registration.agreement ? 'success' : 'danger'"
+                size="sm"
+            />
+        </template>
         <template #cell-status="{ row }">
             <StatusBadge
-                :status="row.status"
-                :label="EMPLOYEE_STATUS[row.status]?.label"
-                :tone="EMPLOYEE_STATUS[row.status]?.tone"
+                :status="row.display_status"
+                :label="EMPLOYEE_STATUS[row.display_status]?.label"
+                :tone="EMPLOYEE_STATUS[row.display_status]?.tone"
                 size="sm"
             />
         </template>

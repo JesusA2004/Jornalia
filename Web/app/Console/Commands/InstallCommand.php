@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Domain\Organization\OrganizationProvisioner;
+use App\Domain\Security\PermissionCatalog;
 use App\Models\User;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -54,7 +55,8 @@ final class InstallCommand extends Command
             $user->organizations()->attach($organization->id, ['status' => 'active', 'access_all_branches' => true]);
 
             app(PermissionRegistrar::class)->setPermissionsTeamId($organization->id);
-            $user->assignRole('Administrador de empresa');
+            // Sistemas: administra la plataforma; la operación de RH se asigna a otro usuario.
+            $user->assignRole(PermissionCatalog::ROLE_PLATFORM_ADMIN);
         });
 
         $this->info("Organización «{$orgName}» y administrador {$email} creados.");

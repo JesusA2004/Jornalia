@@ -113,8 +113,8 @@ const help: HelpStep[] = [
         icon: UsersRound,
     },
     {
-        title: 'Excepciones',
-        text: 'Cambios puntuales por colaborador y día (descanso o jornada especial).',
+        title: 'Cambios programados',
+        text: 'Sólo a futuro, con motivo y autorización de RH. Nunca modifican marcajes ni retardos ya generados.',
         icon: CalendarX2,
     },
 ];
@@ -162,6 +162,28 @@ function usage(schedule: ScheduleData): number {
     );
 }
 
+/** Validación LFT: «Cumple hasta …» o «Ajustar antes de …» (tramos futuros). */
+function lftLabel(schedule: ScheduleData): {
+    label: string;
+    tone: 'success' | 'warning' | 'danger';
+} {
+    if (!schedule.compliant_today) {
+        return { label: 'No cumple hoy', tone: 'danger' };
+    }
+
+    const o = schedule.outlook;
+    if (o?.adjust_before) {
+        return {
+            label: `Ajustar antes de ${o.adjust_before.slice(0, 4)}`,
+            tone: 'warning',
+        };
+    }
+
+    const until = o?.compliant_until ?? props.legal.today;
+
+    return { label: `Cumple hasta ${until.slice(0, 4)}`, tone: 'success' };
+}
+
 function futureIssues(schedule: ScheduleData) {
     return schedule.checks.filter((c) => !c.ok && c.date > props.legal.today);
 }
@@ -181,7 +203,7 @@ function futureIssues(schedule: ScheduleData) {
                     <Button v-if="can.assign" variant="outline" as-child>
                         <Link :href="ScheduleExceptionController.index()">
                             <CalendarX2 aria-hidden="true" />
-                            Excepciones
+                            Cambios de horario programados
                         </Link>
                     </Button>
                     <Button v-if="can.assign" variant="outline" as-child>
@@ -499,11 +521,11 @@ function futureIssues(schedule: ScheduleData) {
                         size="sm"
                     />
                     <StatusBadge
-                        v-else-if="schedule.compliant_today"
-                        status="compliant"
+                        v-else
+                        :label="lftLabel(schedule).label"
+                        :tone="lftLabel(schedule).tone"
                         size="sm"
                     />
-                    <StatusBadge v-else status="non_compliant" size="sm" />
                 </footer>
             </article>
         </div>

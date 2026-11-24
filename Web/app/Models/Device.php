@@ -30,6 +30,8 @@ class Device extends Model
             'secret' => 'encrypted',
             'status' => DeviceStatus::class,
             'biometric_available' => 'boolean',
+            'integrity_flags' => 'array',
+            'integrity_reported_at' => 'datetime',
             'is_corporate' => 'boolean',
             'approved_at' => 'datetime',
             'revoked_at' => 'datetime',

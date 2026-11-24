@@ -23,6 +23,10 @@ import AccessModeField from './AccessModeField.vue';
 const open = defineModel<boolean>('open', { default: false });
 
 const today = new Date().toISOString().slice(0, 10);
+// Vigencia máxima: 365 días (UserAccessService::AUTHORITY_MAX_DAYS).
+const maxDate = new Date(Date.now() + 365 * 86400000)
+    .toISOString()
+    .slice(0, 10);
 
 const form = useForm({
     name: '',
@@ -110,7 +114,7 @@ function submit(): void {
                     </FormField>
                     <FormField
                         label="Vigencia hasta"
-                        hint="Opcional"
+                        hint="Obligatoria"
                         :error="form.errors.expires_on"
                         v-slot="{ id, describedBy, invalid }"
                     >
@@ -118,8 +122,8 @@ function submit(): void {
                             :id="id"
                             v-model="form.expires_on"
                             :min="today"
-                            clearable
-                            placeholder="Sin vencimiento"
+                            :max="maxDate"
+                            placeholder="Elige la fecha"
                             :invalid="invalid"
                             :aria-describedby="describedBy"
                         />

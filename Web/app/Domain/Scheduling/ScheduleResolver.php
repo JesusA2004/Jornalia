@@ -49,9 +49,12 @@ final class ScheduleResolver
 
         $tz = $this->timezoneFor($employee, $assignment);
 
+        // Sólo los cambios de horario autorizados por RH surten efecto.
         $exception = ScheduleException::query()
             ->where('employee_id', $employee->id)
             ->whereDate('date', $date)
+            ->where('status', ScheduleException::STATUS_APPROVED)
+            ->latest('id')
             ->first();
 
         if ($exception !== null) {

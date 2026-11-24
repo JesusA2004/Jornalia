@@ -5,13 +5,15 @@ namespace App\Http\Controllers\Web\Admin;
 use App\Domain\Audit\AuditLogger;
 use App\Domain\Scheduling\ScheduleResolver;
 use App\Domain\Security\AccessScope;
+use App\Domain\Signatures\RegistrationDocuments;
 use App\Domain\Vacations\VacationService;
-use App\Domain\Workforce\AutoClockOutAdvisor;
+use App\Domain\Workforce\RegistrationStatus;
 use App\Domain\Workforce\WorkforceService;
 use App\Enums\ContractType;
 use App\Enums\WorkModality;
 use App\Http\Requests\Web\Admin\StoreEmployeeRequest;
 use App\Http\Requests\Web\Admin\UpdateEmployeeRequest;
+use App\Models\Attachment;
 use App\Models\AttendancePolicy;
 use App\Models\AuditLog;
 use App\Models\Branch;
@@ -43,6 +45,7 @@ class EmployeeController extends AdminController
         private readonly AccessScope $scope,
         private readonly WorkforceService $workforce,
         private readonly AuditLogger $audit,
+        private readonly RegistrationStatus $registration,
     ) {}
 
     public function index(Request $request): Response
@@ -57,6 +60,7 @@ class EmployeeController extends AdminController
             'department_id' => ['nullable', 'integer'],
             'position_id' => ['nullable', 'integer'],
             'account' => ['nullable', 'in:with,without'],
+            'registration' => ['nullable', 'in:'.implode(',', RegistrationStatus::FILTERS)],
             'sort' => ['nullable', 'in:'.implode(',', array_keys(self::SORTS))],
             'direction' => ['nullable', 'in:asc,desc'],
             'per_page' => ['nullable', 'integer', 'in:15,25,50,100'],
@@ -75,7 +79,8 @@ class EmployeeController extends AdminController
             })
             ->when($filters['status'] ?? null, fn (Builder $q, string $s) => $q->where('status', $s))
             ->when(($filters['account'] ?? null) === 'with', fn (Builder $q) => $q->whereNotNull('user_id'))
-            ->when(($filters['account'] ?? null) === 'without', fn (Builder $q) => $q->whereNull('user_id'));
+            ->when(($filters['account'] ?? null) === 'without', fn (Builder $q) => $q->whereNull('user_id'))
+            ->when($filters['registration'] ?? null, fn (Builder $q, string $f) => $this->registration->applyFilter($q, $f));
 
         foreach (['branch_id', 'department_id', 'position_id'] as $field) {
             if (! empty($filters[$field])) {
@@ -96,18 +101,21 @@ class EmployeeController extends AdminController
         $paginator = $query
             ->with(['employments' => fn ($q) => $q->orderByDesc('starts_on'), 'employments.assignments.branch' => fn ($q) => $q->withTrashed()->select('id', 'name'), 'employments.assignments.position' => fn ($q) => $q->withTrashed()->select('id', 'name'), 'employments.assignments.department' => fn ($q) => $q->withTrashed()->select('id', 'name'), 'employments.assignments.schedule' => fn ($q) => $q->withTrashed()->select('id', 'name')])
             ->paginate((int) ($filters['per_page'] ?? 15))
-            ->withQueryString()
-            ->through(fn (Employee $e) => $this->listRow($e, $today));
+            ->withQueryString();
+        $registration = $this->registration->forMany(collect($paginator->items())->pluck('id')->map(fn ($id) => (int) $id)->all());
+        $paginator->through(fn (Employee $e) => $this->listRow($e, $today, $registration[$e->id] ?? null));
 
         $monthStart = CarbonImmutable::today()->startOfMonth()->toDateString();
 
         return Inertia::render('colaboradores/Index', [
             'employees' => $paginator,
-            'filters' => Arr::only($filters, ['search', 'status', 'branch_id', 'department_id', 'position_id', 'account', 'sort', 'direction']),
+            'filters' => Arr::only($filters, ['search', 'status', 'branch_id', 'department_id', 'position_id', 'account', 'registration', 'sort', 'direction']),
             'stats' => [
                 'active' => (clone $base)->where('status', 'active')->count(),
                 'terminated' => (clone $base)->where('status', 'terminated')->count(),
                 'without_account' => (clone $base)->where('status', 'active')->whereNull('user_id')->count(),
+                // Alta de registro incompleta: activos sin app vinculada o sin convenio firmado.
+                'registration_incomplete' => $this->registration->whereIncomplete((clone $base)->where('status', 'active'))->count(),
                 'hired_this_month' => Employment::query()->whereIn('employee_id', (clone $base)->select('employees.id'))->whereDate('starts_on', '>=', $monthStart)->count(),
             ],
             'options' => [
@@ -223,7 +231,6 @@ class EmployeeController extends AdminController
                 'created_at' => $employee->created_at?->toIso8601String(),
             ],
             'current' => $current ? $this->assignmentData($current) : null,
-            'auto_clock_out' => app(AutoClockOutAdvisor::class)->effective($employee, $current),
             'timezone' => $resolver->timezoneFor($employee, $current),
             'employments' => $employee->employments->map(fn (Employment $em) => [
                 'id' => $em->id,
@@ -250,7 +257,8 @@ class EmployeeController extends AdminController
             ] : null,
             'week' => $week,
             'exceptions' => ScheduleException::query()->where('employee_id', $employee->id)->whereDate('date', '>=', $today->subDays(30))->orderBy('date')->limit(60)->get()
-                ->map(fn (ScheduleException $x) => ['id' => $x->id, 'date' => $x->date->toDateString(), 'is_rest_day' => $x->is_rest_day, 'starts_at' => $x->starts_at ? substr((string) $x->starts_at, 0, 5) : null, 'ends_at' => $x->ends_at ? substr((string) $x->ends_at, 0, 5) : null, 'break_minutes' => (int) $x->break_minutes, 'reason' => $x->reason]),
+                ->map(fn (ScheduleException $x) => ['id' => $x->id, 'date' => $x->date->toDateString(), 'is_rest_day' => $x->is_rest_day, 'starts_at' => $x->starts_at ? substr((string) $x->starts_at, 0, 5) : null, 'ends_at' => $x->ends_at ? substr((string) $x->ends_at, 0, 5) : null, 'break_minutes' => (int) $x->break_minutes, 'reason' => $x->reason, 'status' => $x->status]),
+            'registration' => $this->registrationData($employee),
             'devices' => $employee->devices->map(fn ($d) => [
                 'id' => $d->id, 'name' => $d->name, 'platform' => $d->platform, 'model' => $d->model, 'app_version' => $d->app_version,
                 'status' => $d->status->value, 'is_corporate' => $d->is_corporate, 'last_seen_at' => $d->last_seen_at?->toIso8601String(),
@@ -282,6 +290,27 @@ class EmployeeController extends AdminController
             ],
             'flash_password' => $request->session()->get('temporary_password'),
         ]);
+    }
+
+    /**
+     * Alta de registro electrónico: app vinculada, convenio firmado y convenios en papel.
+     *
+     * @return array<string, mixed>
+     */
+    private function registrationData(Employee $employee): array
+    {
+        $status = $this->registration->for($employee);
+        $papers = Attachment::query()
+            ->where('attachable_type', $employee->getMorphClass())
+            ->where('attachable_id', $employee->id)
+            ->where('category', RegistrationDocuments::PAPER_AGREEMENT_CATEGORY)
+            ->with('uploadedBy:id,name')->orderByDesc('id')->get()
+            ->map(fn (Attachment $a) => [
+                'id' => $a->id, 'name' => $a->original_name, 'size' => (int) $a->size, 'sha256' => $a->sha256,
+                'uploaded_at' => $a->created_at?->toIso8601String(), 'uploaded_by' => $a->uploadedBy?->name,
+            ])->values();
+
+        return $status + ['papers' => $papers, 'display_status' => self::displayStatus($employee, $status)];
     }
 
     /**
@@ -413,6 +442,19 @@ class EmployeeController extends AdminController
     }
 
     /**
+     * Estado mostrado: un activo con alta de registro incompleta se presenta como
+     * «Alta en proceso» (`onboarding`) hasta tener app vinculada y convenio firmado.
+     *
+     * @param  array{app: bool, agreement: bool, complete: bool}|null  $registration
+     */
+    public static function displayStatus(Employee $e, ?array $registration): string
+    {
+        $status = $e->status->value;
+
+        return $status === 'active' && $registration !== null && ! $registration['complete'] ? 'onboarding' : $status;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function baseData(Employee $e): array
@@ -434,12 +476,17 @@ class EmployeeController extends AdminController
     /**
      * @return array<string, mixed>
      */
-    private function listRow(Employee $e, string $today): array
+    /**
+     * @param  array{app: bool, agreement: bool, complete: bool}|null  $registration
+     */
+    private function listRow(Employee $e, string $today, ?array $registration = null): array
     {
         $assignment = $this->currentAssignment($e, $today);
         $employment = $e->employments->first();
 
         return $this->baseData($e) + [
+            'registration' => $registration,
+            'display_status' => self::displayStatus($e, $registration),
             'branch' => $assignment?->branch?->name,
             'department' => $assignment?->department?->name,
             'position' => $assignment?->position?->name,
@@ -472,7 +519,6 @@ class EmployeeController extends AdminController
             'supervisor_employee_id' => $a->supervisor_employee_id,
             'attendance_policy' => $a->attendancePolicy?->name,
             'attendance_policy_id' => $a->attendance_policy_id,
-            'auto_clock_out_at' => $a->auto_clock_out_at ? substr((string) $a->auto_clock_out_at, 0, 5) : null,
             'reason' => $a->reason,
             'created_by' => $a->createdBy?->name,
             'created_at' => $a->created_at?->toIso8601String(),
