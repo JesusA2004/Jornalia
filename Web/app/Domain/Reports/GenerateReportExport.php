@@ -33,6 +33,10 @@ final class GenerateReportExport implements ShouldQueue
         public readonly int $userId,
     ) {}
 
+    /**
+     * Genera la exportación en segundo plano dentro de la organización y con los
+     * permisos del usuario que la pidió (mismo alcance que la vista previa). Idempotente.
+     */
     public function handle(ReportExporter $exporter, CurrentOrganization $current, AuditLogger $audit): void
     {
         $organization = Organization::query()->findOrFail($this->organizationId);

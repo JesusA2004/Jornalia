@@ -3,13 +3,12 @@
 namespace App\Models;
 
 use App\Support\Tenancy\BelongsToOrganization;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ApprovalFlow extends Model
 {
-    use BelongsToOrganization, HasFactory, SoftDeletes;
+    use BelongsToOrganization, SoftDeletes;
 
     protected $table = 'approval_flows';
 

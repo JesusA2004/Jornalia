@@ -155,6 +155,9 @@ class CompanySettingsController extends AdminController
 
         $file = $request->file('logo');
         $path = $file->storeAs('brand', $org->id.'-'.bin2hex(random_bytes(6)).'.'.$file->extension(), 'public');
+        if ($path === false) {
+            return back()->withErrors(['logo' => 'No se pudo guardar el logotipo. Intenta de nuevo.']);
+        }
         $previous = $org->brand_logo_path;
         // El archivo anterior se conserva (no se borra información). El archivo se guarda tal cual: nunca se modifica.
         $org->forceFill(['brand_logo_path' => $path])->save();

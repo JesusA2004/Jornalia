@@ -30,7 +30,7 @@ final class AttendancePresenter
     ) {}
 
     /**
-     * @param  list<string>|null  $codes
+     * @param  array<mixed>|null  $codes  códigos tal como vienen del JSON guardado
      * @return list<array{code:string,label:string}>
      */
     public static function anomalies(?array $codes): array
@@ -51,7 +51,7 @@ final class AttendancePresenter
             'type_label' => $p->type->label(),
             'server_time' => OperacionScope::iso($p->server_time),
             'device_time' => OperacionScope::iso($p->device_time),
-            'local_date' => $p->local_date?->toDateString(),
+            'local_date' => $p->local_date->toDateString(),
             'timezone' => $p->timezone,
             'source' => $p->source->value,
             'source_label' => $p->source->label(),
@@ -110,7 +110,7 @@ final class AttendancePresenter
             'type_label' => $a->type?->label(),
             'target_punch_uuid' => $a->target_punch_uuid,
             'recognized_time' => OperacionScope::iso($a->recognized_time),
-            'local_date' => $a->local_date?->toDateString(),
+            'local_date' => $a->local_date->toDateString(),
             'reason' => $a->reason,
             'approved_by' => $a->approvedBy?->name,
             'rectification_request_id' => $a->rectification_request_id,
@@ -134,7 +134,7 @@ final class AttendancePresenter
             'id' => $w->id,
             'employee_id' => $w->employee_id,
             'employee' => $card,
-            'date' => $w->date?->toDateString(),
+            'date' => $w->date->toDateString(),
             'status' => $w->status->value,
             'status_label' => $w->status->label(),
             'shift_kind' => $w->shift_kind?->value,
@@ -194,12 +194,7 @@ final class AttendancePresenter
             'type_label' => $e->type->label(),
             'time' => OperacionScope::iso($e->time),
             'origin' => $e->origin,
-            'origin_label' => match ($e->origin) {
-                'original' => 'Marcaje original',
-                'rectified' => 'Rectificado',
-                'added' => 'Agregado por rectificación',
-                default => $e->origin,
-            },
+            'origin_label' => $e->originLabel(),
             'punch_uuid' => $e->punch?->uuid,
             'adjustment_uuid' => $e->adjustment?->uuid,
         ], $events);

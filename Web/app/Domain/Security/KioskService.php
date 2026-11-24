@@ -95,6 +95,10 @@ final class KioskService
         });
     }
 
+    /**
+     * Revoca el kiosco: invalida su token y su código de activación. Queda en la
+     * bitácora y no se elimina.
+     */
     public function revoke(User $by, Kiosk $kiosk, string $reason): Kiosk
     {
         $kiosk->forceFill([
@@ -150,6 +154,10 @@ final class KioskService
         });
     }
 
+    /**
+     * Kiosco activo para el token recibido. Sólo se compara el SHA-256 del token;
+     * el valor en claro nunca se guarda.
+     */
     public function authenticate(?string $token): ?Kiosk
     {
         if ($token === null || $token === '') {
@@ -225,7 +233,7 @@ final class KioskService
     {
         $employee = $this->identify($kiosk, (string) $data['employee_number'], (string) $data['pin']);
         $offline = (bool) ($data['captured_offline'] ?? false);
-        $location = isset($data['location']) && is_array($data['location']) ? $data['location'] : null;
+        $location = $data['location'] ?? null;
         $raw = (string) $data['device_time'];
 
         $input = new PunchInput(
@@ -268,11 +276,18 @@ final class KioskService
         return $result + ['employee' => $employee];
     }
 
+    /**
+     * Registra la última conexión del kiosco sin disparar eventos ni auditoría.
+     */
     public function touch(Kiosk $kiosk): void
     {
         $kiosk->forceFill(['last_seen_at' => now()])->saveQuietly();
     }
 
+    /**
+     * Hash del código de activación normalizado (sólo letras y números, en
+     * mayúsculas). El código en claro no se guarda.
+     */
     public static function hashCode(string $code): string
     {
         return hash('sha256', strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $code) ?? ''));

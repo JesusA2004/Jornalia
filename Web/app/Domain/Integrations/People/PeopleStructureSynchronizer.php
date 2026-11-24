@@ -279,7 +279,9 @@ final class PeopleStructureSynchronizer
     }
 
     /**
-     * @param  class-string<Model>  $class
+     * Identificador local del registro de People, aunque esté dado de baja.
+     *
+     * @param  class-string<Branch|Department|Position>  $class
      */
     private function localId(string $class, string $externalId): ?int
     {
@@ -293,10 +295,10 @@ final class PeopleStructureSynchronizer
      *
      * @template T
      *
-     * @param  callable(): T  $callback
+     * @param  \Closure(): T  $callback
      * @return T|null
      */
-    private function savepoint(callable $callback): mixed
+    private function savepoint(\Closure $callback): mixed
     {
         try {
             return DB::transaction($callback);

@@ -22,6 +22,10 @@ use Illuminate\Support\Facades\Storage;
  */
 final class ReportHeaderFactory
 {
+    /**
+     * Encabezado institucional del reporte: razón social, RFC, periodo, filtros,
+     * folio y quién lo generó.
+     */
     public function make(ReportDefinition $definition, ReportParameters $params, User $user, Organization $organization, ?string $folio): ReportHeader
     {
         [$legalName, $rfc] = $this->legalEntity($params, $organization);
@@ -83,7 +87,7 @@ final class ReportHeaderFactory
         }
         if ($params->employeeId !== null) {
             $assignment = Employee::query()->find($params->employeeId)?->assignmentOn($params->to);
-            $center = $assignment?->workCenter ?? $assignment?->branch?->workCenter;
+            $center = $assignment->workCenter ?? $assignment?->branch?->workCenter;
             if ($center !== null) {
                 return (string) $center->name;
             }
@@ -99,6 +103,9 @@ final class ReportHeaderFactory
         return $centers->count() === 1 ? (string) $centers->first() : 'Todos los centros de trabajo del alcance';
     }
 
+    /**
+     * Filtros aplicados en texto legible para el encabezado.
+     */
     public function describeFilters(ReportParameters $p): string
     {
         $parts = [];

@@ -61,11 +61,17 @@ final class ScheduleChangeService
         }
 
         $isRest = (bool) $data['is_rest_day'];
+        $startsAt = $isRest ? null : ($data['starts_at'] ?? null);
+        $endsAt = $isRest ? null : ($data['ends_at'] ?? null);
         if (! $isRest) {
-            $this->validator->assertSingleShift($date, (string) $data['starts_at'], (string) $data['ends_at'], (int) ($data['break_minutes'] ?? 0));
+            // Un día laborable exige entrada y salida; se validan contra los topes legales.
+            if ($startsAt === null || $endsAt === null) {
+                throw ValidationException::withMessages(['starts_at' => 'Indica la hora de entrada y de salida.']);
+            }
+            $this->validator->assertSingleShift($date, $startsAt, $endsAt, (int) ($data['break_minutes'] ?? 0));
         }
 
-        return DB::transaction(function () use ($by, $employee, $date, $isRest, $data, $detail) {
+        return DB::transaction(function () use ($by, $employee, $date, $isRest, $startsAt, $endsAt, $data, $detail) {
             $open = ScheduleException::query()->where('employee_id', $employee->id)->whereDate('date', $date)
                 ->whereIn('status', [ScheduleException::STATUS_PENDING, ScheduleException::STATUS_APPROVED])
                 ->lockForUpdate()->exists();
@@ -77,8 +83,8 @@ final class ScheduleChangeService
                 'employee_id' => $employee->id,
                 'date' => $date,
                 'is_rest_day' => $isRest,
-                'starts_at' => $isRest ? null : $data['starts_at'],
-                'ends_at' => $isRest ? null : $data['ends_at'],
+                'starts_at' => $startsAt,
+                'ends_at' => $endsAt,
                 'break_minutes' => $isRest ? 0 : (int) ($data['break_minutes'] ?? 0),
                 'reason_code' => $data['reason_code'],
                 'reason' => $detail !== '' ? $detail : ScheduleException::REASONS[$data['reason_code']],

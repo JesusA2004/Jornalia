@@ -101,7 +101,7 @@ final class NoiExport
     private function flush(array $employee, array $buffer, ReportParameters $p, array $config): Generator
     {
         $concepts = $config['concepts'];
-        $model = Employee::query()->withTrashed()->find($employee['employee_id']);
+        $model = Employee::query()->withTrashed()->find((int) $employee['employee_id']);
         $from = $p->from->toDateString();
         $to = $p->to->toDateString();
         for ($week = WeeklyOvertimeCalculator::weekStart($p->from); $model !== null && $week->lte($p->to); $week = $week->addWeek()) {

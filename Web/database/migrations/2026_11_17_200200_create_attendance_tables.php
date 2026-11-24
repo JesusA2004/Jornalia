@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Schema;
  */
 return new class extends Migration
 {
-    /** @var list<string> */
+    /** @var list<literal-string> */
     private array $immutableTables = ['attendance_punches', 'attendance_adjustments', 'document_acknowledgements', 'audit_logs', 'integrity_anchors'];
 
     public function up(): void
@@ -188,7 +188,7 @@ return new class extends Migration
     }
 
     /**
-     * @param  list<string>  $tables
+     * @param  list<literal-string>  $tables  nombres fijos de tabla (nunca entrada de usuario)
      */
     private function createImmutabilityTriggers(array $tables): void
     {

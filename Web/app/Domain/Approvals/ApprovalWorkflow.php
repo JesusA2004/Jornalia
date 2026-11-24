@@ -42,7 +42,7 @@ final class ApprovalWorkflow
     public function levels(string $subject, ?array $override = null): array
     {
         if ($override !== null && $override !== []) {
-            return array_values($override);
+            return $override;
         }
 
         $flow = ApprovalFlow::query()->where('subject', $subject)->first();
@@ -64,8 +64,11 @@ final class ApprovalWorkflow
      */
     public function canDecide(User $user, Model $subjectModel, string $subject, ?array $levels = null): bool
     {
-        /** @var Employee $employee */
-        $employee = $subjectModel->getRelationValue('employee') ?? Employee::query()->find($subjectModel->getAttribute('employee_id'));
+        $employee = $subjectModel->getRelationValue('employee');
+        if (! $employee instanceof Employee) {
+            $employee = Employee::query()->find((int) $subjectModel->getAttribute('employee_id'));
+        }
+        // Nadie decide sobre su propia solicitud (separación de funciones).
         if ($employee === null || $employee->user_id === $user->id) {
             return false;
         }
@@ -84,7 +87,10 @@ final class ApprovalWorkflow
     /**
      * Registra la decisión. Devuelve true si la solicitud quedó resuelta en definitiva.
      *
-     * @param  callable(Model): void|null  $onFinalApproval  efectos de la aprobación final (dentro de la transacción)
+     * @template TSubject of Model
+     *
+     * @param  TSubject  $subjectModel
+     * @param  (callable(TSubject): void)|null  $onFinalApproval  efectos de la aprobación final (dentro de la transacción)
      * @param  list<array{level:int, permission:string, label:string}>|null  $levelsOverride
      */
     public function decide(User $user, Model $subjectModel, string $subject, bool $approve, ?string $comment, ?callable $onFinalApproval = null, ?array $levelsOverride = null): bool

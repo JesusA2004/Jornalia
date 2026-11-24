@@ -296,13 +296,13 @@ class ScheduleController extends AdminController
      */
     private function scheduleData(Schedule $s, array $outlook): array
     {
-        $segments = $s->segments->map(fn (ScheduleSegment $x) => [
+        $segments = array_values($s->segments->map(fn (ScheduleSegment $x) => [
             'day_index' => (int) $x->day_index,
             'ordinal' => (int) $x->ordinal,
             'starts_at' => substr((string) $x->starts_at, 0, 5),
             'ends_at' => substr((string) $x->ends_at, 0, 5),
             'break_minutes' => (int) $x->break_minutes,
-        ])->values()->all();
+        ])->all());
 
         $evaluation = $this->validator->evaluate(
             ['cycle_length_days' => $s->cycle_length_days, 'shift_kind' => $s->shift_kind->value],

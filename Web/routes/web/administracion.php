@@ -9,14 +9,14 @@ use App\Http\Controllers\Web\Admin\EmployeeAgreementController;
 use App\Http\Controllers\Web\Admin\EmployeeController;
 use App\Http\Controllers\Web\Admin\EmployeeImportController;
 use App\Http\Controllers\Web\Admin\EmploymentController;
-use App\Http\Controllers\Web\Admin\KioskController;
 use App\Http\Controllers\Web\Admin\HolidayController;
-use App\Http\Controllers\Web\Admin\IntegrationController;
 use App\Http\Controllers\Web\Admin\IncidenceTypeController;
+use App\Http\Controllers\Web\Admin\IntegrationController;
+use App\Http\Controllers\Web\Admin\KioskController;
 use App\Http\Controllers\Web\Admin\LegalVersionController;
 use App\Http\Controllers\Web\Admin\OrganizationController;
-use App\Http\Controllers\Web\Admin\OrganizationStructureController;
 use App\Http\Controllers\Web\Admin\OrganizationSetupController;
+use App\Http\Controllers\Web\Admin\OrganizationStructureController;
 use App\Http\Controllers\Web\Admin\PlatformSettingsController;
 use App\Http\Controllers\Web\Admin\PolicyDocumentController;
 use App\Http\Controllers\Web\Admin\RoleController;
@@ -144,7 +144,7 @@ Route::prefix('usuarios')->name('usuarios.')->group(function () {
     });
     Route::get('revision', [UserAccessReviewController::class, 'index'])->middleware('can:users.view')->name('review');
 
-    Route::get('roles',[RoleController::class, 'index'])->middleware('can:users.view')->name('roles');
+    Route::get('roles', [RoleController::class, 'index'])->middleware('can:users.view')->name('roles');
     Route::middleware('can:users.roles')->group(function () {
         Route::post('roles', [RoleController::class, 'store'])->name('roles.store');
         Route::put('roles/{role}', [RoleController::class, 'update'])->whereNumber('role')->name('roles.update');
@@ -201,7 +201,6 @@ Route::prefix('configuracion')->name('configuracion.')->group(function () {
 
         Route::put('autorizaciones/horas-extra/politica', [ApprovalFlowController::class, 'updateOvertime'])->name('approvals.overtime');
         Route::put('autorizaciones/{subject}', [ApprovalFlowController::class, 'update'])->whereIn('subject', ['rectification', 'incidence', 'vacation', 'overtime'])->name('approvals.update');
-
 
         Route::post('vacaciones', [VacationPolicyController::class, 'store'])->name('vacations.store');
         Route::put('vacaciones/{vacationPolicy}', [VacationPolicyController::class, 'update'])->whereNumber('vacationPolicy')->name('vacations.update');

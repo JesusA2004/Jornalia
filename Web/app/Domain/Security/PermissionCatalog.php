@@ -167,6 +167,10 @@ final class PermissionCatalog
         ];
     }
 
+    /**
+     * ¿El permiso autoriza operación de asistencia (aprobar, validar, rectificar,
+     * firmar)? Se usa para impedir que la administración técnica los acumule.
+     */
     public static function isOperational(string $permission): bool
     {
         return in_array($permission, self::OPERATIONAL, true);

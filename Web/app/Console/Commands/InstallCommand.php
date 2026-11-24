@@ -28,7 +28,7 @@ final class InstallCommand extends Command
         $name = $this->option('nombre') ?: text('Nombre del administrador', required: true);
         $email = $this->option('email') ?: text('Correo del administrador', required: true);
 
-        $secret = env('INSTALL_ADMIN_PASSWORD') ?: password('Contraseña (mín. 12, mayúsculas, números y símbolos)', required: true);
+        $secret = (string) config('security.install_admin_password') ?: password('Contraseña (mín. 12, mayúsculas, números y símbolos)', required: true);
 
         $validator = Validator::make(
             ['email' => $email, 'password' => $secret],

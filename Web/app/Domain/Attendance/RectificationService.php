@@ -10,7 +10,6 @@ use App\Domain\Signatures\ElectronicSignatureService;
 use App\Domain\Signatures\SignaturePinService;
 use App\Enums\AdjustmentAction;
 use App\Enums\ApprovalStatus;
-use App\Enums\PunchType;
 use App\Enums\RectificationKind;
 use App\Enums\RectificationStage;
 use App\Jobs\RecomputeWorkday;
@@ -120,7 +119,7 @@ final class RectificationService
         }
 
         // Clave única mientras la solicitud esté abierta: impide duplicados del mismo marcaje/fecha.
-        $openKey = implode('|', [$employee->id, $date->toDateString(), $punch?->uuid ?? ($data['proposed_type'] ?? $kind->value)]);
+        $openKey = implode('|', [$employee->id, $date->toDateString(), $punch->uuid ?? ($data['proposed_type'] ?? $kind->value)]);
 
         try {
             $request = DB::transaction(function () use ($requester, $employee, $data, $files, $kind, $date, $punch, $openKey, $origin, $incidenceId) {
@@ -603,7 +602,7 @@ final class RectificationService
             'rectification_request_id' => $r->id,
             'action' => $action,
             'target_punch_uuid' => $punch?->uuid,
-            'type' => $type instanceof PunchType ? $type : ($type !== null ? PunchType::from((string) $type) : null),
+            'type' => $type,
             'recognized_time' => $time ? CarbonImmutable::instance($time)->utc() : null,
             'local_date' => $localDate,
             'approved_by' => $validator->id,

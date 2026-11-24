@@ -221,7 +221,7 @@ export type AuthMethod =
     | 'device_credential'  // PIN/patrón del SO desbloquea el secreto del dispositivo
     | 'face_verification'  // verificación facial 1:1 con prueba de vida (motor open source en servidor)
     | 'web_session'        // marcaje web (si la política lo permite)
-    | 'system';            // salida automática por política (nunca la envía la app)
+    | 'system';            // sólo histórico: marcajes generados por la extinta salida automática (ya no se crean)
 
 export interface Geofence {
     id: number;

@@ -13,11 +13,17 @@ use Spatie\Permission\PermissionRegistrar;
  */
 final class TwoFactorPolicy
 {
+    /**
+     * ¿La organización exige doble factor a roles administrativos? (`security.admin_two_factor`).
+     */
     public function enforced(): bool
     {
         return (bool) config('security.admin_two_factor', true);
     }
 
+    /**
+     * ¿Este usuario debe usar doble factor por sus permisos administrativos?
+     */
     public function requiredFor(User $user): bool
     {
         if (! $this->enforced()) {
@@ -44,11 +50,17 @@ final class TwoFactorPolicy
         }
     }
 
+    /**
+     * ¿El usuario ya confirmó su doble factor?
+     */
     public function isConfigured(User $user): bool
     {
         return $user->two_factor_secret !== null && $user->two_factor_confirmed_at !== null;
     }
 
+    /**
+     * Debe usar doble factor y aún no lo configura: se le obliga antes de operar.
+     */
     public function missingFor(User $user): bool
     {
         return $this->requiredFor($user) && ! $this->isConfigured($user);

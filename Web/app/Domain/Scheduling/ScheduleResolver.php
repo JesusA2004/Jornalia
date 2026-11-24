@@ -4,7 +4,6 @@ namespace App\Domain\Scheduling;
 
 use App\Domain\Legal\LegalFramework;
 use App\Domain\Legal\ShiftClassifier;
-use App\Enums\ShiftKind;
 use App\Models\Employee;
 use App\Models\EmploymentAssignment;
 use App\Models\Holiday;
@@ -31,9 +30,9 @@ final class ScheduleResolver
     {
         $assignment ??= $employee->assignmentOn(CarbonImmutable::now());
 
-        return $assignment?->workCenter?->timezone
-            ?? $assignment?->branch?->workCenter?->timezone
-            ?? $employee->organization?->timezone
+        return $assignment?->workCenter->timezone
+            ?? $assignment?->branch?->workCenter->timezone
+            ?? $employee->organization->timezone
             ?? config('app.timezone', 'UTC');
     }
 
@@ -108,7 +107,7 @@ final class ScheduleResolver
     public function holidayOn(Employee $employee, string $date, ?EmploymentAssignment $assignment = null): ?Holiday
     {
         $assignment ??= $employee->assignmentOn($date);
-        $workCenterId = $assignment?->work_center_id ?? $assignment?->branch?->work_center_id;
+        $workCenterId = $assignment->work_center_id ?? $assignment?->branch?->work_center_id;
 
         return Holiday::query()
             ->whereDate('date', $date)
@@ -177,10 +176,7 @@ final class ScheduleResolver
             $localEnd = $localEnd->addDay();
         }
 
-        $kind = $schedule?->shift_kind ?? $this->classifier->classify($localStart, $localEnd, $this->law->for($date));
-        if (! $kind instanceof ShiftKind) {
-            $kind = ShiftKind::from((string) $kind);
-        }
+        $kind = $schedule->shift_kind ?? $this->classifier->classify($localStart, $localEnd, $this->law->for($date));
 
         return new ScheduledShift(
             date: $date,
@@ -188,9 +184,9 @@ final class ScheduleResolver
             endsAt: $localEnd->utc(),
             kind: $kind,
             breakMinutes: $break,
-            toleranceMinutes: (int) ($schedule?->tolerance_minutes ?? 0),
+            toleranceMinutes: (int) ($schedule->tolerance_minutes ?? 0),
             scheduleId: $schedule?->id,
-            scheduleName: $fromException ? 'Excepción de horario' : ($schedule?->name ?? 'Horario'),
+            scheduleName: $fromException ? 'Excepción de horario' : ($schedule->name ?? 'Horario'),
             fromException: $fromException,
         );
     }

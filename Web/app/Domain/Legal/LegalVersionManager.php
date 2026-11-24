@@ -119,9 +119,13 @@ final class LegalVersionManager
         });
     }
 
+    /**
+     * Sólo se editan versiones vigentes o futuras: una versión cerrada ya sirvió
+     * para calcular jornadas y debe conservarse intacta.
+     */
     public function isEditable(LegalVersion $version): bool
     {
-        $today = CarbonImmutable::now($this->current->get()?->timezone ?? 'America/Mexico_City')->toDateString();
+        $today = CarbonImmutable::now($this->current->get()->timezone ?? 'America/Mexico_City')->toDateString();
 
         return $version->valid_to === null || $version->valid_to->toDateString() >= $today;
     }

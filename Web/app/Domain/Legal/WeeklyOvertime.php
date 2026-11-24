@@ -22,6 +22,9 @@ final readonly class WeeklyOvertime
         public array $days,
     ) {}
 
+    /**
+     * Suma semanal de un campo en minutos enteros (p. ej. `doubleMinutes`).
+     */
     public function total(string $field): int
     {
         return array_sum(array_map(fn (WeeklyOvertimeDay $d) => (int) $d->{$field}, $this->days));

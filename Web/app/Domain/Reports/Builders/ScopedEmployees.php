@@ -60,6 +60,9 @@ final class ScopedEmployees
             ->orderBy('employees.id');
     }
 
+    /**
+     * Colaboradores dentro del alcance del usuario y de los filtros.
+     */
     public function count(ReportParameters $p, User $user): int
     {
         return $this->query($p, $user)->count();

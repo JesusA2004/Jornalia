@@ -48,7 +48,7 @@ final class AuditController extends Controller
         $filters = $request->filters();
         $module = array_key_exists((string) $request->query('module'), self::MODULES) ? (string) $request->query('module') : null;
         $userId = (int) $request->query('user_id', 0) ?: null;
-        $tz = (string) ($current->get()?->timezone ?? 'UTC');
+        $tz = (string) ($current->get()->timezone ?? 'UTC');
 
         $query = AuditLog::query()->with(['user:id,name,email'])
             ->where('organization_id', $orgId)
@@ -101,7 +101,7 @@ final class AuditController extends Controller
                 'modules' => collect(self::MODULES)->map(fn ($label, $value) => ['value' => $value, 'label' => $label])->values(),
                 'users' => $users,
             ],
-            'timezone' => (string) ($current->get()?->timezone ?? 'UTC'),
+            'timezone' => (string) ($current->get()->timezone ?? 'UTC'),
         ]);
     }
 }

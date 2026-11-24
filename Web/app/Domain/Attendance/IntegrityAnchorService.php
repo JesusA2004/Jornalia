@@ -2,13 +2,12 @@
 
 namespace App\Domain\Attendance;
 
-use App\Models\AttendanceAdjustment;
 use App\Models\IntegrityAnchor;
-use App\Models\Punch;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Anclaje externo de la cabeza de cada cadena.
+ * Anclaje externo de la cabeza de cada cadena (`IntegrityChains`: marcajes,
+ * ajustes y firmas electrónicas).
  *
  * Cada ancla se firma con HMAC usando `INTEGRITY_ANCHOR_KEY` (distinta de
  * APP_KEY, idealmente custodiada fuera del servidor de BD) y se escribe:
@@ -20,10 +19,15 @@ use Illuminate\Support\Facades\Storage;
  */
 final class IntegrityAnchorService
 {
+    /**
+     * Emite un ancla por cada cadena que avanzó desde su última ancla.
+     *
+     * @return list<IntegrityAnchor> anclas creadas en esta ejecución
+     */
     public function anchor(int $organizationId): array
     {
         $created = [];
-        foreach (['punches' => Punch::class, 'adjustments' => AttendanceAdjustment::class] as $chain => $model) {
+        foreach (IntegrityChains::MODELS as $chain => $model) {
             $head = $model::query()->withoutGlobalScopes()
                 ->where('organization_id', $organizationId)
                 ->orderByDesc('sequence')
@@ -67,6 +71,11 @@ final class IntegrityAnchorService
         return $created;
     }
 
+    /**
+     * Comprueba que el ancla no fue fabricada ni modificada en la BD.
+     *
+     * @throws \RuntimeException si falta la clave de anclaje
+     */
     public function signatureValid(IntegrityAnchor $anchor): bool
     {
         return hash_equals($this->sign((int) $anchor->organization_id, $anchor->chain, (int) $anchor->sequence, $anchor->hash), $anchor->signature);

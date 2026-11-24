@@ -53,7 +53,7 @@ final class LocationService
         $rejections = [];
         $latest = null;
 
-        foreach (array_values($points) as $i => $p) {
+        foreach ($points as $i => $p) {
             $uuid = isset($p['uuid']) && is_string($p['uuid']) && Str::isUuid($p['uuid']) ? $p['uuid'] : null;
             $code = $this->validate($p, $uuid, $now);
             $capturedAt = $code === null ? CarbonImmutable::parse((string) $p['captured_at'])->utc() : null;

@@ -68,7 +68,7 @@ final class AnnouncementController extends Controller
             ->paginate((int) ($filters['per_page'] ?? 15))
             ->withQueryString();
 
-        $ids = $page->getCollection()->pluck('id')->all();
+        $ids = array_values($page->getCollection()->map(fn (Announcement $a) => (int) $a->id)->all());
         foreach ($page->getCollection() as $a) {
             $this->announcements->syncReadState($a);
         }
@@ -132,7 +132,7 @@ final class AnnouncementController extends Controller
             'scheduled_date' => 'fecha', 'scheduled_time' => 'hora',
         ]);
 
-        $ids = array_map('intval', (array) ($data['audience_ids'] ?? []));
+        $ids = array_values(array_map('intval', (array) ($data['audience_ids'] ?? [])));
         if ($data['audience_type'] === 'employees') {
             $allowed = $this->scope->employees($user)->whereIn('employees.id', $ids)->count();
             if ($allowed !== count(array_unique($ids))) {
@@ -152,10 +152,10 @@ final class AnnouncementController extends Controller
         }
 
         $announcement = $this->announcements->create($user, [
-            'title' => trim($data['title']),
-            'body' => trim($data['body']),
-            'priority' => $data['priority'],
-            'audience_type' => $data['audience_type'],
+            'title' => trim((string) $data['title']),
+            'body' => trim((string) $data['body']),
+            'priority' => (string) $data['priority'],
+            'audience_type' => (string) $data['audience_type'],
             'audience_ids' => $ids,
             'scheduled_at' => $scheduledAt,
             'requires_confirmation' => (bool) ($data['requires_confirmation'] ?? false),
@@ -308,12 +308,14 @@ final class AnnouncementController extends Controller
             return [];
         }
 
-        return match ($a->audience_type) {
+        $names = match ($a->audience_type) {
             'branches' => Branch::query()->withTrashed()->whereIn('id', $ids)->orderBy('name')->pluck('name')->all(),
             'departments' => Department::query()->withTrashed()->whereIn('id', $ids)->orderBy('name')->pluck('name')->all(),
             'positions' => Position::query()->withTrashed()->whereIn('id', $ids)->orderBy('name')->pluck('name')->all(),
             default => [],
         };
+
+        return array_values(array_map(strval(...), $names));
     }
 
     /**
@@ -353,9 +355,10 @@ final class AnnouncementController extends Controller
         $chosen = $selectedIds === [] ? collect() : (clone $query)->whereIn('employees.id', $selectedIds)
             ->get(['employees.id', 'first_name', 'last_name', 'second_last_name', 'employee_number']);
 
-        return $chosen->merge($matches)->unique('id')->values()
-            ->map(fn (Employee $e) => ['value' => (string) $e->id, 'label' => $e->fullName(), 'description' => (string) $e->employee_number])
-            ->all();
+        $options = $chosen->merge($matches)->unique('id')
+            ->map(fn (Employee $e) => ['value' => (string) $e->id, 'label' => $e->fullName(), 'description' => (string) $e->employee_number]);
+
+        return array_values($options->all());
     }
 
     private function estimate(User $user, Request $request): int
@@ -365,6 +368,6 @@ final class AnnouncementController extends Controller
             return 0;
         }
 
-        return $this->audience->count($user, $type, array_map('intval', (array) $request->query('audience_ids', [])));
+        return $this->audience->count($user, $type, array_values(array_map('intval', (array) $request->query('audience_ids', []))));
     }
 }

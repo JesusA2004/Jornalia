@@ -32,7 +32,7 @@ class KioskController extends AdminController
             'branch_id' => ['required', 'integer', $this->existsInOrg('branches')],
         ], [], ['name' => 'nombre', 'branch_id' => 'sucursal']);
 
-        $branch = Branch::query()->findOrFail($data['branch_id']);
+        $branch = Branch::query()->findOrFail((int) $data['branch_id']);
         $this->assertBranchInScope($user, $branch->id);
 
         $result = $this->kiosks->create($user, $branch, $data['name']);

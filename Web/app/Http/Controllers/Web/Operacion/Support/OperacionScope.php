@@ -32,7 +32,7 @@ final class OperacionScope
 
     public function timezone(): string
     {
-        return (string) ($this->current->get()?->timezone ?? config('app.timezone', 'UTC'));
+        return (string) ($this->current->get()->timezone ?? config('app.timezone', 'UTC'));
     }
 
     public function today(): CarbonImmutable
@@ -150,9 +150,9 @@ final class OperacionScope
             $query->whereIn('id', array_filter([...$ids, $own]) ?: [0]);
         }
 
-        return $query->get(['id', 'name', 'code'])
+        return array_values($query->get(['id', 'name', 'code'])
             ->map(fn (Branch $b) => ['value' => (string) $b->id, 'label' => (string) $b->name, 'description' => (string) $b->code])
-            ->values()->all();
+            ->all());
     }
 
     /**
@@ -160,9 +160,9 @@ final class OperacionScope
      */
     public function departmentOptions(): array
     {
-        return Department::query()->orderBy('name')->get(['id', 'name'])
+        return array_values(Department::query()->orderBy('name')->get(['id', 'name'])
             ->map(fn (Department $d) => ['value' => (string) $d->id, 'label' => (string) $d->name])
-            ->values()->all();
+            ->all());
     }
 
     /**
@@ -173,7 +173,7 @@ final class OperacionScope
      */
     public function employeeOptions(User $user, int $limit = 400): array
     {
-        return $this->scope->employees($user)
+        return array_values($this->scope->employees($user)
             ->where('status', 'active')
             ->orderBy('first_name')->orderBy('last_name')
             ->limit($limit)
@@ -183,7 +183,7 @@ final class OperacionScope
                 'label' => $e->fullName(),
                 'description' => (string) $e->employee_number,
                 'keywords' => $e->fullName().' '.$e->employee_number,
-            ])->values()->all();
+            ])->all());
     }
 
     private function ownBranchId(User $user): ?int
@@ -197,7 +197,7 @@ final class OperacionScope
      * Datos mínimos de colaboradores (nombre, número, sucursal vigente) en lote.
      *
      * @param  iterable<int>  $ids
-     * @return Collection<int, array{id:int,name:string,number:string,branch:?string,department:?string}>
+     * @return Collection<int, array{id:int, name:string, number:string, branch_id:int|null, branch:string|null, department:string|null, position:string|null}>
      */
     public function employeeCards(iterable $ids): Collection
     {
@@ -222,15 +222,19 @@ final class OperacionScope
 
         return Employee::query()->whereIn('id', $ids)
             ->get(['id', 'first_name', 'last_name', 'second_last_name', 'employee_number'])
-            ->mapWithKeys(fn (Employee $e) => [$e->id => [
-                'id' => $e->id,
-                'name' => $e->fullName(),
-                'number' => (string) $e->employee_number,
-                'branch_id' => $assignments[$e->id]->branch_id ?? null,
-                'branch' => $assignments[$e->id]->branch ?? null,
-                'department' => $assignments[$e->id]->department ?? null,
-                'position' => $assignments[$e->id]->position ?? null,
-            ]]);
+            ->mapWithKeys(function (Employee $e) use ($assignments) {
+                $a = $assignments[$e->id] ?? null;
+
+                return [$e->id => [
+                    'id' => $e->id,
+                    'name' => $e->fullName(),
+                    'number' => (string) $e->employee_number,
+                    'branch_id' => isset($a->branch_id) ? (int) $a->branch_id : null,
+                    'branch' => isset($a->branch) ? (string) $a->branch : null,
+                    'department' => isset($a->department) ? (string) $a->department : null,
+                    'position' => isset($a->position) ? (string) $a->position : null,
+                ]];
+            });
     }
 
     public static function iso(?CarbonInterface $value): ?string

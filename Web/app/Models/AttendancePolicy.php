@@ -4,14 +4,13 @@ namespace App\Models;
 
 use App\Enums\LocationMode;
 use App\Support\Tenancy\BelongsToOrganization;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class AttendancePolicy extends Model
 {
-    use BelongsToOrganization, HasFactory, SoftDeletes;
+    use BelongsToOrganization, SoftDeletes;
 
     protected $table = 'attendance_policies';
 

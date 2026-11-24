@@ -25,6 +25,10 @@ final class ComplianceEvaluator
         private readonly LegalFramework $law,
     ) {}
 
+    /**
+     * Abre o cierra las alertas legales de un día ya calculado (omisiones, topes de
+     * jornada y tiempo extra de la LFT). No modifica marcajes: sólo alerta en Cumplimiento.
+     */
     public function evaluateDay(Employee $employee, WorkdaySummary $day, LegalParameters $law): void
     {
         $date = $day->date->toDateString();

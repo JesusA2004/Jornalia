@@ -17,6 +17,10 @@ final class LegalFramework
     /** @var array<string, LegalParameters> */
     private array $cache = [];
 
+    /**
+     * Parámetros legales vigentes en la fecha civil indicada (versión normativa
+     * de `legal_versions`). Lanza LegalVersionNotFound si no hay versión vigente.
+     */
     public function for(CarbonInterface|string $date): LegalParameters
     {
         $day = CarbonImmutable::parse($date)->toDateString();
@@ -95,6 +99,12 @@ final class LegalFramework
         return (int) $rule->days;
     }
 
+    /**
+     * Huella SHA-256 estable de los parámetros legales (claves ordenadas): detecta
+     * cualquier cambio a una versión normativa ya publicada.
+     *
+     * @param  array<mixed>  $parameters
+     */
     public static function checksum(array $parameters): string
     {
         return hash('sha256', (string) json_encode(self::sortRecursive($parameters), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
@@ -120,6 +130,9 @@ final class LegalFramework
         }
     }
 
+    /**
+     * Vacía la caché por fecha (p. ej. tras publicar o verificar una versión).
+     */
     public function flush(): void
     {
         $this->cache = [];

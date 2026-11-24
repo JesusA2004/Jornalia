@@ -77,13 +77,13 @@ class UserController extends AdminController
 
         $employees = Employee::query()->whereIn('user_id', collect($users->items())->pluck('id'))->get(['id', 'user_id', 'first_name', 'last_name', 'second_last_name', 'employee_number'])->keyBy('user_id');
 
-        $authority = (array) (OrganizationSetting::query()->where('key', self::AUTHORITY_SETTING)->first()?->value ?? []);
+        $authority = (array) (OrganizationSetting::query()->where('key', self::AUTHORITY_SETTING)->first()->value ?? []);
 
         $users->through(fn (User $u) => [
             'authority_expires_on' => $authority[(string) $u->id]['expires_on'] ?? null,
             'authority_revoked_at' => $authority[(string) $u->id]['revoked_at'] ?? null,
             'two_factor_required' => $this->twoFactor->enforced() && PermissionCatalog::requiresTwoFactor(
-                $u->roles->flatMap(fn (Role $r) => $r->permissions->pluck('name'))->all()
+                $u->getPermissionsViaRoles()->pluck('name')->all()
             ),
             'id' => $u->id,
             'name' => $u->name,
@@ -140,7 +140,7 @@ class UserController extends AdminController
             throw ValidationException::withMessages(['mode' => 'El correo ya tiene cuenta: se vinculará con su contraseña actual. Elige «Enviar enlace» si necesita restablecerla.']);
         }
 
-        $employee = ! empty($data['employee_id']) ? Employee::query()->find($data['employee_id']) : null;
+        $employee = ! empty($data['employee_id']) ? Employee::query()->find((int) $data['employee_id']) : null;
         if ($employee?->user_id !== null) {
             throw ValidationException::withMessages(['employee_id' => 'Ese colaborador ya tiene una cuenta vinculada.']);
         }
@@ -198,11 +198,11 @@ class UserController extends AdminController
         ], [], $this->labels());
 
         $this->assertCanGrant($actor, $data['roles'], $org);
-        $this->assertCanGrant($actor, $user->roles()->where('roles.organization_id', $org)->pluck('name')->all(), $org, 'No puedes modificar a un usuario con permisos superiores a los tuyos.');
+        $this->assertCanGrant($actor, $this->roleNamesIn($user, $org), $org, 'No puedes modificar a un usuario con permisos superiores a los tuyos.');
         if ($user->id === $actor->id && $data['status'] !== 'active') {
             throw ValidationException::withMessages(['status' => 'No puedes desactivar tu propio acceso.']);
         }
-        $currentRoles = $user->roles()->where('roles.organization_id', $org)->pluck('name')->all();
+        $currentRoles = $this->roleNamesIn($user, $org);
         // El rol de autoridad laboral sólo se otorga con vigencia (storeAuthority); aquí puede conservarse o retirarse.
         $this->grantingAuthority = in_array(self::AUTHORITY_ROLE, $currentRoles, true);
         $this->assertRoleRules($data, $org);
@@ -231,7 +231,7 @@ class UserController extends AdminController
             'roles' => array_values($data['roles']),
             'status' => $data['status'],
             'access_all_branches' => (bool) $data['access_all_branches'],
-            'branch_ids' => $data['access_all_branches'] ? [] : collect($data['branch_ids'] ?? [])->map(fn ($id) => (int) $id)->sort()->values()->all(),
+            'branch_ids' => $data['access_all_branches'] ? [] : self::sortedIds($data['branch_ids'] ?? []),
         ];
         // Bitácora con valor anterior y nuevo (PDF regla general 5).
         $this->audit->log('user.access_updated', $user, 'Accesos actualizados: '.$user->email, [
@@ -255,7 +255,7 @@ class UserController extends AdminController
         if ($user->id === $actor->id) {
             throw ValidationException::withMessages(['user' => 'No puedes desactivar tu propio acceso.']);
         }
-        $this->assertCanGrant($actor, $user->roles()->where('roles.organization_id', $org)->pluck('name')->all(), $org, 'No puedes desactivar a un usuario con permisos superiores a los tuyos.');
+        $this->assertCanGrant($actor, $this->roleNamesIn($user, $org), $org, 'No puedes desactivar a un usuario con permisos superiores a los tuyos.');
 
         $snapshot = $this->adminSnapshot($actor, $org);
         DB::transaction(function () use ($user, $org, $actor, $snapshot) {
@@ -272,14 +272,14 @@ class UserController extends AdminController
     {
         $org = $this->organizationId();
         $this->ensureMember($user, $org);
-        $roles = $user->roles()->where('roles.organization_id', $org)->pluck('name')->all();
+        $roles = $this->roleNamesIn($user, $org);
         $this->assertCanGrant($this->actor($request), $roles, $org, 'No puedes reactivar a un usuario con permisos superiores a los tuyos.');
 
         if (Employee::query()->where('user_id', $user->id)->where('status', EmployeeStatus::Terminated)->exists()) {
             throw ValidationException::withMessages(['user' => 'El colaborador está dado de baja: su acceso no puede reactivarse.']);
         }
         if (in_array(self::AUTHORITY_ROLE, $roles, true)) {
-            $grant = $this->access->authorityGrants($org)[(string) $user->id] ?? null;
+            $grant = $this->access->authorityGrants($org)[$user->id] ?? null;
             if ($grant === null || ($grant['revoked_at'] ?? null) !== null || (string) ($grant['expires_on'] ?? '') < now()->toDateString()) {
                 throw ValidationException::withMessages(['user' => 'Otorga una nueva vigencia desde «Acceso para autoridad laboral».']);
             }
@@ -402,6 +402,27 @@ class UserController extends AdminController
             DB::table('branch_user')->insert(['organization_id' => $org, 'branch_id' => $branchId, 'user_id' => $user->id, 'created_at' => now(), 'updated_at' => now()]);
         }
         $registrar->forgetCachedPermissions();
+    }
+
+    /**
+     * Roles del usuario en la organización activa.
+     *
+     * @return list<string>
+     */
+    private function roleNamesIn(User $user, int $org): array
+    {
+        return array_values(array_map(strval(...), $user->roles()->where('roles.organization_id', $org)->pluck('name')->all()));
+    }
+
+    /**
+     * @return list<int>
+     */
+    private static function sortedIds(mixed $ids): array
+    {
+        $list = array_map('intval', (array) $ids);
+        sort($list);
+
+        return $list;
     }
 
     /**

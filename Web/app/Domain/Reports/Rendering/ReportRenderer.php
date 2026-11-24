@@ -11,5 +11,8 @@ use App\Domain\Reports\Layouts\ReportLayout;
  */
 interface ReportRenderer
 {
+    /**
+     * Escribe el archivo en `$path` recorriendo el dataset una sola vez.
+     */
     public function render(ReportDataset $dataset, ReportLayout $layout, string $path): void;
 }

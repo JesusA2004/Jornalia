@@ -41,12 +41,12 @@ final class OpenSourceFaceProvider implements FaceVerificationProvider
         });
     }
 
-    public function name(): ?string
+    public function name(): string
     {
         return self::NAME;
     }
 
-    public function templateVersion(): ?string
+    public function templateVersion(): string
     {
         return self::TEMPLATE_VERSION;
     }
@@ -64,7 +64,9 @@ final class OpenSourceFaceProvider implements FaceVerificationProvider
             return new EnrollmentOutcome(true, 'enrolled', $response->json('template'), (array) $response->json('quality', []));
         }
         if ($response->status() === 422) {
-            $result = (string) ($response->json('result') ?? 'invalid_image');
+            // Un motivo desconocido del motor se trata como imagen no válida.
+            $result = $response->json('result');
+            $result = in_array($result, EnrollmentOutcome::FAILURES, true) ? $result : 'invalid_image';
 
             return new EnrollmentOutcome(false, $result, reasons: array_values(array_map('strval', (array) $response->json('reasons', []))));
         }

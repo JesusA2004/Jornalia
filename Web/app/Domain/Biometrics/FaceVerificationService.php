@@ -166,7 +166,7 @@ final class FaceVerificationService
 
     private function raiseLockoutAlert(Employee $employee): void
     {
-        $timezone = $employee->organization?->timezone ?? config('app.timezone');
+        $timezone = $employee->organization->timezone ?? config('app.timezone');
         $date = now()->setTimezone($timezone)->toDateString();
         $minutes = (int) config('biometrics.lockout.window_minutes', 15);
 

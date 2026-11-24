@@ -4,7 +4,6 @@ namespace App\Models;
 
 use App\Support\Immutable;
 use App\Support\Tenancy\BelongsToOrganization;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -12,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class IntegrityAnchor extends Model
 {
-    use BelongsToOrganization, HasFactory, Immutable;
+    use BelongsToOrganization, Immutable;
 
     protected $table = 'integrity_anchors';
 

@@ -21,7 +21,7 @@ final class ApprovalPresenter
      */
     public static function attachments(Collection $attachments, callable $url): array
     {
-        return $attachments->map(fn (Attachment $a) => [
+        return array_values($attachments->map(fn (Attachment $a) => [
             'id' => $a->id,
             'name' => $a->original_name,
             'mime' => $a->mime,
@@ -30,7 +30,7 @@ final class ApprovalPresenter
             'uploaded_by' => $a->uploadedBy?->name,
             'created_at' => OperacionScope::iso($a->created_at),
             'url' => $url($a),
-        ])->values()->all();
+        ])->all());
     }
 
     /**
@@ -39,7 +39,7 @@ final class ApprovalPresenter
      */
     public static function decisions(Collection $decisions): array
     {
-        return $decisions->sortBy('decided_at')->map(fn (ApprovalDecision $d) => [
+        return array_values($decisions->sortBy('decided_at')->map(fn (ApprovalDecision $d) => [
             'id' => $d->id,
             'level' => (int) $d->level,
             'decision' => $d->decision,
@@ -47,7 +47,7 @@ final class ApprovalPresenter
             'comment' => $d->comment,
             'decided_by' => $d->decidedBy?->name,
             'decided_at' => OperacionScope::iso($d->decided_at),
-        ])->values()->all();
+        ])->all());
     }
 
     /**

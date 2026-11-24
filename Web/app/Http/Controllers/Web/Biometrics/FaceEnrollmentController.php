@@ -43,7 +43,7 @@ class FaceEnrollmentController extends AdminController
                 'active' => $e->status === FaceEnrollment::STATUS_ACTIVE && $e->template_erased_at === null,
                 'provider' => $e->provider,
                 'template_version' => $e->template_version,
-                'consent_at' => $e->consent_at?->toIso8601String(),
+                'consent_at' => $e->consent_at->toIso8601String(),
                 'consent_document' => $e->consentDocument ? "{$e->consentDocument->title} v{$e->consentDocument->version}" : null,
                 'consent_document_sha256' => $e->consent_document_sha256,
                 'identity_verified_by' => $e->identityVerifiedBy?->name,

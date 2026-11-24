@@ -195,7 +195,7 @@ final class ComplianceController extends Controller
             'verified_by' => $p->isVerified() ? $version?->verifiedBy?->name : null,
             'verified_at' => $p->isVerified() ? OperacionScope::iso($version?->verified_at) : null,
             'notes' => $version?->notes,
-            'sources' => array_values((array) ($version?->sources ?? [])),
+            'sources' => array_values((array) ($version->sources ?? [])),
             'parameters' => [
                 'weekly_ordinary_max_minutes' => $p->weeklyOrdinaryMaxMinutes,
                 'daily_max_day' => $p->dailyMaxDay,

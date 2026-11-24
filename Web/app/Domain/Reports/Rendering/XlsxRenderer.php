@@ -42,8 +42,7 @@ final class XlsxRenderer implements ReportRenderer
         $header = $dataset->header;
         $columns = $dataset->columns();
         $last = count($columns) - 1;
-        $primary = ltrim($layout->primaryColor(), '#');
-        $accent = ltrim($layout->accentColor(), '#');
+        $primary = self::hex($layout->primaryColor(), '225C54');
 
         [$paper, $orientation] = $layout->paper($definition);
         $writer = new Writer(new Options(
@@ -123,7 +122,7 @@ final class XlsxRenderer implements ReportRenderer
             $rowIndex++;
             $writer->addRow($this->summaryRow('TOTAL GENERAL ('.$dataset->rowCount().')', $dataset->totals(), $columns, $header->timezone, $totalStyles));
         }
-        if ($rowIndex > $headerRow) {
+        if ($rowIndex > $headerRow && $last >= 0) {
             $sheet->setAutoFilter(new AutoFilter(0, $headerRow, $last, $rowIndex));
         }
 
@@ -170,6 +169,8 @@ final class XlsxRenderer implements ReportRenderer
      * Estilo por columna (formato numérico, alineación y relleno).
      *
      * @param  list<ReportColumn>  $columns
+     * @param  non-empty-string|null  $fill
+     * @param  non-empty-string  $color
      * @return list<Style>
      */
     private function styles(array $columns, ?string $fill, bool $bold, string $color = '1F2937'): array
@@ -232,5 +233,18 @@ final class XlsxRenderer implements ReportRenderer
         }
 
         return new Row($cells);
+    }
+
+    /**
+     * Color hexadecimal sin `#` (OpenSpout no acepta colores vacíos).
+     *
+     * @param  non-empty-string  $fallback
+     * @return non-empty-string
+     */
+    private static function hex(string $color, string $fallback): string
+    {
+        $hex = ltrim($color, '#');
+
+        return $hex !== '' ? $hex : $fallback;
     }
 }

@@ -210,8 +210,8 @@ final class AttendanceDays
             || ($p->region && $region !== $p->region)) {
             return null;
         }
-        $status = $summary->status instanceof WorkdayStatus ? $summary->status : WorkdayStatus::tryFrom((string) $summary->status);
-        if ($p->status && $status?->value !== $p->status) {
+        $status = $summary->status;
+        if ($p->status && $status->value !== $p->status) {
             return null;
         }
 
@@ -239,7 +239,7 @@ final class AttendanceDays
         $incidenceItems = [];
         foreach ($ctx['incidences']->get($employee->id, collect()) as $inc) {
             if ($inc->starts_on->toDateString() <= $date && $inc->ends_on->toDateString() >= $date) {
-                $incidenceItems[] = ['code' => (string) $inc->type?->code, 'name' => (string) ($inc->type?->name ?? 'Incidencia'), 'minutes' => $inc->minutes, 'affects_payroll' => (bool) $inc->type?->affects_payroll, 'id' => $inc->id];
+                $incidenceItems[] = ['code' => (string) $inc->type?->code, 'name' => (string) ($inc->type->name ?? 'Incidencia'), 'minutes' => $inc->minutes, 'affects_payroll' => (bool) $inc->type?->affects_payroll, 'id' => $inc->id];
             }
         }
         $onVacation = false;
@@ -306,7 +306,7 @@ final class AttendanceDays
             ? CarbonImmutable::instance($summary->scheduled_start)->setTimezone($tz)->format('H:i').'–'.CarbonImmutable::instance($summary->scheduled_end)->setTimezone($tz)->format('H:i')
             : null;
         // El nombre del horario sólo se antepone si no repite ya las horas.
-        $scheduleName = (string) ($schedule?->name ?? '');
+        $scheduleName = (string) ($schedule->name ?? '');
         $scheduleLabel = $times !== null
             ? ($scheduleName !== '' && ! str_contains(str_replace('-', '–', $scheduleName), $times) ? $scheduleName.' '.$times : $times)
             : (in_array($status, [WorkdayStatus::RestDay, WorkdayStatus::RestDayWorked], true) ? 'Descanso' : ($status === WorkdayStatus::Unscheduled ? 'Sin horario' : '—'));
@@ -351,9 +351,9 @@ final class AttendanceDays
             'early_leave_minutes' => $early,
             'incidence' => implode(', ', $incidenceLabels),
             'omission' => implode(', ', $omissions),
-            'status' => $status?->value,
-            'status_label' => $status?->label() ?? (string) $summary->status,
-            'punch_origin' => implode(', ', array_values(array_unique(array_filter($origins)))),
+            'status' => $status->value,
+            'status_label' => $status->label(),
+            'punch_origin' => implode(', ', array_values(array_unique($origins))),
             'rectification' => implode('; ', $rectLabels),
             'observations' => implode('; ', $observations),
             // Indicadores para concentrados (no son columnas visibles).

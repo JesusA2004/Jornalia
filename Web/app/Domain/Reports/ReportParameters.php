@@ -77,11 +77,17 @@ final readonly class ReportParameters
         ], fn ($v) => $v !== null);
     }
 
+    /**
+     * Inicio del periodo en UTC: medianoche del primer día en la zona del centro de trabajo.
+     */
     public function fromUtc(): CarbonImmutable
     {
         return CarbonImmutable::parse($this->from->toDateString(), $this->timezone)->startOfDay()->utc();
     }
 
+    /**
+     * Fin exclusivo del periodo en UTC: medianoche del día siguiente al último, en la zona del centro de trabajo.
+     */
     public function toUtcExclusive(): CarbonImmutable
     {
         return CarbonImmutable::parse($this->to->toDateString(), $this->timezone)->addDay()->startOfDay()->utc();

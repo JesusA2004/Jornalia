@@ -23,6 +23,10 @@ final class AccessScope
 {
     public function __construct(private readonly CurrentOrganization $current) {}
 
+    /**
+     * ¿Ve todas las sucursales de la organización activa? Es alcance de consulta,
+     * no autorización operativa: aprobar, validar o firmar exige siempre el permiso del flujo.
+     */
     public function hasFullAccess(User $user): bool
     {
         if ($user->is_super_admin) {
@@ -39,8 +43,14 @@ final class AccessScope
     }
 
     /**
-     * @param  Builder<Employee>  $query
-     * @return Builder<Employee>
+     * Limita la consulta a los colaboradores del alcance del usuario: sus sucursales,
+     * su personal a cargo y él mismo. Sin acceso total nunca se ven otras sucursales.
+     *
+     * @template TModel of \Illuminate\Database\Eloquent\Model
+     *
+     * @param  Builder<TModel>  $query
+     * @param  string  $column  columna con el id del colaborador (por omisión `employees.id`)
+     * @return Builder<TModel>
      */
     public function applyToEmployees(Builder $query, User $user, string $column = 'employees.id'): Builder
     {
@@ -80,6 +90,10 @@ final class AccessScope
         return $this->applyToEmployees(Employee::query(), $user);
     }
 
+    /**
+     * ¿El colaborador está dentro del alcance del usuario? Se evalúa en el
+     * backend; nunca se confía en filtros enviados por el cliente.
+     */
     public function canAccessEmployee(User $user, Employee|int $employee): bool
     {
         $id = $employee instanceof Employee ? $employee->id : $employee;

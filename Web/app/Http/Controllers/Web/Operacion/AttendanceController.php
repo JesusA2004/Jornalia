@@ -182,7 +182,7 @@ final class AttendanceController extends Controller
                         $p->sequence,
                         $p->employee?->employee_number,
                         $p->employee?->fullName(),
-                        $p->local_date?->toDateString(),
+                        $p->local_date->toDateString(),
                         $p->type->label(),
                         $time($p->server_time),
                         $time($p->device_time),

@@ -38,7 +38,11 @@ class OrganizationStructureController extends AdminController
 
     public const ENTITY_PATTERN = 'razones-sociales|centros-trabajo|sucursales|departamentos|puestos|geocercas';
 
-    /** @var array<string, array{model: class-string<Model>, label: string, tab: string, title: string}> */
+    /**
+     * Catálogos de estructura; todos admiten sólo baja lógica (SoftDeletes) y reactivación.
+     *
+     * @var array<string, array{model: class-string<LegalEntity|WorkCenter|Branch|Department|Position|Geofence>, label: string, tab: string, title: string}>
+     */
     private const ENTITIES = [
         'razones-sociales' => ['model' => LegalEntity::class, 'label' => 'Razón social', 'tab' => 'legal-entities', 'title' => 'legal_name'],
         'centros-trabajo' => ['model' => WorkCenter::class, 'label' => 'Centro de trabajo', 'tab' => 'work-centers', 'title' => 'name'],
@@ -55,7 +59,6 @@ class OrganizationStructureController extends AdminController
         $def = self::ENTITIES[$entity];
         $data = $this->validated($request, $entity, null);
 
-        /** @var Model $model */
         $model = $def['model']::query()->create($data);
         $this->audit->log('organization.'.$def['tab'].'.created', $model, "{$def['label']} registrado(a): {$model->getAttribute($def['title'])}", $this->safeContext($data));
         $this->toastWithWarnings($entity, $model, "«{$model->getAttribute($def['title'])}» se registró correctamente.");
@@ -66,7 +69,6 @@ class OrganizationStructureController extends AdminController
     public function update(Request $request, string $entity, int $id): RedirectResponse
     {
         $def = self::ENTITIES[$entity];
-        /** @var Model $model */
         $model = $def['model']::query()->findOrFail($id);
         $this->ensureOwned($model);
         $data = $this->validated($request, $entity, $model);
@@ -84,7 +86,6 @@ class OrganizationStructureController extends AdminController
     public function deactivate(Request $request, string $entity, int $id): RedirectResponse
     {
         $def = self::ENTITIES[$entity];
-        /** @var Model $model */
         $model = $def['model']::query()->findOrFail($id);
         $this->ensureOwned($model);
         $title = (string) $model->getAttribute($def['title']);
@@ -106,7 +107,6 @@ class OrganizationStructureController extends AdminController
     public function restore(Request $request, string $entity, int $id): RedirectResponse
     {
         $def = self::ENTITIES[$entity];
-        /** @var Model $model */
         $model = $def['model']::query()->withTrashed()->findOrFail($id);
         $this->ensureOwned($model);
 
@@ -177,6 +177,8 @@ class OrganizationStructureController extends AdminController
                 'radius_meters' => ['required', 'integer', 'min:'.self::RADIUS_MIN, 'max:'.self::RADIUS_MAX],
                 'active' => ['boolean'],
             ],
+            // La ruta restringe `entity` a ENTITY_PATTERN; cualquier otro valor no existe.
+            default => abort(404),
         };
 
         if (in_array($entity, ['razones-sociales', 'sucursales', 'departamentos', 'puestos', 'centros-trabajo'], true)) {
@@ -253,6 +255,7 @@ class OrganizationStructureController extends AdminController
             'departamentos' => [[$assignments('department_id'), 'tiene colaboradores asignados'], [$active('departments', 'parent_id'), 'tiene subdepartamentos activos']],
             'puestos' => [[$assignments('position_id'), 'tiene colaboradores asignados']],
             'geocercas' => [[DB::table('attendance_policy_geofence as pg')->join('attendance_policies as ap', 'ap.id', '=', 'pg.attendance_policy_id')->whereNull('ap.deleted_at')->where('pg.geofence_id', $id)->count(), 'está asociada a políticas de asistencia activas']],
+            default => [],
         };
 
         foreach ($checks as [$count, $message]) {

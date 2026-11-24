@@ -225,7 +225,7 @@ final class VacationController extends Controller
         $branchNames = collect($cards)->mapWithKeys(fn ($c) => [(string) ($c['branch_id'] ?? 0) => $c['branch'] ?? 'Sin sucursal']);
 
         $out = [];
-        foreach ($days as $day) {
+        foreach ($days as $date => $day) {
             $conflicts = [];
             foreach ($day['by_branch'] as $branchKey => $count) {
                 $total = max(1, $headcount[$branchKey] ?? 1);
@@ -240,7 +240,7 @@ final class VacationController extends Controller
                     ];
                 }
             }
-            $out[] = ['date' => $day['date'], 'absences' => $day['absences'], 'conflicts' => $conflicts];
+            $out[] = ['date' => (string) $date, 'absences' => $day['absences'], 'conflicts' => $conflicts];
         }
 
         return [
@@ -268,14 +268,14 @@ final class VacationController extends Controller
         $rows = $query->limit(20)->get();
         $cards = $this->scope->employeeCards($rows->pluck('employee_id'));
 
-        return $rows->map(fn (VacationRequest $o) => [
+        return array_values($rows->map(fn (VacationRequest $o) => [
             'id' => $o->id,
             'employee' => $cards[$o->employee_id] ?? null,
             'starts_on' => $o->starts_on->toDateString(),
             'ends_on' => $o->ends_on->toDateString(),
             'status' => $o->status->value,
             'status_label' => $o->status->label(),
-        ])->values()->all();
+        ])->all());
     }
 
     /**

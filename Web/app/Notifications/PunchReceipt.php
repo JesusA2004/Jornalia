@@ -62,7 +62,7 @@ final class PunchReceipt extends AppNotification
 
     public function body(User $notifiable): string
     {
-        $date = CarbonImmutable::parse($this->localDate)->locale('es')->isoFormat('D [de] MMMM [de] YYYY');
+        $date = CarbonImmutable::parse($this->localDate)->settings(['locale' => 'es'])->isoFormat('D [de] MMMM [de] YYYY');
 
         return "{$date}, {$this->localTime} h. Folio {$this->receiptCode}.";
     }

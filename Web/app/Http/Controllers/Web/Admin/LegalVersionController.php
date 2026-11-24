@@ -123,7 +123,7 @@ class LegalVersionController extends AdminController
 
     private function currentTimezone(): string
     {
-        return (string) (app(CurrentOrganization::class)->get()?->timezone ?? 'America/Mexico_City');
+        return (string) (app(CurrentOrganization::class)->get()->timezone ?? 'America/Mexico_City');
     }
 
     /**

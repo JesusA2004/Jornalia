@@ -102,7 +102,7 @@ class EmployeeController extends AdminController
             ->with(['employments' => fn ($q) => $q->orderByDesc('starts_on'), 'employments.assignments.branch' => fn ($q) => $q->withTrashed()->select('id', 'name'), 'employments.assignments.position' => fn ($q) => $q->withTrashed()->select('id', 'name'), 'employments.assignments.department' => fn ($q) => $q->withTrashed()->select('id', 'name'), 'employments.assignments.schedule' => fn ($q) => $q->withTrashed()->select('id', 'name')])
             ->paginate((int) ($filters['per_page'] ?? 15))
             ->withQueryString();
-        $registration = $this->registration->forMany(collect($paginator->items())->pluck('id')->map(fn ($id) => (int) $id)->all());
+        $registration = $this->registration->forMany(array_values(array_map(fn (Employee $e) => (int) $e->id, $paginator->items())));
         $paginator->through(fn (Employee $e) => $this->listRow($e, $today, $registration[$e->id] ?? null));
 
         $monthStart = CarbonImmutable::today()->startOfMonth()->toDateString();
@@ -205,7 +205,7 @@ class EmployeeController extends AdminController
                 'ends_at' => $shift?->endsAt->toIso8601String(),
                 'break_minutes' => $shift?->breakMinutes,
                 'kind' => $shift?->kind->value,
-                'from_exception' => $shift?->fromException ?? false,
+                'from_exception' => $shift->fromException ?? false,
                 'holiday' => $holiday?->name,
             ];
         }
@@ -237,8 +237,8 @@ class EmployeeController extends AdminController
                 'starts_on' => $em->starts_on->toDateString(),
                 'ends_on' => $em->ends_on?->toDateString(),
                 'seniority_starts_on' => $em->seniority_starts_on->toDateString(),
-                'contract_type' => $em->contract_type?->value,
-                'work_modality' => $em->work_modality?->value,
+                'contract_type' => $em->contract_type->value,
+                'work_modality' => $em->work_modality->value,
                 'status' => $em->status,
                 'termination_reason' => $em->termination_reason,
                 'legal_entity' => $em->legalEntity?->legal_name,
@@ -474,10 +474,10 @@ class EmployeeController extends AdminController
     }
 
     /**
-     * @return array<string, mixed>
-     */
-    /**
+     * Fila del listado de colaboradores (incluye el estado del alta de registro).
+     *
      * @param  array{app: bool, agreement: bool, complete: bool}|null  $registration
+     * @return array<string, mixed>
      */
     private function listRow(Employee $e, string $today, ?array $registration = null): array
     {

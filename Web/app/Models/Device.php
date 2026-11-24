@@ -4,7 +4,6 @@ namespace App\Models;
 
 use App\Enums\DeviceStatus;
 use App\Support\Tenancy\BelongsToOrganization;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -12,7 +11,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Device extends Model
 {
-    use BelongsToOrganization, HasFactory, SoftDeletes;
+    use BelongsToOrganization, SoftDeletes;
 
     protected $table = 'devices';
 

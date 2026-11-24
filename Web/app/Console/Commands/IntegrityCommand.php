@@ -14,7 +14,7 @@ use Illuminate\Console\Command;
  * en Cumplimiento y avisa a RH y Sistemas (IntegrityMonitor).
  */
 #[Signature('asistencias:integridad {accion : anclar|verificar|diaria} {--organizacion= : ID de organización (todas si se omite)}')]
-#[Description('Ancla externamente y/o verifica las cadenas de integridad de marcajes y ajustes')]
+#[Description('Ancla externamente y/o verifica las cadenas de integridad de marcajes, ajustes y firmas electrónicas')]
 final class IntegrityCommand extends Command
 {
     public function handle(IntegrityMonitor $monitor): int

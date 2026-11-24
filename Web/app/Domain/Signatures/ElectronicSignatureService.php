@@ -104,7 +104,7 @@ final class ElectronicSignatureService
                 'sequence' => $link['sequence'],
                 'previous_hash' => $link['previous_hash'],
             ]);
-            $sig->hash = $this->chain->hash($link['previous_hash'], self::chainPayload($sig));
+            $sig->hash = $this->chain->hash($link['previous_hash'], HashChain::signaturePayload($sig));
             $sig->save();
 
             return $sig;
@@ -122,7 +122,7 @@ final class ElectronicSignatureService
      */
     public function verifySeal(ElectronicSignature $signature): bool
     {
-        return hash_equals($this->chain->hash($signature->previous_hash, self::chainPayload($signature)), $signature->hash)
+        return hash_equals($this->chain->hash($signature->previous_hash, HashChain::signaturePayload($signature)), $signature->hash)
             && hash_equals(self::payloadHash($signature->purpose, $signature->signable_type, (int) $signature->signable_id, (int) $signature->employee_id, $signature->statement), $signature->payload_sha256);
     }
 
@@ -141,37 +141,23 @@ final class ElectronicSignatureService
         ]));
     }
 
+    /**
+     * SHA-256 del contenido que firma el colaborador para un modelo firmable.
+     * El mismo valor se encadena en la firma, así que cualquier cambio posterior
+     * al texto o al objeto firmado se detecta en la verificación de integridad.
+     */
     public static function payloadHashFor(string $purpose, Model $signable, int $employeeId, string $statement): string
     {
         return self::payloadHash($purpose, $signable->getMorphClass(), (int) $signable->getKey(), $employeeId, $statement);
     }
 
+    /**
+     * Cadena que la app firma con el secreto del dispositivo tras la biometría
+     * del sistema operativo. El servidor la reconstruye para validar la HMAC:
+     * liga propósito, objeto, contenido y teléfono en una sola firma.
+     */
     public static function biometricCanonical(string $purpose, int $signableId, string $payloadSha256, string $deviceUuid): string
     {
         return implode('|', ['sign', $purpose, (string) $signableId, $payloadSha256, $deviceUuid]);
-    }
-
-    /**
-     * Campos encadenados de una firma (orden fijo y formato estable).
-     *
-     * @return array<string, mixed>
-     */
-    public static function chainPayload(ElectronicSignature $s): array
-    {
-        return [
-            'uuid' => $s->uuid,
-            'organization_id' => (int) $s->organization_id,
-            'employee_id' => (int) $s->employee_id,
-            'user_id' => (int) $s->user_id,
-            'signable_type' => $s->signable_type,
-            'signable_id' => (int) $s->signable_id,
-            'purpose' => $s->purpose,
-            'method' => $s->method,
-            'payload_sha256' => $s->payload_sha256,
-            'device_id' => $s->device_id !== null ? (int) $s->device_id : null,
-            'ip' => $s->ip,
-            'signed_at' => $s->signed_at->copy()->utc()->format('Y-m-d\TH:i:s.u\Z'),
-            'sequence' => (int) $s->sequence,
-        ];
     }
 }

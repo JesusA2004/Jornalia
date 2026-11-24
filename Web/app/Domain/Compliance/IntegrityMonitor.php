@@ -3,6 +3,7 @@
 namespace App\Domain\Compliance;
 
 use App\Domain\Attendance\IntegrityAnchorService;
+use App\Domain\Attendance\IntegrityChains;
 use App\Domain\Attendance\IntegrityVerifier;
 use App\Domain\Audit\AuditLogger;
 use App\Enums\AlertSeverity;
@@ -22,7 +23,8 @@ use Throwable;
  */
 final class IntegrityMonitor
 {
-    public const CHAINS = ['punches' => 'Marcajes originales', 'adjustments' => 'Ajustes por rectificación'];
+    /** Cadenas verificadas y ancladas (marcajes, ajustes y firmas electrónicas). */
+    public const CHAINS = IntegrityChains::LABELS;
 
     /** RH (atiende alertas) y Sistemas (verifica integridad). */
     public const ALERT_PERMISSIONS = ['compliance.resolve', 'integrity.verify'];

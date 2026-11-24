@@ -159,13 +159,13 @@ final class AttendanceAggregates
      */
     private function period(string $date, string $unit): array
     {
-        $d = CarbonImmutable::parse($date);
+        $d = CarbonImmutable::parse($date)->settings(['locale' => 'es']);
 
         return match ($unit) {
-            'month' => [$d->format('Y-m'), ucfirst($d->locale('es')->isoFormat('MMMM YYYY'))],
+            'month' => [$d->format('Y-m'), ucfirst($d->isoFormat('MMMM YYYY'))],
             'fortnight' => $d->day <= 15
-                ? [$d->format('Y-m').'-1', '1.ª quincena '.$d->locale('es')->isoFormat('MMMM YYYY')]
-                : [$d->format('Y-m').'-2', '2.ª quincena '.$d->locale('es')->isoFormat('MMMM YYYY')],
+                ? [$d->format('Y-m').'-1', '1.ª quincena '.$d->isoFormat('MMMM YYYY')]
+                : [$d->format('Y-m').'-2', '2.ª quincena '.$d->isoFormat('MMMM YYYY')],
             default => (function () use ($d) {
                 $start = $d->startOfWeek(CarbonImmutable::MONDAY);
 

@@ -145,6 +145,9 @@ final class ReportDataset
         return $this->computeTotals($this->sums);
     }
 
+    /**
+     * Filas de datos emitidas. Sólo disponible tras recorrer el dataset completo.
+     */
     public function rowCount(): int
     {
         $this->assertComplete();
@@ -152,6 +155,10 @@ final class ReportDataset
         return $this->count;
     }
 
+    /**
+     * SHA-256 de los datos emitidos: permite demostrar que dos archivos (PDF, XLSX
+     * o CSV) contienen exactamente la misma información.
+     */
     public function dataSha256(): string
     {
         $this->assertComplete();
@@ -159,6 +166,9 @@ final class ReportDataset
         return $this->sha;
     }
 
+    /**
+     * ¿Ya se recorrieron todas las filas?
+     */
     public function isComplete(): bool
     {
         return $this->complete;

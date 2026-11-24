@@ -9,6 +9,10 @@ namespace App\Domain\Reports\Support;
  */
 final class SpreadsheetSafe
 {
+    /**
+     * Neutraliza la inyección de fórmulas en hojas de cálculo (CSV/XLSX): un texto
+     * que empieza con = + - @ o tabulador se antepone con apóstrofo.
+     */
     public static function text(string $value): string
     {
         if ($value === '') {

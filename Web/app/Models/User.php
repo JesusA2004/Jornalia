@@ -15,6 +15,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 use Laravel\Fortify\TwoFactorAuthenticatable;
+use Laravel\Sanctum\Contracts\HasAbilities;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -45,6 +46,17 @@ class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, HasRoles, Notifiable, SoftDeletes, TwoFactorAuthenticatable;
+
+    /**
+     * Token de la petición actual: PersonalAccessToken (app móvil), TransientToken
+     * (sesión web/SPA de Sanctum) o null si no hay token. Sanctum lo tipa como
+     * PersonalAccessToken; aquí se declara el tipo real para obligar a comprobarlo
+     * antes de revocar o leer el dispositivo ligado.
+     */
+    public function currentAccessToken(): ?HasAbilities
+    {
+        return $this->accessToken;
+    }
 
     /**
      * @return array<string, string>

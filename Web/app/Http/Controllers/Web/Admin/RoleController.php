@@ -13,6 +13,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Spatie\Permission\Contracts\Permission as PermissionContract;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -200,7 +201,7 @@ class RoleController extends AdminController
 
     /**
      * @param  list<string>  $names
-     * @return list<Permission>
+     * @return list<PermissionContract>
      */
     private function permissions(array $names): array
     {

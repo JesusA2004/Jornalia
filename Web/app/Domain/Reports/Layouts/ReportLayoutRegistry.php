@@ -10,6 +10,9 @@ use InvalidArgumentException;
  */
 final class ReportLayoutRegistry
 {
+    /**
+     * Layout configurado para el reporte (`reports.layouts`), institucional por omisión.
+     */
     public function for(ReportDefinition $definition): ReportLayout
     {
         $class = config("reports.layouts.{$definition->key}") ?? config('reports.layouts.default', InstitutionalLayout::class);

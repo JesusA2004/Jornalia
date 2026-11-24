@@ -4,7 +4,6 @@ namespace App\Models;
 
 use App\Support\Tenancy\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -14,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class FaceEnrollment extends Model
 {
-    use BelongsToOrganization, HasFactory;
+    use BelongsToOrganization;
 
     public const STATUS_ACTIVE = 'active';
 

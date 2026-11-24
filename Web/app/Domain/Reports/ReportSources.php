@@ -50,13 +50,20 @@ final class ReportSources
                     yield $map($raw);
                 }
             },
-            'overtime' => fn () => $this->overtime->rows($p, $user, (string) ($o['only'] ?? 'all')),
+            'overtime' => fn () => $this->overtime->rows($p, $user, match ($o['only'] ?? 'all') {
+                'double' => 'double',
+                'triple' => 'triple',
+                default => 'all',
+            }),
             'evidence' => fn () => $this->evidence->rows($p, $user),
             'noi' => fn () => $this->noi->rows($p, $user),
             default => throw new InvalidArgumentException("Constructor de reporte desconocido: {$d->builder}"),
         };
     }
 
+    /**
+     * Filas estimadas antes de generar (decide si se exporta en segundo plano).
+     */
     public function estimate(ReportDefinition $d, ReportParameters $p, User $user): int
     {
         if ($d->builder === 'records') {

@@ -80,7 +80,7 @@ final class KioskController extends ApiController
         $this->throttle($kiosk, (string) $data['employee_number']);
 
         try {
-            $result = $this->kiosks->punch($kiosk, $data + ['captured_offline' => false], $request->ip(), $request->userAgent());
+            $result = $this->kiosks->punch($kiosk, self::punchData($data, offline: false), $request->ip(), $request->userAgent());
         } catch (AttendanceException $e) {
             if ($e->errorCode !== KioskService::FACE_REQUIRED) {
                 throw $e;
@@ -109,7 +109,7 @@ final class KioskController extends ApiController
             try {
                 $data = Validator::make($item, self::rules())->validate();
                 $this->throttle($kiosk, (string) $data['employee_number']);
-                $result = $this->kiosks->punch($kiosk, $data + ['captured_offline' => true], $request->ip(), $request->userAgent());
+                $result = $this->kiosks->punch($kiosk, self::punchData($data, offline: true), $request->ip(), $request->userAgent());
                 $results[] = [
                     'client_uuid' => $clientUuid,
                     'result' => $result['duplicate'] ? 'duplicate' : 'created',
@@ -189,6 +189,27 @@ final class KioskController extends ApiController
             'location.accuracy_meters' => ['nullable', 'numeric', 'min:0', 'max:100000'],
             'location.captured_at' => ['nullable', 'date'],
             'location.is_mocked' => ['nullable', 'boolean'],
+        ];
+    }
+
+    /**
+     * Datos validados del marcaje de kiosco con la forma que espera el dominio.
+     *
+     * @param  array<string, mixed>  $data  salida de `rules()` ya validada
+     * @return array{employee_number:string, pin:string, type:string, client_uuid:string, device_time:string, timezone:string|null, captured_offline:bool, face_verification_id:string|null, location:array<string, mixed>|null}
+     */
+    private static function punchData(array $data, bool $offline): array
+    {
+        return [
+            'employee_number' => (string) $data['employee_number'],
+            'pin' => (string) $data['pin'],
+            'type' => (string) $data['type'],
+            'client_uuid' => (string) $data['client_uuid'],
+            'device_time' => (string) $data['device_time'],
+            'timezone' => isset($data['timezone']) ? (string) $data['timezone'] : null,
+            'captured_offline' => $offline,
+            'face_verification_id' => isset($data['face_verification_id']) ? (string) $data['face_verification_id'] : null,
+            'location' => isset($data['location']) && is_array($data['location']) ? $data['location'] : null,
         ];
     }
 

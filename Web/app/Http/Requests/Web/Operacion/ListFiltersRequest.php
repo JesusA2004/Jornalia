@@ -77,8 +77,10 @@ class ListFiltersRequest extends FormRequest
     }
 
     /**
+     * Orden permitido (lista blanca de columnas; nunca la columna cruda del cliente).
+     *
      * @param  array<string, string>  $allowed  clave pública => columna
-     * @return array{0:string,1:string}
+     * @return array{0:string, 1:'asc'|'desc'}
      */
     public function sorting(array $allowed, string $defaultKey, string $defaultDirection = 'desc'): array
     {

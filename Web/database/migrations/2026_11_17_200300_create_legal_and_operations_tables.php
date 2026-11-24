@@ -44,7 +44,9 @@ return new class extends Migration
 
         Schema::create('holidays', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('organization_id')->nullable()->constrained()->cascadeOnDelete()->comment('null = oficial nacional');
+            // Migración histórica ya aplicada: no se altera su efecto. `comment()` cae en Fluent::__call
+            // de la llave foránea (no comenta la columna); se conserva tal cual para no divergir del esquema.
+            $table->foreignId('organization_id')->nullable()->constrained()->cascadeOnDelete()->comment('null = oficial nacional'); // @phpstan-ignore method.notFound (Fluent::__call en migración histórica)
             $table->foreignId('work_center_id')->nullable()->constrained()->cascadeOnDelete();
             $table->date('date');
             $table->string('code', 40);

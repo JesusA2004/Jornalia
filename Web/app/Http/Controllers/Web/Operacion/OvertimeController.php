@@ -18,6 +18,7 @@ use App\Models\OvertimeRecord;
 use App\Models\User;
 use App\Models\WorkdaySummary;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Carbon\CarbonPeriod;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -65,8 +66,8 @@ final class OvertimeController extends Controller
 
         $rows = $pageIds->map(function ($id) use ($cards, $sumRows, $recRows, $weekly, $user, $workflow) {
             $result = $weekly[$id] ?? null;
-            $byDateSum = ($sumRows[$id] ?? collect())->keyBy(fn ($s) => $s->date->toDateString());
-            $byDateRec = ($recRows[$id] ?? collect())->keyBy(fn ($r) => $r->date->toDateString());
+            $byDateSum = ($sumRows[$id] ?? collect())->keyBy(fn (WorkdaySummary $s): string => $s->date->toDateString());
+            $byDateRec = ($recRows[$id] ?? collect())->keyBy(fn (OvertimeRecord $r): string => $r->date->toDateString());
 
             $days = array_map(function (WeeklyOvertimeDay $d) use ($byDateSum, $byDateRec, $user, $workflow) {
                 $s = $byDateSum[$d->date] ?? null;
@@ -105,7 +106,7 @@ final class OvertimeController extends Controller
                 'end' => $weekEnd->toDateString(),
                 'previous' => $week->subWeek()->toDateString(),
                 'next' => $week->addWeek()->toDateString(),
-                'days' => collect(CarbonPeriod::create($week, $weekEnd))->map(fn ($d) => $d->toDateString())->values(),
+                'days' => array_map(fn (CarbonInterface $d) => $d->toDateString(), CarbonPeriod::create($week, $weekEnd)->toArray()),
             ],
             'rows' => $paginator,
             'totals' => [

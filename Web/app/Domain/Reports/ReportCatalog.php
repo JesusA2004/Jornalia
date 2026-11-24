@@ -122,6 +122,16 @@ final class ReportCatalog
             new C('hash', 'Hash', 'hash', width: 14),
         ];
 
+        /**
+         * Catálogo declarativo; PHPStan valida cada entrada contra esta forma.
+         *
+         * @var array<string, array{
+         *     title: string, description: string, category: key-of<self::CATEGORIES>, builder: string, columns: list<C>,
+         *     groupings?: list<ReportGrouping>, options?: array<string, mixed>, landscape?: bool, paper?: string,
+         *     status?: list<array{value: string, label: string}>, requires_employee?: bool, featured?: bool,
+         *     max_days?: int, filters_extra?: list<string>
+         * }> $defs
+         */
         $defs = [
             // ── Asistencia ──────────────────────────────────────────
             'asistencia_detallada' => [
@@ -425,6 +435,9 @@ final class ReportCatalog
         return [...array_keys(self::$cache ?? []), 'noi_incidencias'];
     }
 
+    /**
+     * Definición de un reporte por clave, o null si no existe.
+     */
     public static function definition(string $key): ?ReportDefinition
     {
         return self::definitions()[$key] ?? null;

@@ -3,13 +3,12 @@
 namespace App\Models;
 
 use App\Support\Tenancy\BelongsToOrganization;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class VacationAdjustment extends Model
 {
-    use BelongsToOrganization, HasFactory;
+    use BelongsToOrganization;
 
     protected $table = 'vacation_adjustments';
 

@@ -64,7 +64,11 @@ class ApprovalFlowController extends AdminController
             'levels.*.permission' => 'permiso', 'levels.*.label' => 'etiqueta',
         ]);
 
-        $levels = array_values(array_map(fn ($l, $i) => ['level' => $i + 1, 'permission' => $l['permission'], 'label' => trim($l['label'])], $data['levels'], array_keys($data['levels'])));
+        // Los niveles se renumeran 1..n en el orden recibido.
+        $levels = [];
+        foreach (array_values((array) $data['levels']) as $i => $l) {
+            $levels[] = ['level' => $i + 1, 'permission' => (string) $l['permission'], 'label' => trim((string) $l['label'])];
+        }
         $before = $this->workflow->levels($subject);
 
         $flow = ApprovalFlow::query()->updateOrCreate(['subject' => $subject], ['levels' => $levels]);
@@ -105,7 +109,7 @@ class ApprovalFlowController extends AdminController
      */
     private function overtimePolicy(): array
     {
-        $value = (array) (OrganizationSetting::query()->where('key', self::OVERTIME_SETTING)->first()?->value ?? []);
+        $value = (array) (OrganizationSetting::query()->where('key', self::OVERTIME_SETTING)->first()->value ?? []);
 
         return [
             'requires_prior_authorization' => (bool) ($value['requires_prior_authorization'] ?? false),

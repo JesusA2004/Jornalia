@@ -135,7 +135,7 @@ final class WorkforceService
      */
     public function todayFor(Employee $employee): string
     {
-        $timezone = $employee->organization?->timezone ?? config('app.timezone', 'UTC');
+        $timezone = $employee->organization->timezone ?? config('app.timezone', 'UTC');
 
         return CarbonImmutable::now($timezone)->toDateString();
     }

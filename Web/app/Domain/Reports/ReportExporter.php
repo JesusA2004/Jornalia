@@ -2,6 +2,7 @@
 
 namespace App\Domain\Reports;
 
+use App\Domain\Attendance\IntegrityChains;
 use App\Domain\Attendance\IntegrityVerifier;
 use App\Domain\Reports\Dataset\ReportDataset;
 use App\Domain\Reports\Dataset\ReportHeaderFactory;
@@ -56,6 +57,10 @@ final class ReportExporter
         );
     }
 
+    /**
+     * Genera el archivo y registra ruta, huella del archivo, huella de los datos y
+     * número de filas. Los marcajes sólo se leen: un reporte nunca modifica registros.
+     */
     public function generate(ReportExport $export, User $user, Organization $organization): ReportExport
     {
         $definition = ReportCatalog::definition($export->report) ?? throw new InvalidArgumentException('Reporte desconocido.');
@@ -83,6 +88,9 @@ final class ReportExporter
         return $export;
     }
 
+    /**
+     * Renderizador del formato pedido (pdf, xlsx o csv).
+     */
     public function renderer(string $format): ReportRenderer
     {
         return match ($format) {
@@ -101,14 +109,13 @@ final class ReportExporter
     public function integrity(int $organizationId): array
     {
         $chains = [];
-        foreach (['punches' => 'Marcajes originales', 'adjustments' => 'Ajustes por rectificación'] as $chain => $label) {
+        foreach (IntegrityChains::LABELS as $chain => $label) {
             $chains[] = ['label' => $label] + $this->verifier->verify($organizationId, $chain);
         }
         $anchors = IntegrityAnchor::query()->withoutGlobalScopes()->where('organization_id', $organizationId)
             ->orderByDesc('created_at')->limit(5)->get()
-            ->map(fn ($a) => ['chain' => $a->chain, 'sequence' => (int) $a->sequence, 'hash' => $a->hash, 'method' => $a->method, 'created_at' => $a->created_at?->utc()->format('Y-m-d H:i:s').' UTC'])
-            ->all();
+            ->map(fn (IntegrityAnchor $a) => ['chain' => $a->chain, 'sequence' => (int) $a->sequence, 'hash' => $a->hash, 'method' => $a->method, 'created_at' => $a->created_at->utc()->format('Y-m-d H:i:s').' UTC']);
 
-        return ['chains' => $chains, 'anchors' => $anchors, 'verified_at' => now('UTC')->format('Y-m-d H:i:s').' UTC'];
+        return ['chains' => $chains, 'anchors' => array_values($anchors->all()), 'verified_at' => now('UTC')->format('Y-m-d H:i:s').' UTC'];
     }
 }

@@ -56,7 +56,7 @@ final class ProfilePresenter
             'position' => $assignment?->position?->name,
             'department' => $assignment?->department?->name,
             'branch' => $assignment?->branch?->name,
-            'work_center' => $assignment?->workCenter?->name ?? $assignment?->branch?->workCenter?->name,
+            'work_center' => $assignment?->workCenter->name ?? $assignment?->branch?->workCenter?->name,
             'hire_date' => ApiFormat::date($employment?->starts_on),
             'supervisor' => $assignment?->supervisor?->fullName(),
             'timezone' => $this->schedules->timezoneFor($employee, $assignment),

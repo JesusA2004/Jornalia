@@ -203,10 +203,10 @@ final class IncidenceController extends Controller
     {
         $order = array_flip(IncidenceCatalog::codes());
 
-        return IncidenceType::query()->where('active', true)->whereIn('code', IncidenceCatalog::codes())->get()
+        return array_values(IncidenceType::query()->where('active', true)->whereIn('code', IncidenceCatalog::codes())->get()
             ->sortBy(fn (IncidenceType $t) => $order[$t->code] ?? 99)
             ->map(fn (IncidenceType $t) => ['value' => (string) $t->id, 'label' => $t->name, 'description' => self::CATEGORIES[$t->category] ?? $t->category] + $this->typeData($t))
-            ->values()->all();
+            ->all());
     }
 
     /**
@@ -252,7 +252,7 @@ final class IncidenceController extends Controller
             'type_name' => $i->type?->name,
             'type_code' => $i->type?->code,
             'category' => $i->type?->category,
-            'category_label' => self::CATEGORIES[$i->type?->category ?? ''] ?? null,
+            'category_label' => self::CATEGORIES[$i->type->category ?? ''] ?? null,
             'starts_on' => $i->starts_on->toDateString(),
             'ends_on' => $i->ends_on->toDateString(),
             'days' => (int) $i->starts_on->diffInDays($i->ends_on) + 1,

@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Prunable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class PunchChallenge extends Model
 {
-    use HasFactory, Prunable;
+    use Prunable;
 
     protected $table = 'punch_challenges';
 
@@ -33,7 +32,7 @@ class PunchChallenge extends Model
     }
 
     /**
-     * @return Builder<self>
+     * @return Builder<static>
      */
     public function prunable(): Builder
     {

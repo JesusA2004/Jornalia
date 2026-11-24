@@ -59,6 +59,11 @@ class ScheduleRequest extends FormRequest
         ];
     }
 
+    /**
+     * Validaciones entre segmentos (traslapes y orden por día).
+     *
+     * @return list<\Closure(Validator): void>
+     */
     public function after(): array
     {
         return [function (Validator $validator) {

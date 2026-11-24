@@ -46,7 +46,9 @@ final class UserAccessService
     }
 
     /**
-     * @return array<string, array<string, mixed>>
+     * Accesos de la autoridad laboral (sólo lectura y con vigencia) por id de usuario.
+     *
+     * @return array<int, array<string, mixed>>
      */
     public function authorityGrants(int $organizationId): array
     {
@@ -57,6 +59,10 @@ final class UserAccessService
         return is_array($value) ? $value : [];
     }
 
+    /**
+     * Otorga a la autoridad laboral acceso de sólo lectura con fecha de vencimiento.
+     * Se guarda el valor anterior y el nuevo en la bitácora.
+     */
     public function grantAuthority(User $user, int $organizationId, string $expiresOn, User $by): void
     {
         $setting = OrganizationSetting::query()->withoutGlobalScopes()->firstOrNew(['organization_id' => $organizationId, 'key' => self::AUTHORITY_SETTING]);
@@ -76,7 +82,7 @@ final class UserAccessService
     public function revokeAuthority(User $user, int $organizationId, User $by, string $reason): void
     {
         $setting = OrganizationSetting::query()->withoutGlobalScopes()->where('organization_id', $organizationId)->where('key', self::AUTHORITY_SETTING)->first();
-        $value = (array) ($setting?->value ?? []);
+        $value = (array) ($setting->value ?? []);
         $before = $value[(string) $user->id] ?? null;
         if ($setting !== null && $before !== null) {
             $value[(string) $user->id] = [...$before, 'revoked_at' => now()->toIso8601String(), 'revoked_by' => $by->id];
@@ -181,7 +187,7 @@ final class UserAccessService
                 if ($employee !== null && $employee->status === EmployeeStatus::Terminated) {
                     $flags[] = 'terminated';
                 }
-                $grant = $authority[(string) $user->id] ?? null;
+                $grant = $authority[$user->id] ?? null;
                 if (in_array(PermissionCatalog::ROLE_AUTHORITY, $roles, true) && ($grant === null || ($grant['expires_on'] ?? null) === null || (string) $grant['expires_on'] < $today)) {
                     $flags[] = 'authority_expired';
                 }
@@ -213,6 +219,10 @@ final class UserAccessService
         }
     }
 
+    /**
+     * Decisión de la revisión periódica sobre un usuario; «deactivate» desactiva
+     * el acceso (baja lógica, el historial se conserva).
+     */
     public function decide(UserAccessReview $review, User $subject, string $decision, User $by, ?string $note): void
     {
         $decisions = $review->decisions ?? [];
@@ -227,6 +237,9 @@ final class UserAccessService
         ], $review->organization_id);
     }
 
+    /**
+     * Cierra la revisión periódica de usuarios con un resumen auditado.
+     */
     public function complete(UserAccessReview $review, User $by, Organization $organization): void
     {
         $rows = $this->reviewRows($organization);

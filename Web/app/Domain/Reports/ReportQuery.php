@@ -27,6 +27,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
+use stdClass;
 
 /**
  * Reportes basados en registros (una fila por registro de la base): vacaciones, incidencias, alertas, marcajes originales y
@@ -40,7 +41,7 @@ final class ReportQuery
     public function __construct(private readonly AccessScope $scope) {}
 
     /**
-     * @return array{query: QueryBuilder, map: Closure(object): array<string, mixed>}
+     * @return array{query: QueryBuilder, map: Closure(stdClass): array<string, mixed>}
      */
     public function build(string $kind, ReportParameters $p, User $user): array
     {
@@ -55,7 +56,7 @@ final class ReportQuery
     }
 
     /**
-     * @return array{query: QueryBuilder, map: Closure(object): array<string, mixed>}
+     * @return array{query: QueryBuilder, map: Closure(stdClass): array<string, mixed>}
      */
     private function vacations(ReportParameters $p, User $user): array
     {
@@ -69,7 +70,7 @@ final class ReportQuery
             ->select(['vacation_requests.starts_on', 'vacation_requests.ends_on', 'vacation_requests.days', 'vacation_requests.service_year', 'vacation_requests.status', 'vacation_requests.employee_id', 'rv.name as reviewer', ...$this->employeeSelect()])
             ->orderBy('e.last_name')->orderBy('e.first_name')->orderBy('vacation_requests.employee_id')->orderBy('vacation_requests.starts_on');
 
-        return ['query' => $q->toBase(), 'map' => fn (object $r) => [
+        return ['query' => $q->toBase(), 'map' => fn (stdClass $r) => [
             ...$this->employeeRow($r),
             'starts_on' => substr((string) $r->starts_on, 0, 10),
             'ends_on' => substr((string) $r->ends_on, 0, 10),
@@ -83,7 +84,7 @@ final class ReportQuery
     }
 
     /**
-     * @return array{query: QueryBuilder, map: Closure(object): array<string, mixed>}
+     * @return array{query: QueryBuilder, map: Closure(stdClass): array<string, mixed>}
      */
     private function incidences(ReportParameters $p, User $user): array
     {
@@ -101,7 +102,7 @@ final class ReportQuery
             ->selectSub(fn ($s) => $s->from('attachments')->selectRaw('COUNT(*)')->where('attachable_type', $morph)->whereColumn('attachable_id', 'incidences.id'), 'evidence_count')
             ->orderBy('e.last_name')->orderBy('e.first_name')->orderBy('incidences.employee_id')->orderBy('incidences.starts_on');
 
-        return ['query' => $q->toBase(), 'map' => fn (object $r) => [
+        return ['query' => $q->toBase(), 'map' => fn (stdClass $r) => [
             ...$this->employeeRow($r),
             'folio' => 'INC-'.$r->id,
             'type_name' => $r->type_name,
@@ -124,7 +125,7 @@ final class ReportQuery
     }
 
     /**
-     * @return array{query: QueryBuilder, map: Closure(object): array<string, mixed>}
+     * @return array{query: QueryBuilder, map: Closure(stdClass): array<string, mixed>}
      */
     private function compliance(ReportParameters $p, User $user): array
     {
@@ -139,7 +140,7 @@ final class ReportQuery
 
         $statuses = ['open' => 'Abierta', 'acknowledged' => 'Atendida', 'resolved' => 'Resuelta'];
 
-        return ['query' => $q->toBase(), 'map' => fn (object $r) => [
+        return ['query' => $q->toBase(), 'map' => fn (stdClass $r) => [
             ...$this->employeeRow($r),
             'date' => substr((string) $r->date, 0, 10),
             'rule_code' => $r->rule_code,
@@ -158,7 +159,7 @@ final class ReportQuery
     /**
      * Marcajes originales inmutables (historial e inspección laboral).
      *
-     * @return array{query: QueryBuilder, map: Closure(object): array<string, mixed>}
+     * @return array{query: QueryBuilder, map: Closure(stdClass): array<string, mixed>}
      */
     private function punches(ReportParameters $p, User $user): array
     {
@@ -177,7 +178,7 @@ final class ReportQuery
                 ...$this->employeeSelect(),
             ])->orderBy('attendance_punches.sequence');
 
-        return ['query' => $q->toBase(), 'map' => function (object $r) {
+        return ['query' => $q->toBase(), 'map' => function (stdClass $r) {
             $anomalies = json_decode((string) $r->anomalies, true) ?: [];
             $punch = (new Punch)->newFromBuilder([
                 'source' => $r->source, 'server_time' => $r->server_time, 'device_time' => $r->device_time, 'captured_offline' => $r->captured_offline,
@@ -210,7 +211,7 @@ final class ReportQuery
      * Rectificaciones con evidencia y firma del colaborador (fecha, método,
      * dispositivo y sello de la firma electrónica encadenada).
      *
-     * @return array{query: QueryBuilder, map: Closure(object): array<string, mixed>}
+     * @return array{query: QueryBuilder, map: Closure(stdClass): array<string, mixed>}
      */
     private function rectifications(ReportParameters $p, User $user): array
     {
@@ -240,7 +241,7 @@ final class ReportQuery
             ->selectSub(fn ($s) => $s->from('attachments')->selectRaw("GROUP_CONCAT(CONCAT(original_name, ' (', LEFT(sha256, 12), ')') ORDER BY id SEPARATOR '; ')")->where('attachable_type', $morph)->whereColumn('attachable_id', 'rectification_requests.id'), 'evidence_files')
             ->orderBy('e.last_name')->orderBy('e.first_name')->orderBy('rectification_requests.employee_id')->orderBy('rectification_requests.date')->orderBy('rectification_requests.id');
 
-        return ['query' => $q->toBase(), 'map' => function (object $r) use ($p) {
+        return ['query' => $q->toBase(), 'map' => function (stdClass $r) use ($p) {
             $local = fn ($v) => $v ? CarbonImmutable::parse((string) $v, 'UTC')->setTimezone($p->timezone)->format('H:i') : null;
             $proposed = array_filter([PunchType::tryFrom((string) $r->proposed_type)?->label(), $local($r->proposed_time)]);
             $original = array_filter([PunchType::tryFrom((string) $r->original_type)?->label(), $local($r->original_time)]);
@@ -340,7 +341,7 @@ final class ReportQuery
     /**
      * @return array{employee_number:?string, employee_name:string, branch:?string, department:?string, position:?string}
      */
-    private function employeeRow(object $r): array
+    private function employeeRow(stdClass $r): array
     {
         return [
             'employee_number' => $r->employee_number ?? null,
@@ -356,7 +357,7 @@ final class ReportQuery
      *
      * @return array{_employee_key:int, _employee_label:string}
      */
-    private function employeeGroup(object $r): array
+    private function employeeGroup(stdClass $r): array
     {
         $name = trim(implode(' ', array_filter([$r->first_name ?? null, $r->last_name ?? null, $r->second_last_name ?? null]))) ?: '—';
 

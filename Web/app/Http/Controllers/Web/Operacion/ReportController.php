@@ -191,7 +191,7 @@ final class ReportController extends Controller
         abort_unless($model->status === 'completed' && $model->path && Storage::disk('local')->exists($model->path), 404);
 
         $audit->log('report.downloaded', $model, "Descargó {$model->folio}: {$model->report} ({$model->format})", ['folio' => $model->folio, 'sha256' => $model->sha256]);
-        $name = Str::slug(ReportCatalog::definition($model->report)?->title ?? $model->report).'-'.($model->folio ?? substr((string) $model->uuid, 0, 8)).'.'.$model->format;
+        $name = Str::slug(ReportCatalog::definition($model->report)->title ?? $model->report).'-'.($model->folio ?? substr((string) $model->uuid, 0, 8)).'.'.$model->format;
 
         return Storage::disk('local')->download($model->path, $name, [
             'Content-Type' => match ($model->format) {
@@ -224,9 +224,9 @@ final class ReportController extends Controller
     {
         $ids = array_map(fn ($b) => (int) $b['value'], $this->scope->branchOptions($request->user()));
 
-        return Branch::query()->whereKey($ids)->whereNotNull('region')->where('region', '!=', '')
+        return array_values(Branch::query()->whereKey($ids)->whereNotNull('region')->where('region', '!=', '')
             ->distinct()->orderBy('region')->pluck('region')
-            ->map(fn ($r) => ['value' => (string) $r, 'label' => (string) $r])->values()->all();
+            ->map(fn ($r) => ['value' => (string) $r, 'label' => (string) $r])->all());
     }
 
     /**
@@ -234,7 +234,7 @@ final class ReportController extends Controller
      */
     private function recentExports(ListFiltersRequest $request, ?string $report = null): array
     {
-        return ReportExport::query()->where('user_id', $request->user()->id)
+        return array_values(ReportExport::query()->where('user_id', $request->user()->id)
             ->when($report, fn ($q) => $q->where('report', $report))
             ->latest('id')->limit(10)->get()
             ->map(fn (ReportExport $e) => [
@@ -242,7 +242,7 @@ final class ReportController extends Controller
                 'uuid' => $e->uuid,
                 'folio' => $e->folio,
                 'report' => $e->report,
-                'title' => ReportCatalog::definition($e->report)?->title ?? $e->report,
+                'title' => ReportCatalog::definition($e->report)->title ?? $e->report,
                 'format' => $e->format,
                 'status' => $e->status,
                 'row_count' => $e->row_count,
@@ -252,6 +252,6 @@ final class ReportController extends Controller
                 'created_at' => OperacionScope::iso($e->created_at),
                 'completed_at' => OperacionScope::iso($e->completed_at),
                 'download_url' => $e->status === 'completed' ? route('reportes.download', $e->id) : null,
-            ])->values()->all();
+            ])->all());
     }
 }

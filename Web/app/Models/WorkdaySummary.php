@@ -5,13 +5,12 @@ namespace App\Models;
 use App\Enums\ShiftKind;
 use App\Enums\WorkdayStatus;
 use App\Support\Tenancy\BelongsToOrganization;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class WorkdaySummary extends Model
 {
-    use BelongsToOrganization, HasFactory;
+    use BelongsToOrganization;
 
     protected $table = 'workday_summaries';
 

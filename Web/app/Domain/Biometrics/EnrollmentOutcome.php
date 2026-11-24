@@ -7,6 +7,9 @@ namespace App\Domain\Biometrics;
  */
 final readonly class EnrollmentOutcome
 {
+    /** Motivos de rechazo que puede reportar el motor facial. */
+    public const FAILURES = ['no_face', 'multiple_faces', 'poor_quality', 'liveness_failed', 'inconsistent', 'invalid_image'];
+
     /**
      * @param  'enrolled'|'no_face'|'multiple_faces'|'poor_quality'|'liveness_failed'|'inconsistent'|'invalid_image'  $result
      * @param  array<string, mixed>  $quality

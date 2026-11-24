@@ -12,4 +12,10 @@ return [
     | de los cuales un usuario se marca para revisión.
     */
     'inactive_after_days' => (int) env('SECURITY_INACTIVE_AFTER_DAYS', 90),
+
+    /*
+    | Contraseña del primer administrador para automatizar `asistencias:instalar`
+    | sin preguntas. Vacíala en cuanto termine la instalación.
+    */
+    'install_admin_password' => (string) env('INSTALL_ADMIN_PASSWORD', ''),
 ];

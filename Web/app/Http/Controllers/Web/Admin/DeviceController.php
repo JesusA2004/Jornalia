@@ -162,7 +162,7 @@ class DeviceController extends AdminController
             $query->whereIn('branch_id', $user->branches()->pluck('branches.id')->all() ?: [0]);
         }
 
-        return $query->limit(500)->get()->map(fn (Kiosk $k) => [
+        $kiosks = $query->limit(500)->get()->map(fn (Kiosk $k) => [
             'id' => $k->id,
             'name' => $k->name,
             'status' => $k->status,
@@ -177,7 +177,9 @@ class DeviceController extends AdminController
             'activation_expires_at' => $k->activation_expires_at?->toIso8601String(),
             'revoked_at' => $k->revoked_at?->toIso8601String(),
             'revoke_reason' => $k->revoke_reason,
-        ])->values()->all();
+        ]);
+
+        return array_values($kiosks->all());
     }
 
     /**

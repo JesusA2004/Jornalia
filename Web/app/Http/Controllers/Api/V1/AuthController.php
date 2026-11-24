@@ -138,7 +138,7 @@ final class AuthController extends ApiController
      */
     private function issueToken(User $user, string $deviceUuid, ?string $timezone = null): NewAccessToken
     {
-        $timezone ??= $user->currentOrganization?->timezone ?? config('app.timezone');
+        $timezone ??= $user->currentOrganization->timezone ?? config('app.timezone');
         $endOfDay = now($timezone)->endOfDay()->utc();
         $ttl = now()->addMinutes((int) config('integrity.mobile_token_ttl'));
 

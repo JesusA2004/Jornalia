@@ -8,7 +8,6 @@ use App\Enums\PunchStatus;
 use App\Enums\PunchType;
 use App\Support\Immutable;
 use App\Support\Tenancy\BelongsToOrganization;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -17,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class Punch extends Model
 {
-    use BelongsToOrganization, HasFactory, Immutable;
+    use BelongsToOrganization, Immutable;
 
     protected $table = 'attendance_punches';
 

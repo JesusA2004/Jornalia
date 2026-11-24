@@ -4,14 +4,13 @@ namespace App\Models;
 
 use App\Enums\ApprovalStatus;
 use App\Support\Tenancy\BelongsToOrganization;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class VacationRequest extends Model
 {
-    use BelongsToOrganization, HasFactory;
+    use BelongsToOrganization;
 
     protected $table = 'vacation_requests';
 

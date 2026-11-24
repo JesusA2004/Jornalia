@@ -2,13 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class VacationEntitlementRule extends Model
 {
-    use HasFactory;
-
     protected $table = 'vacation_entitlement_rules';
 
     protected $guarded = ['id'];

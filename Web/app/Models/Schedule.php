@@ -5,14 +5,19 @@ namespace App\Models;
 use App\Enums\ScheduleType;
 use App\Enums\ShiftKind;
 use App\Support\Tenancy\BelongsToOrganization;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+/**
+ * Plantilla de horario (sólo baja lógica: conserva el historial de asignaciones).
+ *
+ * @property CarbonImmutable|null $deleted_at
+ */
 class Schedule extends Model
 {
-    use BelongsToOrganization, HasFactory, SoftDeletes;
+    use BelongsToOrganization, SoftDeletes;
 
     protected $table = 'schedules';
 

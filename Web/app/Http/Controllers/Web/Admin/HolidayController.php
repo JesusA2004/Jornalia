@@ -41,7 +41,7 @@ class HolidayController extends AdminController
                 'id' => $h->id, 'date' => $h->date->toDateString(), 'code' => $h->code, 'name' => $h->name, 'kind' => $h->kind,
                 'is_mandatory_rest' => $h->is_mandatory_rest, 'legal_basis' => $h->legal_basis,
                 'work_center_id' => $h->work_center_id, 'work_center' => $h->workCenter?->name,
-                'state' => MexicanStates::ALL[$h->workCenter?->state_code ?? ''] ?? null,
+                'state' => MexicanStates::ALL[$h->workCenter->state_code ?? ''] ?? null,
                 'editable' => $h->organization_id === $org && $h->kind !== 'official',
                 'created_by' => $h->createdBy?->name,
                 'deleted' => $h->trashed(),

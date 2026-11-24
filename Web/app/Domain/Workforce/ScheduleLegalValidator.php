@@ -42,7 +42,7 @@ final class ScheduleLegalValidator
     {
         $schedule = $this->makeSchedule($attributes, $segments);
         $weekly = $this->resolver->weeklyScheduledMinutes($schedule);
-        $declared = $schedule->shift_kind instanceof ShiftKind ? $schedule->shift_kind : ShiftKind::from((string) ($schedule->shift_kind ?: 'day'));
+        $declared = $schedule->shift_kind;
 
         $violations = [];
         $checks = [];
@@ -110,9 +110,11 @@ final class ScheduleLegalValidator
      */
     public function futureTramoDates(int $limit = 6): array
     {
-        return LegalVersion::query()->whereDate('valid_from', '>', CarbonImmutable::today())
+        $dates = LegalVersion::query()->whereDate('valid_from', '>', CarbonImmutable::today())
             ->orderBy('valid_from')->limit($limit)->pluck('valid_from')
-            ->map(fn ($d) => CarbonImmutable::parse($d)->toDateString())->values()->all();
+            ->map(fn ($d) => CarbonImmutable::parse($d)->toDateString());
+
+        return array_values($dates->all());
     }
 
     /**
@@ -158,9 +160,9 @@ final class ScheduleLegalValidator
             'starts_at' => substr((string) $s->starts_at, 0, 5),
             'ends_at' => substr((string) $s->ends_at, 0, 5),
             'break_minutes' => (int) $s->break_minutes,
-        ])->values()->all();
+        ]);
 
-        $result = $this->evaluate(['cycle_length_days' => $schedule->cycle_length_days, 'shift_kind' => $schedule->shift_kind?->value], $segments, [$date]);
+        $result = $this->evaluate(['cycle_length_days' => $schedule->cycle_length_days, 'shift_kind' => $schedule->shift_kind->value], array_values($segments->all()), [$date]);
         if ($result['violations'] !== []) {
             throw ValidationException::withMessages([$field => array_merge(
                 ["El horario «{$schedule->name}» no puede asignarse con vigencia a partir del ".CarbonImmutable::parse($date)->format('d/m/Y').'.'],
@@ -266,10 +268,12 @@ final class ScheduleLegalValidator
      */
     private function makeSchedule(array $attributes, array $segments): Schedule
     {
+        $kind = $attributes['shift_kind'] ?? null;
         $schedule = new Schedule;
         $schedule->forceFill([
             'cycle_length_days' => max(1, (int) ($attributes['cycle_length_days'] ?? 7)),
-            'shift_kind' => $attributes['shift_kind'] ?? 'day',
+            // Un tipo de jornada vacío o desconocido se evalúa como diurna (valor por omisión del horario).
+            'shift_kind' => $kind instanceof ShiftKind ? $kind : ((is_string($kind) ? ShiftKind::tryFrom($kind) : null) ?? ShiftKind::Day),
         ]);
         $schedule->setRelation('segments', new Collection(array_map(function (array $s) {
             $segment = new ScheduleSegment;

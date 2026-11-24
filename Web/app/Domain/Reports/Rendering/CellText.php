@@ -12,6 +12,10 @@ use Carbon\CarbonImmutable;
  */
 final class CellText
 {
+    /**
+     * Texto de una celda según el tipo de columna; las fechas se muestran en la
+     * zona del centro de trabajo y los minutos como horas:minutos.
+     */
     public static function format(mixed $value, ReportColumn $column, string $timezone, string $dateFormat = 'd/m/Y'): string
     {
         if ($value === null || $value === '') {

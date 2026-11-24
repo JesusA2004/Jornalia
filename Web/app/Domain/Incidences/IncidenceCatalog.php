@@ -132,11 +132,13 @@ final class IncidenceCatalog
             DB::table('incidence_types')->where('id', $existing->id)->update($fixed + $initial);
         }
 
-        // Fuera del catálogo: baja lógica por desactivación (el historial se conserva).
-        DB::table('incidence_types')
+        // Fuera del catálogo: baja lógica por desactivación (el historial se conserva);
+        // la vigencia sólo se cierra hoy si no tenía fecha de término.
+        $retired = DB::table('incidence_types')
             ->where('organization_id', $organizationId)
             ->whereNotIn('code', self::codes())
-            ->where('active', true)
-            ->update(['active' => false, 'valid_to' => DB::raw("COALESCE(valid_to, '{$today}')"), 'updated_at' => $now]);
+            ->where('active', true);
+        (clone $retired)->whereNull('valid_to')->update(['valid_to' => $today]);
+        $retired->update(['active' => false, 'updated_at' => $now]);
     }
 }

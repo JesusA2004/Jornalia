@@ -165,6 +165,10 @@ final class DeviceService
         return $device;
     }
 
+    /**
+     * Revoca el teléfono (baja lógica, nunca se borra) y cierra las sesiones de la
+     * app emitidas para él; los marcajes ya registrados con ese dispositivo se conservan.
+     */
     public function revoke(User $by, Device $device, string $reason, ?Device $replacement = null): Device
     {
         $device->forceFill([
@@ -214,6 +218,10 @@ final class DeviceService
         return $devices->count();
     }
 
+    /**
+     * Reto de un solo uso para firmar el siguiente marcaje desde el dispositivo
+     * (evita reenviar marcajes capturados). Caduca según `integrity.challenge_ttl`.
+     */
     public function challenge(Device $device): PunchChallenge
     {
         PunchChallenge::query()->where('device_id', $device->id)->where('expires_at', '<', now()->subHour())->delete();
@@ -249,7 +257,7 @@ final class DeviceService
             return;
         }
 
-        $ownerName = $owner->user?->name ?? 'otro colaborador';
+        $ownerName = $owner->user->name ?? 'otro colaborador';
         $this->audit->log('device.in_use_blocked', $owner, "{$user->name} intentó iniciar sesión en el teléfono de {$ownerName}", [
             'attempted_user_id' => $user->id,
             'model' => $info['model'] ?? null,

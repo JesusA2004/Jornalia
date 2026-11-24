@@ -2,11 +2,11 @@
 
 namespace App\Models;
 
+use App\Domain\Signatures\RegistrationDocuments;
 use App\Enums\EmployeeStatus;
 use App\Support\Tenancy\BelongsToOrganization;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Employee extends Model
 {
-    use BelongsToOrganization, HasFactory, SoftDeletes;
+    use BelongsToOrganization, SoftDeletes;
 
     protected $table = 'employees';
 
@@ -151,7 +151,7 @@ class Employee extends Model
      */
     public function hasSignedRegistrationAgreement(): bool
     {
-        return app(\App\Domain\Signatures\RegistrationDocuments::class)->hasSigned($this, \App\Domain\Signatures\RegistrationDocuments::AGREEMENT);
+        return app(RegistrationDocuments::class)->hasSigned($this, RegistrationDocuments::AGREEMENT);
     }
 
     /**
@@ -159,6 +159,6 @@ class Employee extends Model
      */
     public function hasAcceptedPrivacyNotice(): bool
     {
-        return app(\App\Domain\Signatures\RegistrationDocuments::class)->hasSigned($this, \App\Domain\Signatures\RegistrationDocuments::PRIVACY);
+        return app(RegistrationDocuments::class)->hasSigned($this, RegistrationDocuments::PRIVACY);
     }
 }

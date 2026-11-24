@@ -7,7 +7,6 @@ use App\Enums\PunchType;
 use App\Enums\RectificationKind;
 use App\Enums\RectificationStage;
 use App\Support\Tenancy\BelongsToOrganization;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -21,7 +20,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
  */
 class RectificationRequest extends Model
 {
-    use BelongsToOrganization, HasFactory;
+    use BelongsToOrganization;
 
     protected $table = 'rectification_requests';
 

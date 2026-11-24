@@ -78,7 +78,15 @@ final class RectificationController extends ApiController
         $user = $this->user($request);
         $employee = $this->context->employee($user);
 
-        $data = $request->safe()->except('evidence') + ['punch_uuid' => null, 'proposed_type' => null, 'proposed_time' => null];
+        $safe = $request->safe();
+        $data = [
+            'date' => (string) $safe['date'],
+            'punch_uuid' => isset($safe['punch_uuid']) ? (string) $safe['punch_uuid'] : null,
+            'kind' => (string) $safe['kind'],
+            'proposed_type' => isset($safe['proposed_type']) ? (string) $safe['proposed_type'] : null,
+            'proposed_time' => isset($safe['proposed_time']) ? (string) $safe['proposed_time'] : null,
+            'reason' => (string) $safe['reason'],
+        ];
         /** @var list<UploadedFile> $files */
         $files = array_values(array_filter((array) $request->file('evidence', []), fn ($f) => $f instanceof UploadedFile));
         $rectification = $this->service->submit($user, $employee, $data, $files, 'employee');

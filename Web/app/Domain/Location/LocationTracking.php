@@ -77,6 +77,10 @@ final class LocationTracking
         $setting->save();
     }
 
+    /**
+     * Modo de ubicación del puesto vigente: «Solo al marcar» por omisión o
+     * «Durante la jornada» si el puesto lo exige (aviso de privacidad, LFPDPPP).
+     */
     public function modeFor(Employee $employee, ?CarbonImmutable $at = null): string
     {
         $position = $employee->assignmentOn(($at ?? CarbonImmutable::now())->toDateString())?->position;
@@ -119,7 +123,7 @@ final class LocationTracking
                 break;
             }
         }
-        $cutoff = $this->cutoff($employee, $clockIn?->time ?? $last->time);
+        $cutoff = $this->cutoff($employee, $clockIn->time ?? $last->time);
         if ($at->gt($cutoff)) {
             return ['mode' => $mode, 'phase' => self::PHASE_OFF, 'reason' => 'contingency_cutoff', 'cutoff_at' => $cutoff];
         }

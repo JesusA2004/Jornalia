@@ -4,7 +4,6 @@ namespace App\Domain\Reports\Builders;
 
 use App\Domain\Reports\ReportParameters;
 use App\Domain\Reports\Support\ReportFormat;
-use App\Enums\ApprovalStatus;
 use App\Models\Attachment;
 use App\Models\ElectronicSignature;
 use App\Models\Incidence;
@@ -82,20 +81,20 @@ final class EvidenceReport
                 'concept' => $day['omission'],
                 'detail' => $day['schedule'] !== '—' ? 'Horario '.$day['schedule'] : '',
                 'status_label' => $rect !== null ? ReportFormat::rectificationStage($rect) : 'Sin rectificar',
-                ...$this->evidence($rect?->attachments ?? collect()),
+                ...$this->evidence($rect->attachments ?? collect()),
                 'rectification' => $rect !== null ? 'RECT-'.$rect->id : '—',
                 ...$this->signature($rect?->signature),
             ];
         }
         foreach ($incidences as $inc) {
             $rect = $rectifications->first(fn (RectificationRequest $r) => (int) $r->getAttribute('incidence_id') === $inc->id);
-            $status = $inc->status instanceof ApprovalStatus ? $inc->status->label() : (string) $inc->status;
+            $status = $inc->status->label();
             $range = $inc->starts_on->toDateString() === $inc->ends_on->toDateString()
                 ? '' : 'Del '.$inc->starts_on->format('d/m/Y').' al '.$inc->ends_on->format('d/m/Y').'. ';
             $rows[] = $this->base($employee) + [
                 'date' => max($inc->starts_on->toDateString(), $from),
                 'kind_label' => 'Incidencia',
-                'concept' => (string) ($inc->type?->name ?? 'Incidencia'),
+                'concept' => (string) ($inc->type->name ?? 'Incidencia'),
                 'detail' => trim($range.($inc->reason ?? '')),
                 'status_label' => $status,
                 ...$this->evidence($inc->attachments),

@@ -5,6 +5,7 @@ namespace App\Notifications;
 use App\Domain\Notifications\NotificationCategory;
 use App\Models\ScheduleException;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 
 /**
  * Aviso al colaborador de un cambio de horario programado autorizado o anulado
@@ -55,7 +56,7 @@ final class ScheduleChangeNotice extends AppNotification
 
     public function body(User $notifiable): string
     {
-        $day = \Carbon\CarbonImmutable::parse($this->date)->format('d/m/Y');
+        $day = CarbonImmutable::parse($this->date)->format('d/m/Y');
         if ($this->cancelled) {
             return "El {$day} vuelves a tu horario asignado.";
         }

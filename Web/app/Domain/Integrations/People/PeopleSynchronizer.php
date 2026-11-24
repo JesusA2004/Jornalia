@@ -267,7 +267,7 @@ final class PeopleSynchronizer
             } catch (Throwable) {
                 continue;
             }
-            if ($date !== false && $date !== null && $date->format($format) === $value) {
+            if ($date !== null && $date->format($format) === $value) {
                 return $date->toDateString();
             }
         }
@@ -299,7 +299,9 @@ final class PeopleSynchronizer
         }
         $key = str_replace(' ', '_', mb_strtolower(strtr($value, ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'Á' => 'a', 'Í' => 'i'])));
         $key = $aliases[$key] ?? $key;
+        $case = $enum::tryFrom($key);
 
-        return $enum::tryFrom($key)?->value;
+        // Se guarda como texto aunque el enum fuera respaldado por enteros.
+        return $case === null ? null : (string) $case->value;
     }
 }

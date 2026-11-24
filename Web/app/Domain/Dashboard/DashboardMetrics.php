@@ -88,12 +88,11 @@ final class DashboardMetrics
     {
         $scheduled = $this->values(self::SCHEDULED);
         $attended = $this->values(self::ATTENDED);
-        $in = fn (array $v) => implode(',', array_map(fn ($s) => "'".$s."'", $v));
 
         $row = $this->summaries($user, $from, $to, $branchId)->toBase()
-            ->selectRaw('SUM(CASE WHEN status IN ('.$in($scheduled).') THEN 1 ELSE 0 END) as scheduled_days')
-            ->selectRaw('SUM(CASE WHEN status IN ('.$in($attended).') THEN 1 ELSE 0 END) as attended_days')
-            ->selectRaw('SUM(CASE WHEN status IN ('.$in($attended).') AND late_minutes = 0 THEN 1 ELSE 0 END) as punctual_days')
+            ->selectRaw('SUM(CASE WHEN status IN ('.self::placeholders($scheduled).') THEN 1 ELSE 0 END) as scheduled_days', $scheduled)
+            ->selectRaw('SUM(CASE WHEN status IN ('.self::placeholders($attended).') THEN 1 ELSE 0 END) as attended_days', $attended)
+            ->selectRaw('SUM(CASE WHEN status IN ('.self::placeholders($attended).') AND late_minutes = 0 THEN 1 ELSE 0 END) as punctual_days', $attended)
             ->selectRaw('SUM(CASE WHEN late_minutes > 0 THEN 1 ELSE 0 END) as late_days')
             ->selectRaw("SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent_days")
             ->selectRaw("SUM(CASE WHEN status = 'incomplete' THEN 1 ELSE 0 END) as incomplete_days")
@@ -360,7 +359,7 @@ final class DashboardMetrics
             ->orderByDesc('date')->limit(6)->get()
             ->map(fn (ComplianceAlert $a) => [
                 'id' => $a->id,
-                'date' => $a->date?->toDateString(),
+                'date' => $a->date->toDateString(),
                 'rule_code' => $a->rule_code,
                 'severity' => $a->severity->value,
                 'severity_label' => $a->severity->label(),
@@ -368,7 +367,7 @@ final class DashboardMetrics
                 'legal_basis' => $a->legal_basis,
                 'status' => $a->status,
                 'employee' => $a->employee ? ['id' => $a->employee->id, 'name' => $a->employee->fullName(), 'number' => $a->employee->employee_number] : null,
-            ])->values()->all();
+            ]);
 
         // Índice simple 0–100: penaliza alertas abiertas ponderadas por severidad
         // respecto al personal activo. Es un indicador operativo, no un dictamen legal.
@@ -380,7 +379,7 @@ final class DashboardMetrics
             'open' => array_sum($bySeverity),
             'by_severity' => $bySeverity,
             'score' => $score,
-            'recent' => $recent,
+            'recent' => array_values($recent->all()),
         ];
     }
 
@@ -389,11 +388,11 @@ final class DashboardMetrics
      */
     private function branches(User $user, CarbonImmutable $from, CarbonImmutable $to, ?int $branchId): array
     {
-        $attended = implode(',', array_map(fn ($s) => "'".$s."'", $this->values(self::ATTENDED)));
+        $attended = $this->values(self::ATTENDED);
         $rows = $this->summaries($user, $from, $to, $branchId)->toBase()
             ->select('branch_id')
             ->selectRaw('COUNT(DISTINCT employee_id) as employees')
-            ->selectRaw('SUM(CASE WHEN status IN ('.$attended.') THEN 1 ELSE 0 END) as attended')
+            ->selectRaw('SUM(CASE WHEN status IN ('.self::placeholders($attended).') THEN 1 ELSE 0 END) as attended', $attended)
             ->selectRaw('SUM(CASE WHEN late_minutes > 0 THEN 1 ELSE 0 END) as late')
             ->selectRaw("SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent")
             ->selectRaw('COALESCE(SUM(worked_minutes),0) as worked_minutes')
@@ -403,7 +402,7 @@ final class DashboardMetrics
 
         $names = Branch::query()->whereIn('id', $rows->pluck('branch_id')->filter())->pluck('name', 'id');
 
-        return $rows->map(fn ($r) => [
+        $branches = $rows->map(fn ($r) => [
             'branch_id' => $r->branch_id,
             'name' => $r->branch_id ? ($names[$r->branch_id] ?? 'Sucursal') : 'Sin sucursal',
             'employees' => (int) $r->employees,
@@ -413,7 +412,9 @@ final class DashboardMetrics
             'worked_minutes' => (int) $r->worked_minutes,
             'excess_minutes' => (int) $r->excess_minutes,
             'punctuality_rate' => (int) $r->attended > 0 ? round(((int) $r->attended - (int) $r->late) * 100 / (int) $r->attended, 1) : null,
-        ])->sortByDesc('worked_minutes')->values()->all();
+        ])->sortByDesc('worked_minutes');
+
+        return array_values($branches->all());
     }
 
     /**
@@ -423,11 +424,11 @@ final class DashboardMetrics
      */
     private function trend(User $user, CarbonImmutable $from, CarbonImmutable $to, ?int $branchId): array
     {
-        $attended = implode(',', array_map(fn ($s) => "'".$s."'", $this->values(self::ATTENDED)));
+        $attended = $this->values(self::ATTENDED);
         $rows = $this->summaries($user, $from, $to, $branchId)->toBase()
             ->selectRaw('DATE(date) as d')
-            ->selectRaw('SUM(CASE WHEN status IN ('.$attended.') THEN 1 ELSE 0 END) as attended')
-            ->selectRaw('SUM(CASE WHEN status IN ('.$attended.') AND late_minutes = 0 THEN 1 ELSE 0 END) as punctual')
+            ->selectRaw('SUM(CASE WHEN status IN ('.self::placeholders($attended).') THEN 1 ELSE 0 END) as attended', $attended)
+            ->selectRaw('SUM(CASE WHEN status IN ('.self::placeholders($attended).') AND late_minutes = 0 THEN 1 ELSE 0 END) as punctual', $attended)
             ->selectRaw('SUM(CASE WHEN late_minutes > 0 THEN 1 ELSE 0 END) as late')
             ->selectRaw("SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent")
             ->selectRaw('COALESCE(SUM(worked_minutes),0) as worked_minutes')
@@ -542,7 +543,7 @@ final class DashboardMetrics
 
     private function timezone(): string
     {
-        return (string) ($this->current->get()?->timezone ?? config('app.timezone', 'UTC'));
+        return (string) ($this->current->get()->timezone ?? config('app.timezone', 'UTC'));
     }
 
     /**
@@ -552,5 +553,16 @@ final class DashboardMetrics
     private function values(array $statuses): array
     {
         return array_map(fn (WorkdayStatus $s) => $s->value, $statuses);
+    }
+
+    /**
+     * Marcadores `?` para un `IN (...)` con valores enlazados (nunca interpolados).
+     *
+     * @param  list<string>  $values
+     * @return literal-string
+     */
+    private static function placeholders(array $values): string
+    {
+        return implode(',', array_fill(0, count($values), '?'));
     }
 }

@@ -71,6 +71,8 @@ final class RevokeTerminatedAccessCommand extends Command
         $by = AuditLog::query()->where('action', 'employee.terminated')
             ->where('subject_type', $employee->getMorphClass())->where('subject_id', $employee->id)->latest('id')->value('user_id');
 
-        return User::query()->find($by) ?? $employee->user ?? new User(['name' => 'Sistema']);
+        $actor = is_numeric($by) ? User::query()->find((int) $by) : null;
+
+        return $actor ?? $employee->user ?? new User(['name' => 'Sistema']);
     }
 }

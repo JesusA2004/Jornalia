@@ -39,7 +39,7 @@ final class AnnouncementService
             // Comunicado importante: el colaborador confirma la lectura en la app.
             'requires_confirmation' => (bool) ($data['requires_confirmation'] ?? false),
             'audience_type' => $data['audience_type'],
-            'audience_ids' => $data['audience_type'] === 'all' ? null : array_values(array_map('intval', $data['audience_ids'])),
+            'audience_ids' => $data['audience_type'] === 'all' ? null : $data['audience_ids'],
             'status' => $scheduled ? 'scheduled' : 'sending',
             'scheduled_at' => $scheduled ? $data['scheduled_at'] : null,
             'created_by' => $sender->id,
@@ -116,7 +116,7 @@ final class AnnouncementService
         $now ??= CarbonImmutable::now();
         $sent = 0;
         $due = Announcement::query()->where('status', 'scheduled')->whereNull('withdrawn_at')
-            ->where('scheduled_at', '<=', $now)->pluck('id');
+            ->where('scheduled_at', '<=', $now)->pluck('id')->map(fn ($id) => (int) $id);
 
         foreach ($due as $id) {
             // Reclamo atómico: sólo un proceso pasa de scheduled → sending.

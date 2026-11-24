@@ -106,9 +106,17 @@ class ScheduleAssignmentController extends AdminController
         $mode = $data['mode'] ?? 'branch';
 
         return match ($mode) {
-            'department' => ['department_ids' => array_map('intval', $data['department_ids'] ?? [])],
-            'selection' => ['employee_ids' => array_map('intval', $data['employee_ids'] ?? [])],
-            default => ['branch_ids' => array_map('intval', $data['branch_ids'] ?? [])],
+            'department' => ['department_ids' => self::ids($data['department_ids'] ?? [])],
+            'selection' => ['employee_ids' => self::ids($data['employee_ids'] ?? [])],
+            default => ['branch_ids' => self::ids($data['branch_ids'] ?? [])],
         };
+    }
+
+    /**
+     * @return list<int>
+     */
+    private static function ids(mixed $values): array
+    {
+        return array_values(array_map('intval', (array) $values));
     }
 }

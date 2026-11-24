@@ -15,6 +15,7 @@ use App\Models\VacationRequest;
 use App\Models\WorkdaySummary;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Carbon\CarbonPeriod;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
@@ -87,7 +88,7 @@ final class CalendarController extends Controller
                 'previous' => $prev->toDateString(),
                 'next' => $next->toDateString(),
                 'today' => $this->scope->today()->toDateString(),
-                'days' => collect(CarbonPeriod::create($start, $end))->map(fn ($d) => $d->toDateString())->values(),
+                'days' => array_map(fn (CarbonInterface $d) => $d->toDateString(), CarbonPeriod::create($start, $end)->toArray()),
             ],
             'roster' => $roster,
             'events' => $this->events($user, $start, $end, $visibleIds),
@@ -234,7 +235,7 @@ final class CalendarController extends Controller
             $events[] = [
                 'id' => 'i'.$i->id,
                 'kind' => $kind,
-                'kind_label' => $i->type?->name ?? 'Incidencia',
+                'kind_label' => $i->type->name ?? 'Incidencia',
                 'title' => $cards[$i->employee_id]['name'] ?? 'Colaborador',
                 'subtitle' => $i->type?->name,
                 'starts_on' => $i->starts_on->toDateString(),
@@ -255,7 +256,7 @@ final class CalendarController extends Controller
      */
     private function holidays(CarbonImmutable $start, CarbonImmutable $end): array
     {
-        return Holiday::query()
+        $holidays = Holiday::query()
             ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
             ->where(fn ($q) => $q->whereNull('organization_id')->orWhere('organization_id', app(CurrentOrganization::class)->id()))
             ->orderBy('date')->get()
@@ -273,6 +274,8 @@ final class CalendarController extends Controller
                 },
                 'is_mandatory_rest' => (bool) $h->is_mandatory_rest,
                 'legal_basis' => $h->legal_basis,
-            ])->values()->all();
+            ]);
+
+        return array_values($holidays->all());
     }
 }

@@ -33,7 +33,7 @@ class OrganizationController extends AdminController
             ->whereNotNull($column)
             ->whereDate('effective_from', '<=', $today)
             ->where(fn ($q) => $q->whereNull('effective_to')->orWhereDate('effective_to', '>=', $today))
-            ->selectRaw("{$column} as k, count(*) as total")->groupBy($column)->pluck('total', 'k');
+            ->select("{$column} as k")->selectRaw('count(*) as total')->groupBy($column)->pluck('total', 'k');
 
         $byBranch = $active('branch_id');
         $byDepartment = $active('department_id');

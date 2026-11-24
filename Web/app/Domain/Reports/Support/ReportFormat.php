@@ -30,6 +30,9 @@ final class ReportFormat
         return $instant->utc()->format('Y-m-d\TH:i:s\Z');
     }
 
+    /**
+     * Nombre del día de la semana en español (lunes = 1).
+     */
     public static function weekday(CarbonImmutable $date): string
     {
         return self::WEEKDAYS[$date->dayOfWeekIso - 1];

@@ -4,7 +4,6 @@ namespace App\Models;
 
 use App\Support\Immutable;
 use App\Support\Tenancy\BelongsToOrganization;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -13,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class DocumentAcknowledgement extends Model
 {
-    use BelongsToOrganization, HasFactory, Immutable;
+    use BelongsToOrganization, Immutable;
 
     protected $table = 'document_acknowledgements';
 

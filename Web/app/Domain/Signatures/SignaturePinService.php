@@ -23,6 +23,9 @@ final class SignaturePinService
 
     public function __construct(private readonly AuditLogger $audit) {}
 
+    /**
+     * ¿El usuario ya definió su NIP de firma? Sólo se guarda su hash.
+     */
     public function hasPin(User $user): bool
     {
         return filled($user->signature_pin_hash);
@@ -104,6 +107,9 @@ final class SignaturePinService
         });
     }
 
+    /**
+     * NIP bloqueado temporalmente por intentos fallidos (protección contra fuerza bruta).
+     */
     public function isLocked(User $user): bool
     {
         $until = $user->signature_pin_locked_until;

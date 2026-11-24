@@ -79,19 +79,19 @@ final class EffectiveTimeline
                 $events[] = new EffectiveEvent(
                     $adj->type ?? $punch->type,
                     CarbonImmutable::instance($adj->recognized_time ?? $punch->server_time),
-                    'rectified',
+                    EffectiveEvent::RECTIFIED,
                     $punch,
                     $adj,
                 );
 
                 continue;
             }
-            $events[] = new EffectiveEvent($punch->type, self::punchTime($punch), 'original', $punch, null);
+            $events[] = new EffectiveEvent($punch->type, self::punchTime($punch), EffectiveEvent::ORIGINAL, $punch, null);
         }
 
         foreach ($adjustments as $adj) {
             if ($adj->action === AdjustmentAction::Add && $adj->recognized_time !== null && $adj->type !== null) {
-                $events[] = new EffectiveEvent($adj->type, CarbonImmutable::instance($adj->recognized_time), 'added', null, $adj);
+                $events[] = new EffectiveEvent($adj->type, CarbonImmutable::instance($adj->recognized_time), EffectiveEvent::ADDED, null, $adj);
             }
         }
 

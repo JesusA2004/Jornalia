@@ -207,7 +207,7 @@ final class VacationService
 
     private function extraDays(?VacationPolicy $policy, int $year): int
     {
-        foreach ((array) ($policy?->extra_days ?? []) as $row) {
+        foreach ((array) ($policy->extra_days ?? []) as $row) {
             if ($year >= (int) $row['from_year'] && ($row['to_year'] === null || $year <= (int) $row['to_year'])) {
                 return max(0, (int) $row['days']);
             }

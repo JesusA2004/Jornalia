@@ -3,22 +3,22 @@
 namespace App\Http\Controllers\Web\Operacion;
 
 use App\Domain\Attendance\IntegrityAnchorService;
+use App\Domain\Attendance\IntegrityChains;
 use App\Domain\Compliance\IntegrityMonitor;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Operacion\Support\OperacionScope;
 use App\Http\Requests\Web\Operacion\ListFiltersRequest;
-use App\Models\AttendanceAdjustment;
 use App\Models\AuditLog;
 use App\Models\IntegrityAnchor;
-use App\Models\Punch;
 use App\Support\Tenancy\CurrentOrganization;
+use Carbon\CarbonInterface;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 
 /**
  * Cumplimiento › Integridad del registro: verificación de cadenas de hash
- * (marcajes y ajustes) contra anclas externas firmadas. Corre sola cada día
+ * (marcajes, ajustes y firmas electrónicas) contra anclas externas firmadas. Corre sola cada día
  * (scheduler); el botón manual es opcional. Cada ejecución queda en la
  * bitácora inmutable con su resultado.
  */
@@ -35,7 +35,7 @@ final class IntegrityController extends Controller
         $page->through(fn (IntegrityAnchor $a) => [
             'id' => $a->id,
             'chain' => $a->chain,
-            'chain_label' => $a->chain === 'punches' ? 'Marcajes' : 'Ajustes',
+            'chain_label' => IntegrityChains::shortLabel($a->chain),
             'sequence' => (int) $a->sequence,
             'hash' => $a->hash,
             'method' => $a->method,
@@ -64,10 +64,7 @@ final class IntegrityController extends Controller
         $driver = (string) config("filesystems.disks.{$disk}.driver", 'local');
 
         return Inertia::render('cumplimiento/Integridad', [
-            'chains' => [
-                $this->head('punches', 'Marcajes originales', Punch::class),
-                $this->head('adjustments', 'Ajustes por rectificación', AttendanceAdjustment::class),
-            ],
+            'chains' => array_map(fn (string $chain) => $this->head($chain), array_keys(IntegrityChains::MODELS)),
             'anchors' => $page,
             'latest' => $verifications->first(),
             'history' => $verifications,
@@ -88,7 +85,7 @@ final class IntegrityController extends Controller
                 ],
             ],
             'can' => ['verify' => $request->user()->can('integrity.verify')],
-            'timezone' => (string) ($this->current->get()?->timezone ?? 'UTC'),
+            'timezone' => (string) ($this->current->get()->timezone ?? 'UTC'),
         ]);
     }
 
@@ -118,21 +115,25 @@ final class IntegrityController extends Controller
     }
 
     /**
-     * @param  class-string<Punch|AttendanceAdjustment>  $model
+     * Cabeza de la cadena y su última ancla externa.
+     *
      * @return array<string, mixed>
      */
-    private function head(string $chain, string $label, string $model): array
+    private function head(string $chain): array
     {
-        $head = $model::query()->orderByDesc('sequence')->first(['sequence', 'hash', 'created_at']);
+        $model = IntegrityChains::model($chain);
+        $recordedAt = IntegrityChains::RECORDED_AT[$chain];
+        $head = $model::query()->orderByDesc('sequence')->first(['sequence', 'hash', $recordedAt]);
         $anchor = IntegrityAnchor::query()->where('chain', $chain)->orderByDesc('sequence')->first();
+        $lastAt = $head?->getAttribute($recordedAt);
 
         return [
             'chain' => $chain,
-            'label' => $label,
+            'label' => IntegrityChains::label($chain),
             'records' => $model::query()->count(),
             'head_sequence' => (int) ($head->sequence ?? 0),
             'head_hash' => $head->hash ?? null,
-            'last_record_at' => OperacionScope::iso($head?->created_at),
+            'last_record_at' => OperacionScope::iso($lastAt instanceof CarbonInterface ? $lastAt : null),
             'anchored_sequence' => (int) ($anchor->sequence ?? 0),
             'last_anchor_at' => OperacionScope::iso($anchor?->created_at),
             'unanchored' => max(0, (int) ($head->sequence ?? 0) - (int) ($anchor->sequence ?? 0)),

@@ -100,7 +100,7 @@ final class LocationController extends Controller
         $cards = $this->scope->employeeCards($points->pluck('employee_id'));
         $staleBefore = now()->subMinutes(self::STALE_MINUTES);
 
-        return $points->map(function (LocationPoint $p) use ($cards, $lastPunch, $staleBefore) {
+        return array_values($points->map(function (LocationPoint $p) use ($cards, $lastPunch, $staleBefore) {
             $punch = $lastPunch[$p->employee_id] ?? null;
             $onShift = $punch !== null && $punch->type !== PunchType::ClockOut;
             $stale = $p->captured_at->lt($staleBefore);
@@ -126,7 +126,7 @@ final class LocationController extends Controller
                     default => 'Fuera de turno',
                 },
             ];
-        })->filter(fn ($m) => $status === null || $m['state'] === $status)->values()->all();
+        })->filter(fn ($m) => $status === null || $m['state'] === $status)->all());
     }
 
     /**
@@ -192,7 +192,7 @@ final class LocationController extends Controller
         $ids = array_map(fn ($o) => (int) $o['value'], $this->scope->branchOptions($request->user()));
         $fences = Geofence::query()->whereIn('branch_id', $ids ?: [0])->where('active', true)->get()->groupBy('branch_id');
 
-        return Branch::query()->whereIn('id', $ids ?: [0])->whereNotNull('latitude')->whereNotNull('longitude')->get()
+        return array_values(Branch::query()->whereIn('id', $ids ?: [0])->whereNotNull('latitude')->whereNotNull('longitude')->get()
             ->map(fn (Branch $b) => [
                 'id' => $b->id,
                 'name' => $b->name,
@@ -204,7 +204,7 @@ final class LocationController extends Controller
                     'longitude' => $g->longitude !== null ? (float) $g->longitude : null,
                     'radius_meters' => (int) $g->radius_meters,
                 ])->values(),
-            ])->values()->all();
+            ])->all());
     }
 
     private function haversine(float $lat1, float $lon1, float $lat2, float $lon2): float

@@ -83,7 +83,7 @@ final class HashChain
             'server_time' => self::time($p->server_time),
             'device_time' => self::time($p->device_time),
             'timezone' => $p->timezone,
-            'local_date' => $p->local_date?->toDateString(),
+            'local_date' => $p->local_date->toDateString(),
             'auth_method' => $p->auth_method->value,
             'signature_valid' => (bool) $p->signature_valid,
             'captured_offline' => (bool) $p->captured_offline,
@@ -111,11 +111,52 @@ final class HashChain
             'target_punch_uuid' => $a->target_punch_uuid,
             'type' => $a->type?->value,
             'recognized_time' => self::time($a->recognized_time),
-            'local_date' => $a->local_date?->toDateString(),
+            'local_date' => $a->local_date->toDateString(),
             'approved_by' => (int) $a->approved_by,
             'reason' => $a->reason,
             'sequence' => (int) $a->sequence,
         ];
+    }
+
+    /**
+     * Campos encadenados de una firma electrónica (orden fijo y formato estable).
+     * El texto firmado no se encadena directo: se encadena su SHA-256
+     * (`payload_sha256`) y `IntegrityVerifier` lo recalcula para detectar
+     * cualquier cambio al texto.
+     *
+     * @return array<string, mixed>
+     */
+    public static function signaturePayload(ElectronicSignature $s): array
+    {
+        return [
+            'uuid' => $s->uuid,
+            'organization_id' => (int) $s->organization_id,
+            'employee_id' => (int) $s->employee_id,
+            'user_id' => (int) $s->user_id,
+            'signable_type' => $s->signable_type,
+            'signable_id' => (int) $s->signable_id,
+            'purpose' => $s->purpose,
+            'method' => $s->method,
+            'payload_sha256' => $s->payload_sha256,
+            'device_id' => $s->device_id !== null ? (int) $s->device_id : null,
+            'ip' => $s->ip,
+            'signed_at' => self::time($s->signed_at),
+            'sequence' => (int) $s->sequence,
+        ];
+    }
+
+    /**
+     * Campos encadenados de cualquier eslabón según su tabla.
+     *
+     * @return array<string, mixed>
+     */
+    public static function payloadFor(Punch|AttendanceAdjustment|ElectronicSignature $row): array
+    {
+        return match (true) {
+            $row instanceof Punch => self::punchPayload($row),
+            $row instanceof AttendanceAdjustment => self::adjustmentPayload($row),
+            $row instanceof ElectronicSignature => self::signaturePayload($row),
+        };
     }
 
     /**
@@ -131,7 +172,15 @@ final class HashChain
         return $t?->copy()->utc()->format('Y-m-d\TH:i:s.u\Z');
     }
 
-    public function transaction(callable $callback): mixed
+    /**
+     * Transacción con reintentos ante bloqueos al asignar la secuencia.
+     *
+     * @template TReturn
+     *
+     * @param  \Closure(): TReturn  $callback
+     * @return TReturn
+     */
+    public function transaction(\Closure $callback): mixed
     {
         return DB::transaction($callback, 3);
     }

@@ -58,6 +58,10 @@ final class RegistrationDocuments
             ->first();
     }
 
+    /**
+     * ¿El colaborador firmó la versión vigente del documento? Para el convenio de
+     * registro electrónico también cuenta el convenio en papel adjunto al expediente.
+     */
     public function hasSigned(Employee $employee, string $code): bool
     {
         $doc = $this->current($code);
@@ -68,6 +72,10 @@ final class RegistrationDocuments
         return $code === self::AGREEMENT && $this->hasPaperAgreement($employee);
     }
 
+    /**
+     * Firma electrónica del colaborador sobre una versión concreta del documento
+     * (cada versión nueva exige firmar otra vez).
+     */
     public function signatureFor(Employee $employee, PolicyDocument $doc): ?ElectronicSignature
     {
         return ElectronicSignature::query()
@@ -116,6 +124,10 @@ final class RegistrationDocuments
         return $pending;
     }
 
+    /**
+     * Texto exacto que acepta el colaborador. Incluye la versión y el SHA-256 del
+     * documento para que la firma pruebe qué contenido se aceptó.
+     */
     public static function statement(PolicyDocument $doc): string
     {
         return "Acepto «{$doc->title}» versión {$doc->version} (SHA-256 {$doc->sha256}).";

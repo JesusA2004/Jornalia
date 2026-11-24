@@ -186,3 +186,23 @@ it('sólo usuarios autorizados ven y sincronizan la integración', function () {
     $this->actingAs($manager)->get('/integraciones')->assertForbidden();
     $this->actingAs($viewer)->post('/integraciones/people/sincronizar')->assertForbidden();
 });
+
+it('muestra en Integraciones la recepción de incidencias de People con sus errores', function () {
+    $org = $this->organization();
+    $admin = $this->userIn($org, 'Administrador de plataforma', allBranches: true);
+    IntegrationRun::query()->create([
+        'source' => 'people_incidences', 'kind' => 'import', 'status' => 'partial',
+        'stats' => ['received' => 2, 'created' => 1, 'cancelled' => 0, 'unchanged' => 0, 'errors' => 1],
+        'conflicts' => [['external_id' => 'INC-9', 'error' => 'Colaborador no encontrado en el reloj.']],
+        'started_at' => now(), 'finished_at' => now(),
+    ]);
+
+    $this->actingAs($admin)->get('/integraciones')->assertOk()
+        ->assertInertia(fn ($page) => $page->component('integraciones/Index')
+            ->where('people_incidences.configured', false)
+            ->where('people_incidences.last_run_status', 'partial')
+            ->where('runs.0.source', 'people_incidences')
+            ->where('runs.0.issues_count', 1)
+            ->where('runs.0.issues.0.external_id', 'INC-9')
+            ->where('runs.0.issues.0.message', 'Colaborador no encontrado en el reloj.'));
+});

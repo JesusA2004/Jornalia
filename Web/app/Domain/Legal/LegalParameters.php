@@ -45,6 +45,10 @@ final readonly class LegalParameters
         public array $raw,
     ) {}
 
+    /**
+     * Construye los parámetros desde una versión normativa. «Verificada» sólo si
+     * RH registró usuario y fecha reales de validación.
+     */
     public static function fromVersion(LegalVersion $version): self
     {
         /** @var array<string, mixed> $p */
@@ -86,6 +90,10 @@ final readonly class LegalParameters
         );
     }
 
+    /**
+     * Jornada ordinaria máxima diaria en minutos según el tipo de jornada
+     * (diurna, nocturna o mixta, LFT arts. 60–61).
+     */
     public function dailyMaxFor(ShiftKind $kind): int
     {
         return match ($kind) {
@@ -95,6 +103,9 @@ final readonly class LegalParameters
         };
     }
 
+    /**
+     * ¿RH validó esta versión normativa? Si no, la UI la muestra «Sin verificar».
+     */
     public function isVerified(): bool
     {
         return $this->verificationStatus === LegalVersion::STATUS_VERIFIED;
