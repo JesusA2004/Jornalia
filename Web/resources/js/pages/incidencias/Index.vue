@@ -94,14 +94,24 @@ const sheetOpen = ref(false);
 
 const help: HelpStep[] = [
     {
-        title: 'Registra',
-        text: 'Elige tipo y periodo; algunos tipos exigen evidencia.',
+        title: 'Catálogo cerrado',
+        text: 'Sólo RH lo ajusta en Configuración › Incidencias. La falta injustificada la determina el sistema.',
         icon: ClipboardList,
     },
     {
-        title: 'Aprobación multinivel',
-        text: 'Cada nivel del flujo resuelve; rechazar exige motivo.',
+        title: 'Evidencia por tipo',
+        text: 'Incapacidad: certificado IMSS y folio. Permiso: formato autorizado. Luto: acta. Falta justificada: constancia.',
+        icon: Paperclip,
+    },
+    {
+        title: 'Jefe inmediato y RH',
+        text: 'Cada tipo define quién autoriza. La omisión de checada abre una rectificación que firma el colaborador.',
         icon: Workflow,
+    },
+    {
+        title: 'Mr. Lana People',
+        text: 'Las incidencias aprobadas en People llegan solas; no se capturan dos veces.',
+        icon: RefreshCcw,
     },
     {
         title: 'Recálculo',
@@ -264,9 +274,13 @@ const help: HelpStep[] = [
                 </div>
             </template>
             <template #cell-source="{ row }">
-                <span class="text-xs text-muted-foreground">{{
-                    row.source_label
-                }}</span>
+                <div class="grid text-xs text-muted-foreground">
+                    <span>{{ row.source_label }}</span>
+                    <span v-if="row.folio" class="numeric"
+                        >Folio {{ row.folio }}</span
+                    >
+                    <span v-if="row.is_omission">Va a rectificación</span>
+                </div>
             </template>
             <template #cell-attachments="{ row }">
                 <span

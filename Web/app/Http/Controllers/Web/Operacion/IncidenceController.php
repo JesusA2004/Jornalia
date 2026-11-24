@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Web\Operacion;
 
 use App\Domain\Approvals\ApprovalWorkflow;
+use App\Domain\Incidences\IncidenceCatalog;
 use App\Domain\Incidences\IncidenceService;
 use App\Enums\ApprovalStatus;
 use App\Http\Controllers\Controller;
@@ -15,6 +16,8 @@ use App\Models\Incidence;
 use App\Models\IncidenceType;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -39,6 +42,7 @@ final class IncidenceController extends Controller
     public function __construct(
         private readonly OperacionScope $scope,
         private readonly ApprovalWorkflow $workflow,
+        private readonly IncidenceService $service,
     ) {}
 
     public function index(ListFiltersRequest $request): Response
@@ -48,7 +52,7 @@ final class IncidenceController extends Controller
         $tab = in_array($filters['tab'] ?? null, ['pendientes', 'resueltas', 'todas'], true) ? $filters['tab'] : 'pendientes';
         $typeId = (int) $request->query('type_id', 0) ?: null;
 
-        $query = Incidence::query()->with(['type', 'requestedBy:id,name', 'reviewedBy:id,name'])->withCount('attachments')
+        $query = Incidence::query()->with(['type', 'requestedBy:id,name', 'reviewedBy:id,name', 'cancelledBy:id,name'])->withCount('attachments')
             ->when($tab === 'pendientes', fn ($q) => $q->where('status', ApprovalStatus::Pending))
             ->when($tab === 'resueltas', fn ($q) => $q->where('status', '!=', ApprovalStatus::Pending))
             ->when(isset($filters['status']) && $tab !== 'pendientes', fn ($q) => $q->where('status', $filters['status']))
@@ -88,6 +92,7 @@ final class IncidenceController extends Controller
                 'types' => $this->types(),
                 'statuses' => ApprovalStatus::options(),
             ],
+            'evidence_kinds' => IncidenceCatalog::EVIDENCE_KINDS,
             'can' => ['create' => $user->can('incidences.create')],
             'timezone' => $this->scope->timezone(),
         ]);
@@ -97,22 +102,28 @@ final class IncidenceController extends Controller
     {
         $user = $request->user();
         $i = $this->find($user, $incidence);
-        $i->load(['type', 'requestedBy:id,name', 'reviewedBy:id,name', 'attachments.uploadedBy:id,name', 'decisions.decidedBy:id,name']);
+        $i->load(['type', 'requestedBy:id,name', 'reviewedBy:id,name', 'cancelledBy:id,name', 'attachments.uploadedBy:id,name', 'decisions.decidedBy:id,name']);
 
         return Inertia::render('incidencias/Show', [
             'incidence' => $this->row($i, $this->scope->employeeCards([$i->employee_id])[$i->employee_id] ?? null, $user) + [
                 'reason' => $i->reason,
                 'review_comment' => $i->review_comment,
                 'type' => $this->typeData($i->type),
+                'folio' => $i->folio,
+                'cancelled_by' => $i->cancelledBy?->name,
+                'cancelled_at' => OperacionScope::iso($i->cancelled_at),
+                'cancellation_reason' => $i->cancellation_reason,
+                'rectification_request_id' => $i->rectification_request_id,
+                'external_source' => $i->external_source,
             ],
             'attachments' => ApprovalPresenter::attachments($i->attachments, fn ($a) => route('incidencias.evidence', [$i->id, $a->id])),
             'decisions' => ApprovalPresenter::decisions($i->decisions),
-            'levels' => ApprovalPresenter::levels($this->workflow, 'incidence', $i),
+            'levels' => ApprovalPresenter::levels($this->workflow, 'incidence', $i, $i->type?->approvalLevels()),
             'timezone' => $this->scope->timezone(),
         ]);
     }
 
-    public function store(StoreIncidenceRequest $request, IncidenceService $service): RedirectResponse
+    public function store(StoreIncidenceRequest $request): RedirectResponse
     {
         $user = $request->user();
         $data = $request->validated();
@@ -120,25 +131,32 @@ final class IncidenceController extends Controller
         $onBehalf = $employee->user_id !== $user->id;
         abort_if($onBehalf && ! $user->can('incidences.create'), 403);
 
-        $created = $service->submit($user, $employee, [
+        /** @var list<UploadedFile> $files */
+        $files = array_values(array_filter((array) $request->file('evidence', []), fn ($f) => $f instanceof UploadedFile));
+
+        $created = $this->service->submit($user, $employee, [
             'incidence_type_id' => (int) $data['incidence_type_id'],
             'starts_on' => $data['starts_on'],
             'ends_on' => $data['ends_on'],
             'reason' => $data['reason'] ?? null,
             'minutes' => $data['minutes'] ?? null,
-        ], $request->file('evidence'), $onBehalf);
+            'folio' => $data['folio'] ?? null,
+            'proposed_time' => $data['proposed_time'] ?? null,
+        ], $files, $onBehalf);
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => $created->status === ApprovalStatus::Approved
-            ? 'Incidencia registrada y aplicada (no requiere aprobación).'
-            : 'Incidencia registrada; queda pendiente de aprobación.']);
+        Inertia::flash('toast', ['type' => 'success', 'message' => match (true) {
+            $created->rectification_request_id !== null => 'Omisión registrada: se abrió una rectificación para firma del colaborador.',
+            $created->status === ApprovalStatus::Approved => 'Incidencia registrada y aplicada.',
+            default => 'Incidencia enviada a autorización.',
+        }]);
 
         return to_route('incidencias.show', $created->id);
     }
 
-    public function decide(DecisionRequest $request, IncidenceService $service, int $incidence): RedirectResponse
+    public function decide(DecisionRequest $request, int $incidence): RedirectResponse
     {
         $user = $request->user();
-        $result = $service->decide($user, $this->find($user, $incidence), $request->approves(), $request->validated('comment'));
+        $result = $this->service->decide($user, $this->find($user, $incidence), $request->approves(), $request->validated('comment'));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => match ($result->status) {
             ApprovalStatus::Approved => 'Incidencia aprobada. Las jornadas afectadas se recalcularán.',
@@ -149,9 +167,13 @@ final class IncidenceController extends Controller
         return back();
     }
 
-    public function cancel(ListFiltersRequest $request, IncidenceService $service, int $incidence): RedirectResponse
+    /**
+     * Cancelación con motivo (no hay borrado). Queda en bitácora.
+     */
+    public function cancel(Request $request, int $incidence): RedirectResponse
     {
-        $service->cancel($request->user(), $this->find($request->user(), $incidence));
+        $data = $request->validate(['reason' => ['required', 'string', 'min:5', 'max:1000']], [], ['reason' => 'motivo']);
+        $this->service->cancel($request->user(), $this->find($request->user(), $incidence), $data['reason']);
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Incidencia cancelada.']);
 
         return back();
@@ -179,7 +201,10 @@ final class IncidenceController extends Controller
      */
     private function types(): array
     {
-        return IncidenceType::query()->where('active', true)->orderBy('name')->get()
+        $order = array_flip(IncidenceCatalog::codes());
+
+        return IncidenceType::query()->where('active', true)->whereIn('code', IncidenceCatalog::codes())->get()
+            ->sortBy(fn (IncidenceType $t) => $order[$t->code] ?? 99)
             ->map(fn (IncidenceType $t) => ['value' => (string) $t->id, 'label' => $t->name, 'description' => self::CATEGORIES[$t->category] ?? $t->category] + $this->typeData($t))
             ->values()->all();
     }
@@ -204,6 +229,12 @@ final class IncidenceController extends Controller
             'affects_payroll' => (bool) $t->affects_payroll,
             'employee_requestable' => (bool) $t->employee_requestable,
             'description' => $t->description,
+            'evidence_kind' => $t->evidence_kind,
+            'evidence_label' => IncidenceCatalog::EVIDENCE_KINDS[$t->evidence_kind ?? ''] ?? null,
+            'requires_folio' => (bool) $t->requires_folio,
+            'approval_route' => $t->approval_route,
+            'approval_route_label' => IncidenceCatalog::APPROVAL_ROUTES[$t->approval_route] ?? null,
+            'omission_punch_type' => $t->omission_punch_type,
         ];
     }
 
@@ -213,7 +244,7 @@ final class IncidenceController extends Controller
      */
     private function row(Incidence $i, ?array $card, User $user): array
     {
-        $level = $i->status === ApprovalStatus::Pending ? $this->workflow->currentLevel($i, 'incidence') : null;
+        $level = $i->status === ApprovalStatus::Pending && $i->type ? $this->workflow->currentLevel($i, 'incidence', $i->type->approvalLevels()) : null;
 
         return [
             'id' => $i->id,
@@ -229,6 +260,7 @@ final class IncidenceController extends Controller
             'source' => $i->source,
             'source_label' => match ($i->source) {
                 'manager' => 'Registrada por responsable',
+                'people' => 'Mr. Lana People',
                 'system' => 'Generada por el sistema',
                 default => 'Solicitada por colaborador',
             },
@@ -242,8 +274,11 @@ final class IncidenceController extends Controller
             'reviewed_at' => OperacionScope::iso($i->reviewed_at),
             'attachments_count' => (int) ($i->attachments_count ?? $i->attachments()->count()),
             'created_at' => OperacionScope::iso($i->created_at),
-            'can_decide' => $i->status === ApprovalStatus::Pending && $this->workflow->canDecide($user, $i, 'incidence'),
-            'can_cancel' => $i->status === ApprovalStatus::Pending && $i->requested_by === $user->id,
+            'folio' => $i->folio,
+            'is_omission' => (bool) $i->type?->isOmission(),
+            'rectification_request_id' => $i->rectification_request_id,
+            'can_decide' => $i->status === ApprovalStatus::Pending && $this->service->canDecide($user, $i),
+            'can_cancel' => $this->service->canCancel($user, $i),
         ];
     }
 }

@@ -36,10 +36,15 @@ final class ApprovalWorkflow
     ) {}
 
     /**
+     * @param  list<array{level:int, permission:string, label:string}>|null  $override  niveles propios del tipo (p. ej. por tipo de incidencia)
      * @return list<array{level:int, permission:string, label:string}>
      */
-    public function levels(string $subject): array
+    public function levels(string $subject, ?array $override = null): array
     {
+        if ($override !== null && $override !== []) {
+            return array_values($override);
+        }
+
         $flow = ApprovalFlow::query()->where('subject', $subject)->first();
         $levels = $flow ? (array) $flow->levels : [];
 
@@ -54,7 +59,10 @@ final class ApprovalWorkflow
         ], $levels));
     }
 
-    public function canDecide(User $user, Model $subjectModel, string $subject): bool
+    /**
+     * @param  list<array{level:int, permission:string, label:string}>|null  $levels
+     */
+    public function canDecide(User $user, Model $subjectModel, string $subject, ?array $levels = null): bool
     {
         /** @var Employee $employee */
         $employee = $subjectModel->getRelationValue('employee') ?? Employee::query()->find($subjectModel->getAttribute('employee_id'));
@@ -65,10 +73,11 @@ final class ApprovalWorkflow
             return false;
         }
 
-        $level = $this->currentLevel($subjectModel, $subject);
+        $level = $this->currentLevel($subjectModel, $subject, $levels);
 
         return $level !== null
-            && ($user->is_super_admin || $user->can($level['permission']))
+            // is_super_admin NO autoriza asistencia: sólo el permiso operativo del nivel.
+            && $user->can($level['permission'])
             && $this->scope->canAccessEmployee($user, $employee);
     }
 
@@ -76,19 +85,25 @@ final class ApprovalWorkflow
      * Registra la decisión. Devuelve true si la solicitud quedó resuelta en definitiva.
      *
      * @param  callable(Model): void|null  $onFinalApproval  efectos de la aprobación final (dentro de la transacción)
+     * @param  list<array{level:int, permission:string, label:string}>|null  $levelsOverride
      */
-    public function decide(User $user, Model $subjectModel, string $subject, bool $approve, ?string $comment, ?callable $onFinalApproval = null): bool
+    public function decide(User $user, Model $subjectModel, string $subject, bool $approve, ?string $comment, ?callable $onFinalApproval = null, ?array $levelsOverride = null): bool
     {
-        if (! $this->canDecide($user, $subjectModel, $subject)) {
+        if (! $this->canDecide($user, $subjectModel, $subject, $levelsOverride)) {
             throw new AuthorizationException('No tienes autorización para resolver esta solicitud en su nivel actual.');
         }
         if (! $approve && blank($comment)) {
             throw ValidationException::withMessages(['comment' => 'Indica el motivo del rechazo.']);
         }
 
-        return DB::transaction(function () use ($user, $subjectModel, $subject, $approve, $comment, $onFinalApproval) {
-            $subjectModel->newQuery()->whereKey($subjectModel->getKey())->lockForUpdate()->first();
-            $levels = $this->levels($subject);
+        return DB::transaction(function () use ($user, $subjectModel, $subject, $approve, $comment, $onFinalApproval, $levelsOverride) {
+            // Bloqueo + revalidación: dos decisiones simultáneas no pueden resolver el mismo nivel.
+            $fresh = $subjectModel->newQuery()->whereKey($subjectModel->getKey())->lockForUpdate()->first();
+            if ($fresh === null || $fresh->getAttribute('status') !== ApprovalStatus::Pending
+                || (int) ($fresh->getAttribute('current_level') ?? 1) !== (int) ($subjectModel->getAttribute('current_level') ?? 1)) {
+                throw ValidationException::withMessages(['status' => 'La solicitud ya fue resuelta o cambió de nivel.']);
+            }
+            $levels = $this->levels($subject, $levelsOverride);
             $current = (int) ($subjectModel->getAttribute('current_level') ?? 1);
 
             ApprovalDecision::query()->create([
@@ -129,12 +144,13 @@ final class ApprovalWorkflow
     }
 
     /**
+     * @param  list<array{level:int, permission:string, label:string}>|null  $levels
      * @return array{level:int, permission:string, label:string}|null
      */
-    public function currentLevel(Model $subjectModel, string $subject): ?array
+    public function currentLevel(Model $subjectModel, string $subject, ?array $levels = null): ?array
     {
         $current = (int) ($subjectModel->getAttribute('current_level') ?? 1);
-        foreach ($this->levels($subject) as $level) {
+        foreach ($this->levels($subject, $levels) as $level) {
             if ($level['level'] === $current) {
                 return $level;
             }

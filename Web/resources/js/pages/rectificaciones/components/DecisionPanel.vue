@@ -23,8 +23,17 @@ const props = withDefaults(
         /** Muestra la opción "excluir marcaje del cálculo" (rectificaciones). */
         allowVoid?: boolean;
         title?: string;
+        /** Etapa que se resuelve (rectificaciones): si cambió, el servidor rechaza la decisión. */
+        stage?: string | null;
+        approveLabel?: string;
     }>(),
-    { levelLabel: null, allowVoid: false, title: 'Resolver' },
+    {
+        levelLabel: null,
+        allowVoid: false,
+        title: 'Resolver',
+        stage: null,
+        approveLabel: 'Aprobar',
+    },
 );
 
 const mode = ref<'approve' | 'reject'>('approve');
@@ -34,6 +43,19 @@ const form = useForm({
     decision: 'approve' as 'approve' | 'reject',
     comment: '',
     void_target: false,
+});
+
+/** Errores de dominio (etapa, firma, evidencia) que no son de un campo del panel. */
+const domainError = computed(() => {
+    const errors = form.errors as Record<string, string | undefined>;
+
+    return (
+        errors.decision ??
+        errors.stage ??
+        errors.signature ??
+        errors.evidence ??
+        null
+    );
 });
 
 const commentError = computed(
@@ -50,6 +72,7 @@ function submit(): void {
     form.decision = mode.value;
     form.transform((data) => ({
         ...data,
+        ...(props.stage ? { stage: props.stage } : {}),
         void_target:
             props.allowVoid && mode.value === 'approve'
                 ? data.void_target
@@ -96,7 +119,8 @@ function submit(): void {
                     "
                     @click="mode = 'approve'"
                 >
-                    <Check class="size-4" aria-hidden="true" /> Aprobar
+                    <Check class="size-4" aria-hidden="true" />
+                    {{ approveLabel }}
                 </button>
                 <button
                     type="button"
@@ -157,10 +181,11 @@ function submit(): void {
                 />
             </FormField>
             <p
-                v-if="form.errors.decision"
+                v-if="domainError"
+                role="alert"
                 class="text-sm text-danger-soft-foreground"
             >
-                {{ form.errors.decision }}
+                {{ domainError }}
             </p>
 
             <Button
@@ -179,7 +204,7 @@ function submit(): void {
                 {{
                     mode === 'reject'
                         ? 'Confirmar rechazo'
-                        : 'Confirmar aprobación'
+                        : `Confirmar: ${approveLabel.toLowerCase()}`
                 }}
             </Button>
         </form>

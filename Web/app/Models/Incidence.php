@@ -27,6 +27,8 @@ class Incidence extends Model
             'ends_on' => 'date',
             'status' => ApprovalStatus::class,
             'reviewed_at' => 'datetime',
+            'cancelled_at' => 'datetime',
+            'external_synced_at' => 'datetime',
         ];
     }
 
@@ -43,7 +45,8 @@ class Incidence extends Model
      */
     public function type(): BelongsTo
     {
-        return $this->belongsTo(IncidenceType::class, 'incidence_type_id');
+        // Incluye tipos dados de baja: el historial conserva su nombre.
+        return $this->belongsTo(IncidenceType::class, 'incidence_type_id')->withTrashed();
     }
 
     /**
@@ -68,6 +71,24 @@ class Incidence extends Model
     public function attachments(): MorphMany
     {
         return $this->morphMany(Attachment::class, 'attachable');
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function cancelledBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cancelled_by');
+    }
+
+    /**
+     * Rectificación generada por una omisión de checada.
+     *
+     * @return BelongsTo<RectificationRequest, $this>
+     */
+    public function rectificationRequest(): BelongsTo
+    {
+        return $this->belongsTo(RectificationRequest::class);
     }
 
     /**

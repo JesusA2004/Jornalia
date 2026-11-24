@@ -53,9 +53,10 @@ final class ApprovalPresenter
     /**
      * Niveles del flujo con su estado (completado, actual, pendiente, rechazado).
      *
+     * @param  list<array{level:int, permission:string, label:string}>|null  $levels  niveles propios (p. ej. por tipo de incidencia)
      * @return list<array{level:int,label:string,state:string}>
      */
-    public static function levels(ApprovalWorkflow $workflow, string $subject, Model $model): array
+    public static function levels(ApprovalWorkflow $workflow, string $subject, Model $model, ?array $levels = null): array
     {
         $current = (int) ($model->getAttribute('current_level') ?? 1);
         $status = $model->getAttribute('status');
@@ -71,6 +72,6 @@ final class ApprovalPresenter
             };
 
             return ['level' => $l['level'], 'label' => $l['label'], 'state' => $state];
-        }, $workflow->levels($subject));
+        }, $workflow->levels($subject, $levels));
     }
 }

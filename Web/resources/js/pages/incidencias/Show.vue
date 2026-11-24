@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { Link } from '@inertiajs/vue3';
 import {
+    Ban,
     ClipboardList,
+    FilePen,
     FileClock,
     Gavel,
     History,
@@ -17,11 +20,12 @@ import {
     SectionCard,
     StatusBadge,
 } from '@/components/app';
+import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/format';
 import type { HelpStep, KeyValueItem } from '@/types';
 import type { IncidenceShowProps } from '@/types/operacion';
 import AttachmentList from '../rectificaciones/components/AttachmentList.vue';
-import CancelRequestButton from '../rectificaciones/components/CancelRequestButton.vue';
+import CancelWithReasonButton from './components/CancelWithReasonButton.vue';
 import DecisionHistory from '../rectificaciones/components/DecisionHistory.vue';
 import DecisionPanel from '../rectificaciones/components/DecisionPanel.vue';
 import EmployeeCell from '../rectificaciones/components/EmployeeCell.vue';
@@ -66,6 +70,9 @@ const details = computed<KeyValueItem[]>(() => [
         value: `${i.value.days} ${i.value.days === 1 ? 'día' : 'días'}${i.value.minutes ? ` · ${i.value.minutes} min` : ''}`,
     },
     { key: 'source', label: 'Origen', value: i.value.source_label },
+    ...(i.value.folio
+        ? [{ key: 'folio', label: 'Folio IMSS', value: i.value.folio }]
+        : []),
     { key: 'flags', label: 'Reglas del tipo' },
     {
         key: 'reason',
@@ -83,18 +90,33 @@ const details = computed<KeyValueItem[]>(() => [
               },
           ]
         : []),
+    ...(i.value.cancellation_reason
+        ? [
+              {
+                  key: 'cancel',
+                  label: `Cancelada por ${i.value.cancelled_by ?? 'People'}`,
+                  value: i.value.cancellation_reason,
+                  full: true,
+              },
+          ]
+        : []),
 ]);
 
 const help: HelpStep[] = [
     {
         title: 'Revisa la evidencia',
-        text: 'Descarga los archivos; su huella SHA-256 prueba que no cambiaron.',
+        text: 'Certificado IMSS y folio, formato autorizado, acta o constancia según el tipo.',
         icon: Paperclip,
     },
     {
-        title: 'Resuelve tu nivel',
-        text: 'La incidencia avanza por el flujo configurado.',
+        title: 'Jefe inmediato y RH',
+        text: 'Cada tipo define quién autoriza. Nadie autoriza su propia captura.',
         icon: Workflow,
+    },
+    {
+        title: 'Sin borrado',
+        text: 'Sólo se cancela con motivo; queda en la bitácora.',
+        icon: Ban,
     },
     {
         title: 'Recálculo automático',
@@ -130,7 +152,18 @@ const help: HelpStep[] = [
             </span>
         </template>
         <template #actions>
-            <CancelRequestButton
+            <Button
+                v-if="i.rectification_request_id"
+                variant="outline"
+                size="sm"
+                as-child
+            >
+                <Link :href="`/rectificaciones/${i.rectification_request_id}`">
+                    <FilePen aria-hidden="true" />
+                    Ver rectificación
+                </Link>
+            </Button>
+            <CancelWithReasonButton
                 v-if="i.can_cancel"
                 :action="IncidenceController.cancel.url(i.id)"
                 label="Cancelar incidencia"

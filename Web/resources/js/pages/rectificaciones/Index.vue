@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import {
+    CalendarClock,
     FilePen,
     FileSearch,
     Fingerprint,
-    Gavel,
+    Lock,
     Paperclip,
     Plus,
     ShieldCheck,
+    UserCheck,
 } from '@lucide/vue';
 import { computed, onMounted, ref } from 'vue';
 import RectificationController from '@/actions/App/Http/Controllers/Web/Operacion/RectificationController';
@@ -31,9 +33,15 @@ import type {
     RectificationRow,
 } from '@/types/operacion';
 import EmployeeCell from './components/EmployeeCell.vue';
-import InboxTabs from './components/InboxTabs.vue';
+import FlowSteps from './components/FlowSteps.vue';
 import RectificationFormSheet from './components/RectificationFormSheet.vue';
-import { approvalTone, sortFromQuery, todayIn } from './components/shared';
+import { sortFromQuery, todayIn } from './components/shared';
+import StageTabs from './components/StageTabs.vue';
+import {
+    SIGNATURE_STATUS,
+    rejectionLabel,
+    stageTone,
+} from './components/stages';
 
 defineOptions({
     layout: {
@@ -52,7 +60,6 @@ const { filters, activeCount, reset } = useFilters(
         branch_id: props.filters.branch_id,
         department_id: props.filters.department_id,
         employee_id: props.filters.employee_id,
-        status: props.filters.status,
         from: props.filters.from,
         to: props.filters.to,
     },
@@ -61,24 +68,18 @@ const { filters, activeCount, reset } = useFilters(
 
 const columns: DataTableColumn<RectificationRow>[] = [
     { key: 'employee', label: 'Colaborador' },
-    { key: 'date', label: 'Fecha', sortable: true, class: 'w-32' },
-    { key: 'kind', label: 'Tipo', hideBelow: 'md' },
-    { key: 'proposal', label: 'Propuesta', hideBelow: 'lg' },
-    { key: 'status', label: 'Estado' },
+    { key: 'date', label: 'Fecha', sortable: true, class: 'w-28' },
+    { key: 'kind', label: 'Tipo', hideBelow: 'lg' },
+    { key: 'original', label: 'Registro original', hideBelow: 'md' },
+    { key: 'proposal', label: 'Propuesta' },
     {
         key: 'attachments',
-        label: '',
+        label: 'Evidencia',
         align: 'center',
-        class: 'w-12',
         hideBelow: 'sm',
     },
-    {
-        key: 'created_at',
-        label: 'Solicitada',
-        sortable: true,
-        hideBelow: 'xl',
-        class: 'w-40',
-    },
+    { key: 'signature', label: 'Firma colab.', hideBelow: 'md' },
+    { key: 'stage', label: 'Estado' },
 ];
 
 const sheetOpen = ref(false);
@@ -99,26 +100,43 @@ onMounted(() => {
     }
 });
 
+const empty = computed(() =>
+    ['por_autorizar', 'por_firmar', 'por_validar'].includes(props.tab)
+        ? {
+              title: 'Bandeja al día',
+              text: 'No hay solicitudes en esta etapa.',
+          }
+        : {
+              title: 'Sin solicitudes',
+              text: 'Ajusta los filtros para ver otros resultados.',
+          },
+);
+
 const help: HelpStep[] = [
     {
-        title: 'Revisa la solicitud',
-        text: 'Compara el marcaje original, la propuesta y la evidencia.',
+        title: 'Solicitud con evidencia',
+        text: 'Sin foto, documento o constancia no se registra.',
         icon: FileSearch,
     },
     {
-        title: 'Decide por nivel',
-        text: 'Cada nivel del flujo aprueba o rechaza; rechazar exige motivo.',
-        icon: Gavel,
+        title: 'Autoriza el jefe inmediato',
+        text: 'Nadie autoriza su propio registro ni su propia captura.',
+        icon: UserCheck,
     },
     {
-        title: 'El original no cambia',
-        text: 'La aprobación crea un ajuste encadenado y recalcula la jornada.',
+        title: 'Firma el colaborador',
+        text: `En la app, con NIP o biometría. Plazo: ${props.settings.business_days} días hábiles; vencido, se rechaza y el día queda como omisión.`,
         icon: Fingerprint,
     },
     {
-        title: 'Todo queda auditado',
-        text: 'Decisiones y evidencias se conservan con su huella SHA-256.',
+        title: 'Valida RH y se aplica',
+        text: 'Se crea un ajuste encadenado; el marcaje original nunca cambia.',
         icon: ShieldCheck,
+    },
+    {
+        title: 'Extemporáneas',
+        text: 'Después del cierre de nómina sólo RH con permiso las aplica.',
+        icon: CalendarClock,
     },
 ];
 </script>
@@ -126,7 +144,7 @@ const help: HelpStep[] = [
 <template>
     <PageHeader
         title="Rectificaciones"
-        description="Correcciones de marcajes con trazabilidad completa."
+        description="Correcciones con evidencia y firma del colaborador. El original nunca se modifica."
         :icon="FilePen"
         :help="help"
     >
@@ -139,7 +157,8 @@ const help: HelpStep[] = [
     </PageHeader>
 
     <div class="grid gap-4">
-        <InboxTabs :tab="tab" :counts="counts" />
+        <FlowSteps />
+        <StageTabs :tab="tab" :counts="counts" />
 
         <DataTable
             :rows="requests.data"
@@ -149,14 +168,8 @@ const help: HelpStep[] = [
             :row-href="(row) => RectificationController.show.url(row.id)"
             caption="Solicitudes de rectificación"
             :empty-icon="FilePen"
-            :empty-title="
-                tab === 'pendientes' ? 'Bandeja al día' : 'Sin solicitudes'
-            "
-            :empty-description="
-                tab === 'pendientes'
-                    ? 'No hay rectificaciones esperando decisión.'
-                    : 'Ajusta los filtros para ver otros resultados.'
-            "
+            :empty-title="empty.title"
+            :empty-description="empty.text"
         >
             <template #toolbar>
                 <FilterBar :active-count="activeCount" @reset="reset">
@@ -191,16 +204,6 @@ const help: HelpStep[] = [
                         clearable
                         class="w-56"
                     />
-                    <SelectField
-                        v-if="tab !== 'pendientes'"
-                        v-model="filters.status"
-                        :options="options.statuses"
-                        prefix="Estado:"
-                        placeholder="Todos"
-                        clearable
-                        size="sm"
-                        class="w-44"
-                    />
                     <DateRangePicker
                         v-model:start="filters.from"
                         v-model:end="filters.to"
@@ -221,44 +224,18 @@ const help: HelpStep[] = [
             <template #cell-kind="{ row }">
                 <span class="text-sm">{{ row.kind_label }}</span>
             </template>
-            <template #cell-proposal="{ row }">
-                <span
-                    v-if="row.proposed_type_label || row.proposed_time"
-                    class="flex items-center gap-1.5 text-sm"
-                >
-                    {{ row.proposed_type_label }}
-                    <DateTimeDisplay
-                        v-if="row.proposed_time"
-                        :value="row.proposed_time"
-                        :timezone="timezone"
-                        format="time"
-                        class="numeric font-semibold"
-                    />
-                </span>
-                <span
-                    v-else
-                    class="line-clamp-1 max-w-56 text-xs text-muted-foreground"
-                    >{{ row.reason_excerpt }}</span
-                >
+            <template #cell-original="{ row }">
+                <span class="text-sm text-muted-foreground">{{
+                    row.original_summary
+                }}</span>
             </template>
-            <template #cell-status="{ row }">
-                <div class="grid gap-1">
-                    <StatusBadge
-                        :status="row.status"
-                        :label="row.status_label"
-                        :tone="approvalTone(row.status)"
-                        size="sm"
-                    />
-                    <span
-                        v-if="row.current_level_label"
-                        class="text-[0.6875rem] text-muted-foreground"
-                        >{{ row.current_level_label }}</span
-                    >
-                </div>
+            <template #cell-proposal="{ row }">
+                <span class="text-sm font-semibold">{{
+                    row.proposal_summary
+                }}</span>
             </template>
             <template #cell-attachments="{ row }">
                 <span
-                    v-if="row.attachments_count > 0"
                     class="inline-flex items-center gap-1 text-xs text-muted-foreground"
                     :aria-label="`${row.attachments_count} evidencias`"
                 >
@@ -267,19 +244,59 @@ const help: HelpStep[] = [
                     }}
                 </span>
             </template>
-            <template #cell-created_at="{ row }">
-                <div class="grid text-xs">
-                    <DateTimeDisplay
-                        :value="row.created_at"
-                        :timezone="timezone"
-                        format="datetime"
+            <template #cell-signature="{ row }">
+                <div class="grid gap-0.5">
+                    <StatusBadge
+                        :status="row.signature_status"
+                        :label="SIGNATURE_STATUS[row.signature_status].label"
+                        :tone="SIGNATURE_STATUS[row.signature_status].tone"
+                        size="sm"
                     />
-                    <span class="text-muted-foreground">{{
-                        row.requested_by
-                    }}</span>
+                    <span
+                        v-if="
+                            row.stage === 'por_firmar' && row.signature_due_at
+                        "
+                        class="text-[0.6875rem] text-muted-foreground"
+                    >
+                        Vence
+                        <DateTimeDisplay
+                            :value="row.signature_due_at"
+                            :timezone="timezone"
+                            format="datetime"
+                        />
+                    </span>
+                </div>
+            </template>
+            <template #cell-stage="{ row }">
+                <div class="grid justify-items-start gap-1">
+                    <StatusBadge
+                        :status="row.stage"
+                        :label="row.stage_label"
+                        :tone="stageTone(row.stage)"
+                        size="sm"
+                    />
+                    <span
+                        v-if="row.is_late"
+                        class="inline-flex items-center gap-1 text-[0.6875rem] font-semibold text-warning-soft-foreground"
+                    >
+                        <Lock class="size-3" aria-hidden="true" />
+                        Extemporánea
+                    </span>
+                    <span
+                        v-if="row.stage === 'rechazada'"
+                        class="text-[0.6875rem] text-muted-foreground"
+                        >{{ rejectionLabel(row.rejection_stage) }}</span
+                    >
                 </div>
             </template>
         </DataTable>
+
+        <p class="text-xs text-muted-foreground">
+            Plazo para firmar: {{ settings.business_days }} días hábiles. Sin
+            firma del colaborador la rectificación
+            <strong class="font-semibold text-foreground">no se aplica</strong>
+            y el día queda como omisión.
+        </p>
     </div>
 
     <RectificationFormSheet

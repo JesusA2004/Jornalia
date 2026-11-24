@@ -1,0 +1,54 @@
+# Rectificaciones con firma del colaborador e incidencias (Revisión RH)
+
+## Flujo de 5 pasos (pantalla 05)
+
+| Etapa (`stage`) | Quién | Permiso | Resultado |
+|---|---|---|---|
+| `por_autorizar` | Colaborador (app/web) o responsable | propio / `rectifications.create` | Evidencia obligatoria (1–5 archivos JPG/PNG/WEBP/HEIC/PDF ≤ 10 MB, SHA-256) |
+| → `por_firmar` | Jefe inmediato | `rectifications.approve` + alcance | Fija `signature_due_at` (N días hábiles) |
+| → `por_validar` | Colaborador en la app | propio | `ElectronicSignature` (NIP o biometría HMAC) |
+| → `aplicada` | RH | `rectifications.validate` (+ `rectifications.apply_late` si es extemporánea) | `attendance_adjustments` encadenado; el marcaje original no cambia |
+| `rechazada` | Cualquiera de las etapas | — | `rejection_stage`: por_autorizar, por_validar, declinada, vencida, cancelada |
+
+Reglas duras (dominio, `App\Domain\Attendance\RectificationService`):
+
+- Nadie autoriza ni valida su propio registro **ni su propia captura**; `is_super_admin` no otorga nada.
+- Sin firma válida (sello `HashChain` verificado) no se aplica.
+- Cada transición bloquea la fila y exige la etapa esperada (sin saltos ni decisiones dobles).
+- `open_key` único mientras la solicitud está abierta: no hay duplicados del mismo día y marcaje.
+- Plazo vencido ⇒ `rectificaciones:vencer` (cada 15 min) la rechaza; el día queda como omisión.
+- La omisión de checada (incidencia `OMISION_*`) genera una rectificación `origin = incidence`;
+  la incidencia sigue el resultado de la rectificación.
+
+## Parámetros (`organization_settings`, Configuración › Incidencias, sólo RH)
+
+- `rectifications.signature` = `{business_days: 3, confirmed_by_hr: false}` — **pendiente de
+  confirmar por RH** (decisión listada en el PDF).
+- `payroll.close` = `{closed_through: 'AAAA-MM-DD' | null}` — fechas ≤ cierre son extemporáneas.
+
+## Migración de datos existentes (2026_11_24_110100)
+
+- `pending` → `por_autorizar` (recorre el flujo completo, incluida la firma; si no tiene
+  evidencia, no puede autorizarse: se rechaza y se solicita de nuevo).
+- `approved` → `aplicada` con `legacy_without_signature = true` (ya tenían su ajuste; no se
+  exige firma retroactiva; la UI muestra «Previa al flujo»).
+- `rejected` → `rechazada` (`rejection_stage = por_autorizar`); `cancelled` → `rechazada` (`cancelada`).
+- El flujo de rectificación es fijo (PDF); `approval_flows` de `rectification` ya no aplica.
+
+## Firma electrónica (`electronic_signatures`, append-only + triggers + HashChain)
+
+- Texto firmado exacto (`statement`), `payload_sha256`, usuario, colaborador, dispositivo, IP,
+  user-agent, `signed_at` UTC, secuencia y sello.
+- Biometría: `device_signature = HMAC_SHA256(secreto_dispositivo, "sign|{purpose}|{id}|{payload_sha256}|{device_uuid}")`.
+- NIP (`users.signature_pin_*`): 4–6 dígitos, no triviales, hash bcrypt; 5 fallos ⇒ 15 min.
+- Convenio `CONVENIO_REGISTRO` y aviso `AVISO_PRIVACIDAD`: cuenta sólo la versión vigente
+  publicada (acuse + firma). El convenio en papel cuenta si hay adjunto del expediente con
+  `attachments.category = registration_agreement`.
+
+## Incidencias (pantalla 06)
+
+Catálogo cerrado (`App\Domain\Incidences\IncidenceCatalog`), sin falta injustificada.
+Las organizaciones existentes se ajustan con la migración 2026_11_24_110200 o
+`php artisan incidencias:catalogo` (idempotente; desactiva tipos fuera de catálogo sin borrar).
+Autorización por tipo: `manager` (`incidences.approve`), `hr` (`incidences.validate`) o
+`manager_hr`. Cancelación sólo con motivo (`incidences.cancel`), sin borrado.

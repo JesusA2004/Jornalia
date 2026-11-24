@@ -195,7 +195,7 @@ function toggle(uuid: string): void {
                     <span class="block truncate text-xs text-muted-foreground">
                         {{
                             p.is_system
-                                ? 'Sistema (cierre automático)'
+                                ? 'Generado por sistema (histórico)'
                                 : p.source_label
                         }}
                         · {{ p.auth_method_label }}

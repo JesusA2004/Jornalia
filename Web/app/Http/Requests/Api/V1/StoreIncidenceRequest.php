@@ -4,6 +4,7 @@ namespace App\Http\Requests\Api\V1;
 
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\Rule;
 
 /**
@@ -11,6 +12,15 @@ use Illuminate\Validation\Rule;
  */
 final class StoreIncidenceRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $single = $this->file('evidence');
+        if ($single instanceof UploadedFile) {
+            $this->files->set('evidence', [$single]);
+            $this->convertedFiles = null; // Recalcula allFiles() con el arreglo.
+        }
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -28,7 +38,10 @@ final class StoreIncidenceRequest extends FormRequest
             'starts_on' => ['required', 'date_format:Y-m-d'],
             'ends_on' => ['required', 'date_format:Y-m-d', 'after_or_equal:starts_on'],
             'reason' => ['required', 'string', 'min:3', 'max:2000'],
-            'evidence' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,heic,webp'],
+            'folio' => ['nullable', 'string', 'max:40'],
+            'proposed_time' => ['nullable', 'date_format:H:i'],
+            'evidence' => ['nullable', 'array', 'max:5'],
+            'evidence.*' => ['file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,heic,heif,webp'],
         ];
     }
 }

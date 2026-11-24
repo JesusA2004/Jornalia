@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Domain\Incidences\IncidenceCatalog;
 use App\Domain\Incidences\IncidenceService;
 use App\Http\Controllers\Api\V1\Support\ApiContext;
 use App\Http\Requests\Api\V1\ListRequest;
@@ -12,6 +13,7 @@ use App\Models\Incidence;
 use App\Models\IncidenceType;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 
 final class IncidenceController extends ApiController
 {
@@ -28,6 +30,7 @@ final class IncidenceController extends ApiController
         $types = IncidenceType::query()
             ->where('active', true)
             ->where('employee_requestable', true)
+            ->whereIn('code', IncidenceCatalog::codes())
             ->orderBy('name')
             ->get();
 
@@ -59,12 +62,17 @@ final class IncidenceController extends ApiController
         $user = $this->user($request);
         $employee = $this->context->employee($user);
 
+        /** @var list<UploadedFile> $files */
+        $files = array_values(array_filter((array) $request->file('evidence', []), fn ($f) => $f instanceof UploadedFile));
+
         $incidence = $this->service->submit($user, $employee, [
             'incidence_type_id' => (int) $request->validated('incidence_type_id'),
             'starts_on' => (string) $request->validated('starts_on'),
             'ends_on' => (string) $request->validated('ends_on'),
             'reason' => (string) $request->validated('reason'),
-        ], $request->file('evidence'));
+            'folio' => $request->validated('folio'),
+            'proposed_time' => $request->validated('proposed_time'),
+        ], $files);
 
         $incidence->load(['type', 'reviewedBy:id,name'])->loadExists('attachments');
 

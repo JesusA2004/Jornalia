@@ -1,24 +1,21 @@
 <script setup lang="ts">
 import { router, useForm } from '@inertiajs/vue3';
 import {
-    Archive,
-    Check,
-    FileCheck2,
+    CalendarClock,
+    FilePen,
     Lock,
     Pencil,
-    Plus,
-    RotateCcw,
-    Search,
+    RefreshCcw,
+    ShieldCheck,
     TriangleAlert,
 } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
 import IncidenceTypeController from '@/actions/App/Http/Controllers/Web/Admin/IncidenceTypeController';
-import ConfirmDialog from '@/components/app/ConfirmDialog.vue';
 import DatePicker from '@/components/app/DatePicker.vue';
-import EmptyState from '@/components/app/EmptyState.vue';
+import DateTimeDisplay from '@/components/app/DateTimeDisplay.vue';
 import FormField from '@/components/app/FormField.vue';
 import PageHeader from '@/components/app/PageHeader.vue';
-import SearchInput from '@/components/app/SearchInput.vue';
+import SectionCard from '@/components/app/SectionCard.vue';
 import SelectField from '@/components/app/SelectField.vue';
 import StatusBadge from '@/components/app/StatusBadge.vue';
 import { Button } from '@/components/ui/button';
@@ -40,13 +37,15 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { Textarea } from '@/components/ui/textarea';
-import { cn } from '@/lib/utils';
-import InactiveToggle from './components/InactiveToggle.vue';
+import type { HelpStep } from '@/types';
 import SettingsNav from './components/SettingsNav.vue';
 import ToggleRow from './components/ToggleRow.vue';
-import { civilDate, todayCivil } from './format';
-import type { IncidenceTypeRow, ManageCan, Option } from './types';
+import type {
+    IncidenceTypeRow,
+    Option,
+    PeopleIncidenceStatus,
+    RectificationParameters,
+} from './types';
 
 defineOptions({
     layout: {
@@ -60,155 +59,118 @@ defineOptions({
 
 const props = defineProps<{
     types: IncidenceTypeRow[];
-    categories: Option[];
-    effects: Option[];
-    can: ManageCan;
+    evidence_kinds: Option[];
+    approval_routes: Option[];
+    rectifications: RectificationParameters;
+    people: PeopleIncidenceStatus;
+    can: { manage: boolean; sync: boolean };
 }>();
 
-const search = ref('');
-const category = ref<string | null>(null);
-const showInactive = ref(false);
-const inactiveCount = computed(
-    () => props.types.filter((t) => t.deleted).length,
-);
+const label = (list: Option[], value: string | null) =>
+    list.find((o) => o.value === value)?.label ?? '—';
 
-const rows = computed(() => {
-    const term = search.value.trim().toLowerCase();
-
-    return props.types.filter(
-        (t) =>
-            (showInactive.value || !t.deleted) &&
-            (!category.value || t.category === category.value) &&
-            (!term ||
-                t.name.toLowerCase().includes(term) ||
-                t.code.toLowerCase().includes(term)),
-    );
-});
-
-const label = (list: Option[], value: string) =>
-    list.find((o) => o.value === value)?.label ?? value;
-
+/* ── Edición de un tipo (sólo campos configurables) ── */
 type TypeForm = {
-    code: string;
-    name: string;
-    category: string | null;
-    description: string;
-    operational_effect: string | null;
     requires_evidence: boolean;
-    requires_approval: boolean;
-    affects_payroll: boolean;
+    evidence_kind: string | null;
+    requires_folio: boolean;
+    approval_route: string | null;
     employee_requestable: boolean;
-    active: boolean;
-    valid_from: string | null;
-    valid_to: string | null;
+    external_code: string;
 };
-
-const blank = (): TypeForm => ({
-    code: '',
-    name: '',
-    category: 'leave',
-    description: '',
-    operational_effect: 'justified',
-    requires_evidence: false,
-    requires_approval: true,
-    affects_payroll: false,
-    employee_requestable: true,
-    active: true,
-    valid_from: todayCivil(),
-    valid_to: null,
-});
 
 const open = ref(false);
 const editing = ref<IncidenceTypeRow | null>(null);
-const form = useForm<TypeForm>(blank());
-/** Error general del tipo (clave fuera del formulario tipado). */
-const typeError = computed(
-    () => (form.errors as Record<string, string | undefined>).type,
-);
-
-function create(): void {
-    editing.value = null;
-    form.defaults(blank());
-    form.reset();
-    form.clearErrors();
-    open.value = true;
-}
+const form = useForm<TypeForm>({
+    requires_evidence: true,
+    evidence_kind: null,
+    requires_folio: false,
+    approval_route: 'manager_hr',
+    employee_requestable: true,
+    external_code: '',
+});
 
 function edit(type: IncidenceTypeRow): void {
     editing.value = type;
     form.defaults({
-        code: type.code,
-        name: type.name,
-        category: type.category,
-        description: type.description ?? '',
-        operational_effect: type.operational_effect,
         requires_evidence: type.requires_evidence,
-        requires_approval: type.requires_approval,
-        affects_payroll: type.affects_payroll,
+        evidence_kind: type.evidence_kind,
+        requires_folio: type.requires_folio,
+        approval_route: type.approval_route,
         employee_requestable: type.employee_requestable,
-        active: type.active,
-        valid_from: type.valid_from ?? todayCivil(),
-        valid_to: type.valid_to,
+        external_code: type.external_code ?? '',
     });
     form.reset();
     form.clearErrors();
     open.value = true;
 }
 
-function submit(): void {
-    const options = {
+function save(): void {
+    if (!editing.value) {
+        return;
+    }
+    form.transform((d) => ({
+        ...d,
+        external_code: d.external_code.trim() || null,
+    })).put(IncidenceTypeController.update.url(editing.value.id), {
         preserveScroll: true,
         onSuccess: () => (open.value = false),
-    };
-
-    if (editing.value) {
-        form.put(IncidenceTypeController.update.url(editing.value.id), options);
-    } else {
-        form.post(IncidenceTypeController.store.url(), options);
-    }
+    });
 }
 
-const target = ref<IncidenceTypeRow | null>(null);
-const confirmOpen = ref(false);
-
-function askDeactivate(type: IncidenceTypeRow): void {
-    target.value = type;
-    confirmOpen.value = true;
-}
-
-function deactivate(): void {
-    if (target.value) {
-        router.post(
-            IncidenceTypeController.deactivate.url(target.value.id),
-            {},
-            { preserveScroll: true },
-        );
-    }
-}
-
-function restore(type: IncidenceTypeRow): void {
+function toggle(type: IncidenceTypeRow): void {
     router.post(
-        IncidenceTypeController.restore.url(type.id),
+        type.active
+            ? IncidenceTypeController.deactivate.url(type.id)
+            : IncidenceTypeController.restore.url(type.id),
         {},
         { preserveScroll: true },
     );
 }
 
-const help = [
+/* ── Parámetros de rectificaciones ── */
+const params = useForm<RectificationParameters>({ ...props.rectifications });
+
+function saveParams(): void {
+    params.put(IncidenceTypeController.updateRectifications.url(), {
+        preserveScroll: true,
+    });
+}
+
+const syncing = ref(false);
+
+function syncPeople(): void {
+    router.post(
+        IncidenceTypeController.syncPeople.url(),
+        {},
+        {
+            preserveScroll: true,
+            onStart: () => (syncing.value = true),
+            onFinish: () => (syncing.value = false),
+        },
+    );
+}
+
+const help: HelpStep[] = [
     {
-        title: 'Del sistema',
-        text: 'Las marcadas con candado las usa el cálculo de asistencia; son de sólo lectura.',
+        title: 'Catálogo cerrado',
+        text: 'Los tipos no se agregan ni se borran. RH ajusta evidencia, folio, quién autoriza y el código de People.',
         icon: Lock,
     },
     {
-        title: 'Vigencia',
-        text: 'Cada tipo nuevo se registra con fecha de inicio; desactivarlo cierra su vigencia.',
-        icon: FileCheck2,
+        title: 'Falta injustificada',
+        text: 'No se captura: la determina el sistema cuando no hay marcaje ni justificación aprobada.',
+        icon: TriangleAlert,
     },
     {
-        title: 'Efecto',
-        text: 'Indica cómo impacta en la asistencia y si se reporta a nómina.',
-        icon: TriangleAlert,
+        title: 'Plazo de firma',
+        text: 'Días hábiles que tiene el colaborador para firmar una rectificación. Vencido, se rechaza y el día queda como omisión.',
+        icon: CalendarClock,
+    },
+    {
+        title: 'Cierre de nómina',
+        text: 'Las rectificaciones de fechas ya cerradas son extemporáneas: sólo RH con permiso las aplica.',
+        icon: ShieldCheck,
     },
 ];
 </script>
@@ -216,320 +178,282 @@ const help = [
 <template>
     <PageHeader
         title="Configuración"
-        description="Catálogo de incidencias de la empresa."
+        description="Catálogo de incidencias y parámetros de rectificaciones."
         :icon="TriangleAlert"
         :help="help"
-        help-title="Catálogo de incidencias"
+        help-title="Incidencias y rectificaciones"
     />
 
     <SettingsNav />
 
-    <div class="mb-4 flex flex-wrap items-center gap-2">
-        <SearchInput
-            v-model="search"
-            placeholder="Buscar incidencia…"
-            class="w-full sm:w-64"
-        />
-        <SelectField
-            v-model="category"
-            :options="categories"
-            placeholder="Categoría"
-            prefix="Categoría:"
-            clearable
-            size="sm"
-            class="w-48"
-        />
-        <div class="ml-auto flex items-center gap-2">
-            <InactiveToggle v-model="showInactive" :count="inactiveCount" />
-            <Button v-if="can.manage" @click="create">
-                <Plus class="icon-sm" />
-                Nueva incidencia
-            </Button>
-        </div>
-    </div>
+    <div class="grid gap-5">
+        <SectionCard title="Catálogo de incidencias" :icon="Lock" divided>
+            <div class="overflow-x-auto">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Tipo</TableHead>
+                            <TableHead class="hidden md:table-cell"
+                                >Evidencia</TableHead
+                            >
+                            <TableHead>Autoriza</TableHead>
+                            <TableHead class="hidden lg:table-cell"
+                                >Código People</TableHead
+                            >
+                            <TableHead>Estado</TableHead>
+                            <TableHead v-if="can.manage" class="w-24" />
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        <TableRow v-for="type in types" :key="type.id">
+                            <TableCell>
+                                <div class="grid">
+                                    <span class="font-medium">{{
+                                        type.name
+                                    }}</span>
+                                    <span class="text-xs text-muted-foreground"
+                                        >{{ type.category_label }} ·
+                                        {{ type.incidences_count }}
+                                        registradas</span
+                                    >
+                                </div>
+                            </TableCell>
+                            <TableCell class="hidden text-sm md:table-cell">
+                                <template v-if="type.requires_evidence">
+                                    {{
+                                        label(
+                                            evidence_kinds,
+                                            type.evidence_kind,
+                                        )
+                                    }}
+                                    <span
+                                        v-if="type.requires_folio"
+                                        class="text-xs text-muted-foreground"
+                                    >
+                                        + folio</span
+                                    >
+                                </template>
+                                <span v-else class="text-muted-foreground"
+                                    >No requerida</span
+                                >
+                            </TableCell>
+                            <TableCell class="text-sm">
+                                <span
+                                    v-if="type.is_omission"
+                                    class="inline-flex items-center gap-1"
+                                >
+                                    <FilePen
+                                        class="size-3.5"
+                                        aria-hidden="true"
+                                    />
+                                    Rectificación
+                                </span>
+                                <template v-else>{{
+                                    label(approval_routes, type.approval_route)
+                                }}</template>
+                            </TableCell>
+                            <TableCell
+                                class="hidden font-mono text-xs lg:table-cell"
+                                >{{ type.external_code ?? '—' }}</TableCell
+                            >
+                            <TableCell>
+                                <StatusBadge
+                                    :status="
+                                        type.active ? 'active' : 'inactive'
+                                    "
+                                    :label="type.active ? 'Activa' : 'Inactiva'"
+                                    :tone="type.active ? 'success' : 'neutral'"
+                                    size="sm"
+                                />
+                            </TableCell>
+                            <TableCell v-if="can.manage" class="text-right">
+                                <div class="flex justify-end gap-1">
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        :aria-label="`Editar ${type.name}`"
+                                        @click="edit(type)"
+                                    >
+                                        <Pencil aria-hidden="true" />
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        @click="toggle(type)"
+                                    >
+                                        {{
+                                            type.active
+                                                ? 'Desactivar'
+                                                : 'Activar'
+                                        }}
+                                    </Button>
+                                </div>
+                            </TableCell>
+                        </TableRow>
+                    </TableBody>
+                </Table>
+            </div>
+        </SectionCard>
 
-    <div class="overflow-hidden rounded-2xl border bg-card shadow-elev-1">
-        <Table v-if="rows.length">
-            <TableHeader>
-                <TableRow>
-                    <TableHead>Incidencia</TableHead>
-                    <TableHead class="hidden md:table-cell"
-                        >Categoría</TableHead
-                    >
-                    <TableHead class="hidden lg:table-cell">Efecto</TableHead>
-                    <TableHead class="hidden xl:table-cell">Reglas</TableHead>
-                    <TableHead class="hidden md:table-cell">Vigencia</TableHead>
-                    <TableHead class="w-28 text-right"
-                        ><span class="sr-only">Acciones</span></TableHead
-                    >
-                </TableRow>
-            </TableHeader>
-            <TableBody>
-                <TableRow
-                    v-for="type in rows"
-                    :key="type.id"
-                    :class="cn(type.deleted && 'opacity-60')"
-                >
-                    <TableCell>
-                        <div class="flex items-center gap-2">
-                            <Lock
-                                v-if="type.is_system"
-                                class="icon-xs shrink-0 text-muted-foreground"
-                                aria-label="Del sistema"
-                            />
-                            <div class="min-w-0">
-                                <p class="truncate font-medium">
-                                    {{ type.name }}
-                                </p>
-                                <p
-                                    class="font-mono text-xs text-muted-foreground"
-                                >
-                                    {{ type.code }}
-                                </p>
-                            </div>
-                        </div>
-                    </TableCell>
-                    <TableCell class="hidden md:table-cell">{{
-                        label(categories, type.category)
-                    }}</TableCell>
-                    <TableCell class="hidden lg:table-cell">{{
-                        label(effects, type.operational_effect)
-                    }}</TableCell>
-                    <TableCell class="hidden xl:table-cell">
-                        <div class="flex flex-wrap gap-1">
-                            <span
-                                v-if="type.requires_approval"
-                                class="rounded-full bg-surface-3 px-2 py-0.5 text-xs"
-                                >Aprobación</span
-                            >
-                            <span
-                                v-if="type.requires_evidence"
-                                class="rounded-full bg-surface-3 px-2 py-0.5 text-xs"
-                                >Evidencia</span
-                            >
-                            <span
-                                v-if="type.affects_payroll"
-                                class="rounded-full bg-surface-3 px-2 py-0.5 text-xs"
-                                >Nómina</span
-                            >
-                            <span
-                                v-if="type.employee_requestable"
-                                class="rounded-full bg-surface-3 px-2 py-0.5 text-xs"
-                                >App</span
-                            >
-                        </div>
-                    </TableCell>
-                    <TableCell class="hidden text-sm md:table-cell">
-                        <template v-if="type.valid_from || type.valid_to">
-                            {{ civilDate(type.valid_from) }} –
-                            {{
-                                type.valid_to
-                                    ? civilDate(type.valid_to)
-                                    : 'vigente'
-                            }}
-                        </template>
-                        <span v-else class="text-muted-foreground"
-                            >Permanente</span
-                        >
-                    </TableCell>
-                    <TableCell class="text-right">
-                        <StatusBadge
-                            v-if="type.deleted"
-                            status="inactive"
-                            label="Inactiva"
-                            size="sm"
-                            class="mr-1"
-                        />
-                        <template v-if="can.manage && !type.is_system">
-                            <Button
-                                v-if="type.deleted"
-                                variant="ghost"
-                                size="icon-sm"
-                                aria-label="Reactivar"
-                                @click="restore(type)"
-                            >
-                                <RotateCcw class="icon-sm" />
-                            </Button>
-                            <template v-else>
-                                <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    aria-label="Editar"
-                                    @click="edit(type)"
-                                >
-                                    <Pencil class="icon-sm" />
-                                </Button>
-                                <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    aria-label="Desactivar"
-                                    @click="askDeactivate(type)"
-                                >
-                                    <Archive class="icon-sm" />
-                                </Button>
-                            </template>
-                        </template>
-                        <StatusBadge
-                            v-else-if="type.is_system"
-                            status="system"
-                            label="Sistema"
-                            tone="neutral"
-                            size="sm"
-                            :dot="false"
-                        />
-                    </TableCell>
-                </TableRow>
-            </TableBody>
-        </Table>
-        <EmptyState
-            v-else
-            :icon="Search"
-            title="Sin incidencias"
-            description="No hay tipos que coincidan con el filtro."
-            size="sm"
-        />
-    </div>
-
-    <Sheet v-model:open="open">
-        <SheetContent class="flex w-full flex-col gap-0 sm:max-w-lg">
-            <SheetHeader class="border-b">
-                <SheetTitle>{{
-                    editing ? 'Editar incidencia' : 'Nueva incidencia'
-                }}</SheetTitle>
-                <SheetDescription
-                    >Disponible a partir de su vigencia.</SheetDescription
-                >
-            </SheetHeader>
-            <form
-                id="incidence-form"
-                class="grid flex-1 gap-5 overflow-y-auto p-5"
-                @submit.prevent="submit"
-            >
-                <div class="grid gap-5 sm:grid-cols-[8rem_minmax(0,1fr)]">
+        <div class="grid gap-5 lg:grid-cols-2">
+            <SectionCard title="Rectificaciones" :icon="CalendarClock" divided>
+                <form class="grid gap-4" @submit.prevent="saveParams">
                     <FormField
-                        label="Clave"
-                        :error="form.errors.code"
+                        label="Plazo de firma (días hábiles)"
                         required
+                        :error="params.errors.business_days"
                         v-slot="{ id }"
                     >
                         <Input
                             :id="id"
-                            v-model="form.code"
-                            class="font-mono uppercase"
-                            placeholder="CAPACITACION"
+                            v-model.number="params.business_days"
+                            type="number"
+                            min="1"
+                            max="15"
+                            class="w-28"
+                            :disabled="!can.manage"
                         />
                     </FormField>
-                    <FormField
-                        label="Nombre"
-                        :error="form.errors.name"
-                        required
-                        v-slot="{ id }"
-                    >
-                        <Input
-                            :id="id"
-                            v-model="form.name"
-                            placeholder="Capacitación externa"
-                        />
-                    </FormField>
-                </div>
-                <div class="grid gap-5 sm:grid-cols-2">
-                    <FormField
-                        label="Categoría"
-                        :error="form.errors.category"
-                        required
-                        v-slot="{ id }"
-                    >
-                        <SelectField
-                            :id="id"
-                            v-model="form.category"
-                            :options="categories"
-                        />
-                    </FormField>
-                    <FormField
-                        label="Efecto"
-                        :error="form.errors.operational_effect"
-                        required
-                        v-slot="{ id }"
-                    >
-                        <SelectField
-                            :id="id"
-                            v-model="form.operational_effect"
-                            :options="effects"
-                        />
-                    </FormField>
-                </div>
-                <FormField
-                    label="Descripción"
-                    :error="form.errors.description"
-                    v-slot="{ id }"
-                >
-                    <Textarea :id="id" v-model="form.description" rows="2" />
-                </FormField>
-                <div class="grid gap-2">
                     <ToggleRow
-                        v-model="form.requires_approval"
-                        label="Requiere aprobación"
+                        v-model="params.confirmed_by_hr"
+                        label="Plazo confirmado por RH"
+                        description="Valor inicial propuesto: 3 días hábiles."
+                        :disabled="!can.manage"
                     />
-                    <ToggleRow
-                        v-model="form.requires_evidence"
-                        label="Requiere evidencia"
-                    />
-                    <ToggleRow
-                        v-model="form.affects_payroll"
-                        label="Afecta nómina"
-                    />
-                    <ToggleRow
-                        v-model="form.employee_requestable"
-                        label="Solicitable desde la app"
-                    />
-                </div>
-                <div class="grid gap-5 sm:grid-cols-2">
                     <FormField
-                        label="Vigente desde"
-                        :error="form.errors.valid_from"
-                        required
-                        v-slot="{ id }"
-                    >
-                        <DatePicker :id="id" v-model="form.valid_from" />
-                    </FormField>
-                    <FormField
-                        label="Vigente hasta"
-                        :error="form.errors.valid_to"
+                        label="Nómina cerrada hasta"
+                        hint="Opcional"
+                        :error="params.errors.closed_through"
                         v-slot="{ id }"
                     >
                         <DatePicker
                             :id="id"
-                            v-model="form.valid_to"
-                            :min="form.valid_from ?? undefined"
-                            clearable
-                            placeholder="Sin fin"
+                            v-model="params.closed_through"
+                            :disabled="!can.manage"
                         />
                     </FormField>
+                    <div v-if="can.manage">
+                        <Button type="submit" :disabled="params.processing">
+                            <Spinner v-if="params.processing" />
+                            Guardar
+                        </Button>
+                    </div>
+                </form>
+            </SectionCard>
+
+            <SectionCard title="Mr. Lana People" :icon="RefreshCcw" divided>
+                <div class="grid gap-3 text-sm">
+                    <StatusBadge
+                        class="justify-self-start"
+                        :status="people.configured ? 'active' : 'inactive'"
+                        :label="
+                            people.configured ? 'Configurada' : 'Sin configurar'
+                        "
+                        :tone="people.configured ? 'success' : 'neutral'"
+                    />
+                    <p class="text-muted-foreground">
+                        Recibe permisos, incapacidades y vacaciones aprobados.
+                    </p>
+                    <p v-if="people.last_success_at" class="text-xs">
+                        Última sincronización:
+                        <DateTimeDisplay
+                            :value="people.last_success_at"
+                            format="datetime"
+                        />
+                    </p>
+                    <div v-if="can.sync && people.configured">
+                        <Button
+                            variant="outline"
+                            :disabled="syncing"
+                            @click="syncPeople"
+                        >
+                            <Spinner v-if="syncing" />
+                            <RefreshCcw v-else aria-hidden="true" />
+                            Sincronizar ahora
+                        </Button>
+                    </div>
                 </div>
-                <p v-if="typeError" class="text-xs text-danger-soft-foreground">
-                    {{ typeError }}
-                </p>
+            </SectionCard>
+        </div>
+    </div>
+
+    <Sheet v-model:open="open">
+        <SheetContent class="flex w-full flex-col gap-0 p-0 sm:max-w-md">
+            <SheetHeader class="border-b p-5">
+                <SheetTitle class="font-display text-lg">{{
+                    editing?.name
+                }}</SheetTitle>
+                <SheetDescription
+                    >Catálogo cerrado: sólo ajustes.</SheetDescription
+                >
+            </SheetHeader>
+            <form
+                id="incidence-type-form"
+                class="grid flex-1 content-start gap-4 overflow-y-auto p-5"
+                @submit.prevent="save"
+            >
+                <ToggleRow
+                    v-model="form.requires_evidence"
+                    label="Evidencia obligatoria"
+                    :disabled="editing?.is_omission"
+                />
+                <FormField
+                    v-if="form.requires_evidence"
+                    label="Tipo de evidencia"
+                    required
+                    :error="form.errors.evidence_kind"
+                >
+                    <SelectField
+                        v-model="form.evidence_kind"
+                        :options="evidence_kinds"
+                        placeholder="Selecciona"
+                    />
+                </FormField>
+                <ToggleRow
+                    v-if="!editing?.is_omission"
+                    v-model="form.requires_folio"
+                    label="Folio IMSS obligatorio"
+                />
+                <FormField
+                    v-if="!editing?.is_omission"
+                    label="Autoriza"
+                    required
+                    :error="form.errors.approval_route"
+                >
+                    <SelectField
+                        v-model="form.approval_route"
+                        :options="approval_routes"
+                    />
+                </FormField>
+                <ToggleRow
+                    v-model="form.employee_requestable"
+                    label="El colaborador puede solicitarla"
+                />
+                <FormField
+                    label="Código en People"
+                    hint="Opcional"
+                    :error="form.errors.external_code"
+                    v-slot="{ id }"
+                >
+                    <Input
+                        :id="id"
+                        v-model="form.external_code"
+                        maxlength="40"
+                        class="font-mono"
+                    />
+                </FormField>
             </form>
-            <SheetFooter class="border-t">
+            <SheetFooter class="border-t p-5">
                 <Button
                     type="submit"
-                    form="incidence-form"
+                    form="incidence-type-form"
+                    class="w-full"
                     :disabled="form.processing"
                 >
                     <Spinner v-if="form.processing" />
-                    <Check v-else class="icon-sm" />
-                    {{ editing ? 'Guardar cambios' : 'Agregar al catálogo' }}
+                    Guardar
                 </Button>
             </SheetFooter>
         </SheetContent>
     </Sheet>
-
-    <ConfirmDialog
-        v-model:open="confirmOpen"
-        tone="danger"
-        :title="`¿Desactivar «${target?.name ?? ''}»?`"
-        description="Se cierra su vigencia; las incidencias registradas se conservan."
-        confirm-label="Desactivar"
-        @confirm="deactivate"
-    />
 </template>

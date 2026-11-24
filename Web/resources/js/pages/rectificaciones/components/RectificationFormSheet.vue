@@ -64,7 +64,25 @@ const needsPunch = computed(
 const needsType = computed(() => form.kind !== 'time_clarification');
 const needsTime = computed(() => form.kind !== 'wrong_type');
 
+const evidenceError = computed(() => {
+    const errors = form.errors as Record<string, string | undefined>;
+
+    return (
+        errors.evidence ??
+        Object.entries(errors).find(([k]) => k.startsWith('evidence.'))?.[1] ??
+        null
+    );
+});
+
 function submit(): void {
+    if (form.evidence.length === 0) {
+        form.setError(
+            'evidence',
+            'Adjunta la evidencia (foto, documento o constancia).',
+        );
+
+        return;
+    }
     form.transform((data) => ({
         employee_id: data.employee_id,
         date: data.date,
@@ -73,7 +91,7 @@ function submit(): void {
         proposed_type: needsType.value ? data.proposed_type : null,
         proposed_time: needsTime.value ? data.proposed_time : null,
         reason: data.reason,
-        evidence: data.evidence[0] ?? null,
+        evidence: data.evidence,
     })).post(RectificationController.store.url(), {
         forceFormData: true,
         preserveScroll: true,
@@ -206,17 +224,13 @@ function submit(): void {
                         placeholder="Describe qué ocurrió (mínimo 10 caracteres)…"
                     />
                 </FormField>
-                <FormField
-                    label="Evidencia"
-                    hint="Opcional"
-                    :error="form.errors.evidence"
-                >
+                <FormField label="Evidencia" required :error="evidenceError">
                     <FileDropzone
                         v-model="form.evidence"
-                        :multiple="false"
-                        :max-files="1"
-                        title="Arrastra un archivo"
-                        description="JPG, PNG, WEBP o PDF · máx. 10 MB"
+                        :max-files="5"
+                        accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+                        title="Foto, documento o constancia"
+                        description="JPG, PNG, WEBP, HEIC o PDF · máx. 10 MB"
                     />
                 </FormField>
             </form>
