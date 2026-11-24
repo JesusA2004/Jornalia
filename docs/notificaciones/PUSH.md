@@ -31,6 +31,10 @@ El backend envía avisos con **FCM HTTP v1** directamente (OAuth2 con cuenta de 
 4. `php artisan config:clear` (o `config:cache` en producción) y reinicia el worker de cola (`php artisan queue:restart`).
 5. Verifica: en la web, **Comunicados** ya no muestra «Push sin configurar».
 
+**Estado honesto**: sin `FCM_HABILITADO`, proyecto o credencial válida, el push queda deshabilitado; Comunicados y Configuración › Sistema muestran «Push sin configurar» y cada destinatario queda con estado `disabled`. Nunca se simula una entrega.
+
+**Reintentos**: fallas transitorias de FCM (HTTP 429/5xx, red) se reintentan hasta 3 veces con espera creciente (`SendPushToUser`, `DeliverAnnouncement`); las fallas permanentes se registran sin reintentar. La bandeja interna ya quedó guardada antes del push.
+
 Nunca se registra el token de acceso, la clave privada ni el token del dispositivo. Un token que FCM reporta como `UNREGISTERED` se **desactiva** (`devices.push_token_invalidated_at`), no se borra; vuelve a activarse cuando la app lo registra de nuevo.
 
 ## 3. Tareas programadas y cola
@@ -42,6 +46,20 @@ Requiere `* * * * * php artisan schedule:run` y un worker (`php artisan queue:wo
 | `asistencias:notificaciones --solo-comunicados` | cada minuto | Envía comunicados programados. |
 | `asistencias:notificaciones --solo-recordatorios` | cada 5 min | «Tu hora de entrada ya pasó» y «Recuerda marcar tu salida» (una vez por colaborador, fecha y tipo). |
 | `asistencias:aviso-ubicacion` | una vez (manual) | Publica el aviso `UBICACION` en organizaciones existentes. |
+
+### 3.1 Acuse obligatorio de marcaje (Revisión RH, pantalla 12)
+
+Cada marcaje (entrada, salida, inicio y fin de descanso) genera un aviso `attendance.punch_receipt` (categoría `attendance`) con la fecha y hora oficial (servidor, zona del centro de trabajo) y el folio del marcaje. **Es obligatorio y no tiene ajuste para desactivarlo**: siempre llega a la bandeja de la app aunque no haya push (`App\Domain\Notifications\Listeners\SendPunchReceipt`). Una falla al avisar nunca afecta el marcaje.
+
+### 3.2 Confirmación de lectura, segmentación e historial
+
+Al crear un comunicado se puede marcar «Pedir confirmación de lectura» (comunicados importantes). El aviso lleva `data.requires_confirmation = "1"`; la app muestra «Confirmar lectura» y llama `POST /api/v1/announcements/{announcement_id}/read` (idempotente) → `{announcement_id, confirmed_at, read_at}`. El detalle del comunicado en la web muestra quién confirmó y permite filtrar «Sin confirmar». Cada confirmación queda en la bitácora.
+
+Segmentación: todo el personal, sucursal, departamento, puesto o personas (siempre dentro del alcance de quien envía). Historial: los comunicados nunca se borran (se retiran y pueden reactivarse); cada envío conserva destinatarios, entrega, lectura, confirmación y estado del push.
+
+### 3.3 Alertas a RH y Sistemas
+
+Si la verificación diaria de integridad detecta alteraciones o falla el anclaje externo, se crea una alerta crítica en Cumplimiento y se avisa (bandeja + push) a quienes tienen `compliance.resolve` (RH) o `integrity.verify` (Sistemas): `integrity.verification_failed` / `integrity.anchor_failed`, una vez por día y tipo.
 
 Ajustes por organización (web → Comunicados → Automáticos), en `organization_settings`:
 `notifications.late_reminder` `{enabled, grace_minutes}` y `notifications.clock_out_reminder` `{enabled, minutes_after}`.
@@ -62,13 +80,15 @@ POST /api/v1/devices/push-token
 |---|---|---|
 | `notification_id` | sí | UUID del aviso en la bandeja (`POST /notifications/{id}/read` al abrirlo). |
 | `category` | sí | `message` · `reminder` · `request` · `attendance` · `system` |
-| `kind` | sí | `announcement`, `reminder.late_clock_in`, `reminder.clock_out`, `attendance.auto_clock_out`, `request.approved/rejected`, `device.approved/revoked` |
+| `kind` | sí | `announcement`, `attendance.punch_receipt`, `reminder.late_clock_in`, `reminder.clock_out`, `request.approved/rejected`, `integrity.verification_failed`, `integrity.anchor_failed`, `device.approved/revoked` |
 | `priority` | sí | `normal` · `high` |
-| `announcement_id` | comunicados | UUID del comunicado |
+| `announcement_id`, `requires_confirmation` | comunicados | UUID del comunicado, `"1"`/`"0"` |
+| `punch_uuid`, `date`, `type`, `receipt_code` | acuse de marcaje | UUID del marcaje, fecha local, tipo, folio |
 | `subject`, `subject_id`, `status` | solicitudes | `vacation`/`incidence`/`rectification`/`overtime`, id, estado |
 | `date`, `action` | recordatorios | `YYYY-MM-DD`, `clock_in`/`clock_out` (abrir la pantalla de marcaje) |
-| `punch_uuid`, `date` | salida automática | |
 | `device_uuid`, `status` | dispositivo | |
+
+> La salida automática se eliminó (Revisión RH 2026-11): ningún proceso genera marcajes. Avisos históricos `attendance.auto_clock_out` pueden seguir en la bandeja.
 
 Texto visible (pantalla de bloqueo) por categoría: «Tienes un comunicado nuevo.», «Tienes un recordatorio de asistencia.», «Una de tus solicitudes cambió de estado.», «Hay una novedad en tu asistencia.», «Tienes un aviso nuevo.». El título y el cuerpo reales sólo viajan a la bandeja.
 

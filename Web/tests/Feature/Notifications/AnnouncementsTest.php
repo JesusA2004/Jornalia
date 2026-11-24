@@ -64,7 +64,7 @@ it('envía a todo el personal y entrega en la bandeja de la app', function () {
     $n = $this->a->user->notifications()->sole();
     expect($n->data['category'])->toBe('message')
         ->and($n->data['title'])->toBe('Inventario')
-        ->and($n->data['data'])->toBe(['announcement_id' => $announcement->uuid]);
+        ->and($n->data['data'])->toBe(['announcement_id' => $announcement->uuid, 'requires_confirmation' => '0']);
 });
 
 it('segmenta por sucursal, departamento, puesto y selección', function (string $type, string $prop, array $expected) {

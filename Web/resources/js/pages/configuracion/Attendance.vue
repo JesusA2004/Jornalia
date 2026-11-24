@@ -41,7 +41,6 @@ import InactiveToggle from './components/InactiveToggle.vue';
 import NumberInput from './components/NumberInput.vue';
 import SettingsNav from './components/SettingsNav.vue';
 import ToggleRow from './components/ToggleRow.vue';
-import OptionalTimeField from '@/pages/horarios/components/OptionalTimeField.vue';
 import type { AttendancePolicyRow, ManageCan, Option } from './types';
 
 defineOptions({
@@ -90,7 +89,6 @@ type PolicyForm = {
     web_punch_allowed: boolean;
     max_clock_skew_seconds: number | null;
     min_location_accuracy_meters: number | null;
-    auto_clock_out_at: string | null;
     is_default: boolean;
     geofence_ids: string[];
 };
@@ -106,7 +104,6 @@ const blank = (): PolicyForm => ({
     web_punch_allowed: false,
     max_clock_skew_seconds: 300,
     min_location_accuracy_meters: 150,
-    auto_clock_out_at: null,
     is_default: false,
     geofence_ids: [],
 });
@@ -136,7 +133,6 @@ function edit(policy: AttendancePolicyRow): void {
         web_punch_allowed: policy.web_punch_allowed,
         max_clock_skew_seconds: policy.max_clock_skew_seconds,
         min_location_accuracy_meters: policy.min_location_accuracy_meters,
-        auto_clock_out_at: policy.auto_clock_out_at,
         is_default: policy.is_default,
         geofence_ids: [...policy.geofence_ids],
     };
@@ -236,11 +232,6 @@ const help = [
         title: 'Asignación',
         text: 'La política por defecto aplica a quien no tenga una asignada en su expediente.',
         icon: Star,
-    },
-    {
-        title: 'Salida automática',
-        text: 'Si el colaborador no marca salida, el sistema la registra a esta hora. El tiempo posterior no cuenta como horas extra.',
-        icon: Clock4,
     },
 ];
 </script>
@@ -370,14 +361,6 @@ const help = [
                         >Precisión
                         {{ policy.min_location_accuracy_meters }} m</span
                     >
-                </div>
-                <div class="flex items-center gap-2">
-                    <Clock4 class="icon-sm text-muted-foreground" />
-                    <span>{{
-                        policy.auto_clock_out_at
-                            ? `Salida auto. ${policy.auto_clock_out_at}`
-                            : 'Sin salida automática'
-                    }}</span>
                 </div>
             </dl>
 
@@ -648,20 +631,6 @@ const help = [
                         />
                     </FormField>
                 </div>
-
-                <FormField
-                    label="Salida automática"
-                    description="Se registra si no marca salida; no cuenta como horas extra."
-                    :error="form.errors.auto_clock_out_at"
-                    v-slot="{ id, invalid }"
-                >
-                    <OptionalTimeField
-                        :id="id"
-                        v-model="form.auto_clock_out_at"
-                        :invalid="invalid"
-                        aria-label="Salida automática"
-                    />
-                </FormField>
 
                 <ToggleRow
                     v-model="form.is_default"

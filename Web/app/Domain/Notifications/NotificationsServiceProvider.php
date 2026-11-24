@@ -3,8 +3,8 @@
 namespace App\Domain\Notifications;
 
 use App\Domain\Notifications\Fcm\FcmClient;
-use App\Domain\Notifications\Listeners\NotifyAutoClockOut;
 use App\Domain\Notifications\Listeners\NotifyDeviceStatus;
+use App\Domain\Notifications\Listeners\SendPunchReceipt;
 use App\Events\PunchRecorded;
 use App\Models\Device;
 use Illuminate\Database\Eloquent\Builder;
@@ -25,8 +25,10 @@ final class NotificationsServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        Event::listen(PunchRecorded::class, NotifyAutoClockOut::class);
         Device::observe(NotifyDeviceStatus::class);
+
+        // Acuse obligatorio de cada marcaje (no desactivable).
+        Event::listen(PunchRecorded::class, SendPunchReceipt::class);
 
         // Un comunicado retirado deja de mostrarse en la bandeja (web y app).
         DatabaseNotification::addGlobalScope('not_withdrawn', function (Builder $query): void {

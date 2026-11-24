@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Web\Operacion;
 
+use App\Domain\Location\LocationTracking;
 use App\Enums\PunchType;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Operacion\Support\AttendancePresenter;
@@ -60,6 +61,8 @@ final class LocationController extends Controller
                 ],
             ],
             'stale_minutes' => self::STALE_MINUTES,
+            // Reglas de uso (Configuración › Ubicación): retención y corte por salida omitida.
+            'tracking' => app(LocationTracking::class)->settings(),
             'server_time' => OperacionScope::iso(now()),
             'timezone' => $this->scope->timezone(),
         ]);

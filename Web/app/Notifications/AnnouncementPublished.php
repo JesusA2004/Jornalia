@@ -18,11 +18,12 @@ final class AnnouncementPublished extends AppNotification
         public readonly string $announcementTitle,
         public readonly string $announcementBody,
         public readonly string $announcementPriority,
+        public readonly bool $requiresConfirmation = false,
     ) {}
 
     public static function for(Announcement $announcement): self
     {
-        return (new self($announcement->id, $announcement->uuid, $announcement->title, $announcement->body, $announcement->priority))
+        return (new self($announcement->id, $announcement->uuid, $announcement->title, $announcement->body, $announcement->priority, (bool) $announcement->requires_confirmation))
             ->forOrganization((int) $announcement->organization_id);
     }
 
@@ -53,7 +54,8 @@ final class AnnouncementPublished extends AppNotification
 
     public function data(User $notifiable): array
     {
-        return ['announcement_id' => $this->announcementUuid];
+        // `requires_confirmation`: la app muestra «Confirmar lectura» (POST /announcements/{id}/read).
+        return ['announcement_id' => $this->announcementUuid, 'requires_confirmation' => $this->requiresConfirmation ? '1' : '0'];
     }
 
     protected function extraDatabase(): array

@@ -2,9 +2,7 @@
 
 namespace App\Domain\Location;
 
-use App\Domain\Attendance\EffectiveTimeline;
 use App\Domain\Scheduling\ScheduleResolver;
-use App\Enums\PunchType;
 use App\Models\Device;
 use App\Models\Employee;
 use App\Models\LocationPoint;
@@ -16,10 +14,11 @@ use Illuminate\Support\Str;
 /**
  * Ubicación de trabajo en tiempo real (mismo modelo que la app de Auditoría).
  *
- * Ventana de registro: el turno programado del día (30 min antes a 60 min
- * después) o, sin turno, mientras el colaborador tenga una entrada abierta.
- * Fuera de la ventana el punto se rechaza (`outside_window`): no se rastrea
- * fuera de la jornada laboral. Los puntos son evidencia append-only.
+ * Sólo se aceptan puntos de puestos con «Seguimiento durante la jornada» y
+ * mientras la jornada está abierta (entrada sin salida), fuera de descanso o
+ * comida y antes del límite de contingencia (ver LocationTracking). Cualquier
+ * otro punto se rechaza: no se rastrea fuera de la jornada laboral.
+ * Los puntos son evidencia append-only (salvo la depuración legal programada).
  */
 final class LocationService
 {
@@ -39,7 +38,7 @@ final class LocationService
 
     public function __construct(
         private readonly ScheduleResolver $schedules,
-        private readonly EffectiveTimeline $timeline,
+        private readonly LocationTracking $tracking,
     ) {}
 
     /**
@@ -59,8 +58,10 @@ final class LocationService
             $code = $this->validate($p, $uuid, $now);
             $capturedAt = $code === null ? CarbonImmutable::parse((string) $p['captured_at'])->utc() : null;
 
-            if ($code === null && ! $this->inWindow($employee, $capturedAt)) {
-                $code = 'outside_window';
+            if ($code === null) {
+                // Rechazo por regla de uso: puesto sin seguimiento, fuera de jornada,
+                // en descanso/comida o después del límite de contingencia.
+                $code = $this->tracking->phaseAt($employee, $capturedAt)['reason'];
             }
             if ($code !== null) {
                 $rejections[] = ['index' => $i, 'uuid' => $uuid, 'code' => $code];
@@ -107,7 +108,7 @@ final class LocationService
     }
 
     /**
-     * @return array{window: array<string, mixed>, interval_s: array{foreground:int, background:int}, distance_m: array{foreground:int, background:int}}
+     * @return array{window: array<string, mixed>, mode: string, phase: string, paused_states: list<string>, interval_s: array{foreground:int, background:int}, distance_m: array{foreground:int, background:int}}
      */
     public function settings(Employee $employee): array
     {
@@ -123,12 +124,17 @@ final class LocationService
             }
         }
 
+        $phase = $this->tracking->phaseAt($employee, $now);
+
         return [
+            'mode' => $phase['mode'],
+            'phase' => $phase['phase'],
+            'paused_states' => LocationTracking::PAUSED_STATES,
             'window' => [
-                'enabled' => true,
-                'active_now' => $this->inWindow($employee, $now),
+                'enabled' => $phase['mode'] === LocationTracking::MODE_DURING_SHIFT,
+                'active_now' => $phase['phase'] === LocationTracking::PHASE_ACTIVE,
                 'starts_at' => $start?->format('Y-m-d\TH:i:s\Z'),
-                'ends_at' => $end?->format('Y-m-d\TH:i:s\Z'),
+                'ends_at' => ($phase['cutoff_at'] ?? $end)?->format('Y-m-d\TH:i:s\Z'),
                 'next_start_at' => $next?->format('Y-m-d\TH:i:s\Z'),
                 'timezone' => $tz,
             ],
@@ -137,21 +143,12 @@ final class LocationService
         ];
     }
 
+    /**
+     * ¿Se acepta ubicación en este instante? (seguimiento activo del puesto y jornada abierta).
+     */
     public function inWindow(Employee $employee, CarbonImmutable $at): bool
     {
-        $tz = $this->schedules->timezoneFor($employee);
-        $local = $at->setTimezone($tz);
-        foreach ([$local->toDateString(), $local->subDay()->toDateString()] as $date) {
-            [$start, $end] = $this->shiftWindow($employee, $date);
-            if ($start !== null && $at->betweenIncluded($start, $end)) {
-                return true;
-            }
-        }
-
-        // Sin turno (trabajo de campo / flexible): mientras tenga una entrada abierta.
-        $next = $this->timeline->nextExpected($employee->id, $at);
-
-        return $next !== PunchType::ClockIn;
+        return $this->tracking->phaseAt($employee, $at)['phase'] === LocationTracking::PHASE_ACTIVE;
     }
 
     /**

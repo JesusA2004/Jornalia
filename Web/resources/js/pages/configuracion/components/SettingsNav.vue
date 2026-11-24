@@ -6,8 +6,10 @@ import {
     CalendarHeart,
     FileSignature,
     GitBranch,
+    LocateFixed,
     MapPinned,
     Palmtree,
+    ServerCog,
     TriangleAlert,
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
@@ -18,6 +20,7 @@ import CompanySettingsController from '@/actions/App/Http/Controllers/Web/Admin/
 import HolidayController from '@/actions/App/Http/Controllers/Web/Admin/HolidayController';
 import IncidenceTypeController from '@/actions/App/Http/Controllers/Web/Admin/IncidenceTypeController';
 import LegalVersionController from '@/actions/App/Http/Controllers/Web/Admin/LegalVersionController';
+import PlatformSettingsController from '@/actions/App/Http/Controllers/Web/Admin/PlatformSettingsController';
 import PolicyDocumentController from '@/actions/App/Http/Controllers/Web/Admin/PolicyDocumentController';
 import VacationPolicyController from '@/actions/App/Http/Controllers/Web/Admin/VacationPolicyController';
 import { usePermissions } from '@/composables/usePermissions';
@@ -82,6 +85,18 @@ const tabs = computed<Tab[]>(() =>
             href: LegalVersionController.index.url(),
             icon: BookOpenCheck,
             permission: 'settings.legal',
+        },
+        {
+            label: 'Ubicación',
+            href: PlatformSettingsController.location.url(),
+            icon: LocateFixed,
+            permission: 'settings.view',
+        },
+        {
+            label: 'Sistema',
+            href: PlatformSettingsController.system.url(),
+            icon: ServerCog,
+            permission: 'settings.view',
         },
     ].filter((tab) => can(tab.permission)),
 );

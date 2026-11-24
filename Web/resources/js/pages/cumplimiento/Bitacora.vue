@@ -30,12 +30,14 @@ import { formatDateTime } from '@/lib/format';
 import { toPaginationMeta } from '@/lib/pagination';
 import type { DataTableColumn, KeyValueItem } from '@/types';
 import type { AuditIndexProps, AuditLogRow } from '@/types/operacion';
+import ComplianceTabs from './components/ComplianceTabs.vue';
 
 defineOptions({
     layout: {
         breadcrumbs: [
-            { title: 'Operación' },
-            { title: 'Auditoría', href: '/auditoria' },
+            { title: 'Análisis' },
+            { title: 'Cumplimiento', href: '/cumplimiento' },
+            { title: 'Bitácora de cambios' },
         ],
     },
 });
@@ -71,7 +73,12 @@ const columns: DataTableColumn<AuditLogRow>[] = [
     { key: 'user', label: 'Usuario', hideBelow: 'md' },
     { key: 'module', label: 'Módulo', class: 'w-36' },
     { key: 'description', label: 'Descripción' },
-    { key: 'ip_address', label: 'IP', hideBelow: 'lg', class: 'w-32' },
+    {
+        key: 'ip_address',
+        label: 'Dispositivo o IP',
+        hideBelow: 'lg',
+        class: 'w-40',
+    },
 ];
 
 const selected = ref<AuditLogRow | null>(null);
@@ -120,6 +127,7 @@ const details = computed<KeyValueItem[]>(() => {
             full: true,
         },
         { key: 'ip', label: 'IP', value: l.ip_address, mono: true },
+        { key: 'device', label: 'Dispositivo', value: l.device },
         {
             key: 'ua',
             label: 'Navegador / dispositivo',
@@ -128,6 +136,15 @@ const details = computed<KeyValueItem[]>(() => {
         },
     ];
 });
+
+function pretty(value: Record<string, unknown> | null): string | null {
+    return value && Object.keys(value).length > 0
+        ? JSON.stringify(value, null, 2)
+        : null;
+}
+
+const oldJson = computed(() => pretty(selected.value?.old_values ?? null));
+const newJson = computed(() => pretty(selected.value?.new_values ?? null));
 
 const contextJson = computed(() =>
     selected.value?.context && Object.keys(selected.value.context).length > 0
@@ -138,7 +155,7 @@ const contextJson = computed(() =>
 const help = [
     {
         title: 'Bitácora inmutable',
-        text: 'Ningún registro se modifica ni se elimina.',
+        text: 'Ningún registro se modifica ni se elimina. Guarda usuario, fecha y hora, acción, valor anterior y nuevo, dispositivo o IP.',
         icon: Lock,
     },
     {
@@ -156,11 +173,14 @@ const help = [
 
 <template>
     <PageHeader
-        title="Auditoría"
-        description="Bitácora inmutable de la organización."
+        title="Cumplimiento"
+        description="Bitácora de cambios inalterable."
         :icon="ScrollText"
         :help="help"
+        help-title="Bitácora de cambios"
     />
+
+    <ComplianceTabs />
 
     <div class="space-y-5">
         <FilterBar :active-count="activeCount" @reset="reset">
@@ -256,6 +276,11 @@ const help = [
                 </button>
             </template>
             <template #cell-ip_address="{ row }">
+                <span
+                    v-if="row.device"
+                    class="block truncate text-xs text-muted-foreground"
+                    >{{ row.device }}</span
+                >
                 <span class="font-mono text-xs text-muted-foreground">{{
                     row.ip_address ?? '—'
                 }}</span>
@@ -286,6 +311,32 @@ const help = [
 
             <div v-if="selected" class="space-y-6 px-4 pb-6">
                 <KeyValueGrid :items="details" :columns="2" />
+
+                <div
+                    v-if="oldJson || newJson"
+                    class="grid gap-3 sm:grid-cols-2"
+                >
+                    <div class="space-y-2">
+                        <p
+                            class="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+                        >
+                            Valor anterior
+                        </p>
+                        <pre
+                            class="max-h-72 overflow-auto rounded-xl border bg-surface-2 p-3 font-mono text-xs leading-relaxed"
+                            >{{ oldJson ?? '—' }}</pre>
+                    </div>
+                    <div class="space-y-2">
+                        <p
+                            class="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+                        >
+                            Valor nuevo
+                        </p>
+                        <pre
+                            class="max-h-72 overflow-auto rounded-xl border bg-surface-2 p-3 font-mono text-xs leading-relaxed"
+                            >{{ newJson ?? '—' }}</pre>
+                    </div>
+                </div>
 
                 <div class="space-y-2">
                     <p

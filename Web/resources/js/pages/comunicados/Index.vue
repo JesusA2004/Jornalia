@@ -70,8 +70,18 @@ const help: HelpStep[] = [
     },
     {
         title: 'Avisos automáticos',
-        text: 'Entrada y salida pendientes según el horario de cada colaborador.',
+        text: 'Recordatorios de entrada y salida pendientes según el horario de cada colaborador.',
         icon: CalendarClock,
+    },
+    {
+        title: 'Acuse de marcaje',
+        text: 'Cada entrada y salida genera un acuse con fecha y hora en la bandeja de la app. Es obligatorio y no se desactiva.',
+        icon: BellRing,
+    },
+    {
+        title: 'Confirmación de lectura',
+        text: 'En comunicados importantes el colaborador confirma que lo leyó; el detalle muestra quién falta.',
+        icon: Users,
     },
 ];
 
@@ -157,6 +167,14 @@ const reminderSummary = computed(() => {
                 app.</AlertDescription
             >
         </Alert>
+
+        <p
+            v-if="punch_receipt.mandatory"
+            class="inline-flex items-center gap-2 rounded-full bg-success-soft px-3 py-1 text-xs font-medium text-success-soft-foreground"
+        >
+            <BellRing class="size-3.5" aria-hidden="true" />
+            Acuse de entrada y salida: obligatorio
+        </p>
 
         <div class="flex flex-wrap gap-2" role="tablist" aria-label="Estado">
             <button

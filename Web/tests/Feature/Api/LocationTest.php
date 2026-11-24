@@ -1,7 +1,11 @@
 <?php
 
 use App\Enums\DeviceStatus;
+use App\Enums\PunchType;
+use App\Models\EmploymentAssignment;
 use App\Models\LocationPoint;
+use App\Models\Position;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
 use Tests\Feature\Api\Concerns\ContractShapes;
 use Tests\Feature\Api\Concerns\MobileApi;
@@ -10,6 +14,11 @@ uses(MobileApi::class);
 
 beforeEach(function () {
     $this->setUpMobile();
+    // Puesto de campo con seguimiento durante la jornada y entrada a las 09:05 (hora local).
+    $position = Position::query()->create(['organization_id' => $this->org->id, 'name' => 'Asesor de campo', 'code' => 'CAMPO', 'location_tracking' => 'during_shift']);
+    EmploymentAssignment::query()->where('organization_id', $this->org->id)->update(['position_id' => $position->id]);
+    $this->punchAt($this->emp, PunchType::ClockIn, '2026-11-17 15:05:00');
+    $this->travelTo(CarbonImmutable::parse(self::NOW, 'UTC'));
     $this->point = fn (array $overrides = []) => array_merge([
         'uuid' => (string) Str::uuid(),
         'latitude' => 19.4326,

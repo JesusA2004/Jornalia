@@ -52,6 +52,7 @@ class AnnouncementRecipient extends Model
         return [
             'delivered_at' => 'datetime',
             'read_at' => 'datetime',
+            'confirmed_at' => 'datetime',
             'push_sent_at' => 'datetime',
             'failed_at' => 'datetime',
             'attempts' => 'integer',

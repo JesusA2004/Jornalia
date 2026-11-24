@@ -3,21 +3,37 @@
 namespace App\Http\Controllers\Web\Admin;
 
 use App\Domain\Audit\AuditLogger;
+use App\Domain\Signatures\RegistrationDocuments;
 use App\Models\Employee;
 use App\Models\PolicyDocument;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Documentos del sistema de registro para acuse de los colaboradores.
- * Un documento publicado es inmutable: los cambios requieren una nueva versión.
+ * Un documento publicado es inmutable (texto y PDF): los cambios requieren una
+ * nueva versión. El aviso de privacidad (`AVISO_PRIVACIDAD`) exige PDF para
+ * publicarse; el convenio (`CONVENIO_REGISTRO`) puede llevar PDF.
  */
 class PolicyDocumentController extends AdminController
 {
+    /** Documentos del registro electrónico con plantilla en Configuración › Documentos. */
+    public const REGISTRATION_CODES = [
+        RegistrationDocuments::PRIVACY => 'Aviso de privacidad para colaboradores',
+        RegistrationDocuments::AGREEMENT => 'Convenio de registro electrónico',
+    ];
+
+    /** Documentos que no pueden publicarse sin su PDF oficial. */
+    public const PDF_REQUIRED = [RegistrationDocuments::PRIVACY];
+
+    public const PDF_DISK = 'local';
+
     public function __construct(private readonly AuditLogger $audit) {}
 
     public function index(Request $request): Response
@@ -39,11 +55,16 @@ class PolicyDocumentController extends AdminController
                 'created_by' => $d->createdBy?->name,
                 'acknowledgements_count' => $d->acknowledgements_count,
                 'deleted' => $d->trashed(),
+                'file_name' => $d->file_name,
+                'file_sha256' => $d->file_sha256,
+                'file_size' => $d->file_size !== null ? (int) $d->file_size : null,
+                'file_url' => $d->file_path ? route('configuracion.documents.pdf', $d->id) : null,
             ]);
 
         return Inertia::render('configuracion/Documents', [
             'documents' => $documents->values(),
             'active_employees' => $activeEmployees,
+            'registration_codes' => collect(self::REGISTRATION_CODES)->map(fn ($title, $code) => ['code' => $code, 'title' => $title, 'pdf_required' => in_array($code, self::PDF_REQUIRED, true)])->values(),
             'can' => ['manage' => $request->user()?->can('settings.documents') ?? false],
         ]);
     }
@@ -81,16 +102,56 @@ class PolicyDocumentController extends AdminController
         if (trim($policyDocument->body_markdown) === '') {
             throw ValidationException::withMessages(['body_markdown' => 'El documento no tiene contenido.']);
         }
+        if (in_array($policyDocument->code, self::PDF_REQUIRED, true) && $policyDocument->file_path === null) {
+            throw ValidationException::withMessages(['file' => 'Sube el PDF del aviso de privacidad antes de publicarlo.']);
+        }
 
         $policyDocument->forceFill([
             'sha256' => hash('sha256', $policyDocument->body_markdown),
             'published_at' => now(),
         ])->save();
 
-        $this->audit->log('policy_document.published', $policyDocument, "Documento publicado: {$policyDocument->title} v{$policyDocument->version}", ['code' => $policyDocument->code, 'sha256' => $policyDocument->sha256]);
+        $this->audit->log('policy_document.published', $policyDocument, "Documento publicado: {$policyDocument->title} v{$policyDocument->version}", ['code' => $policyDocument->code, 'sha256' => $policyDocument->sha256, 'file_sha256' => $policyDocument->file_sha256]);
         $this->toast('Documento publicado. A partir de ahora es inmutable.');
 
         return back();
+    }
+
+    /**
+     * Carga (o reemplaza, sólo en borrador) el PDF del documento. Los archivos
+     * anteriores se conservan; el publicado es inmutable.
+     */
+    public function uploadPdf(Request $request, PolicyDocument $policyDocument): RedirectResponse
+    {
+        $this->ensureOwned($policyDocument);
+        $this->ensureDraft($policyDocument);
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:pdf', 'mimetypes:application/pdf', 'max:10240'],
+        ], ['file.mimes' => 'El archivo debe ser PDF.', 'file.mimetypes' => 'El archivo debe ser PDF.'], ['file' => 'PDF']);
+
+        $file = $request->file('file');
+        $dir = 'policy-documents/'.$this->organizationId();
+        $path = $file->storeAs($dir, $policyDocument->code.'-'.$policyDocument->version.'-'.bin2hex(random_bytes(6)).'.pdf', self::PDF_DISK);
+        $before = ['file_path' => $policyDocument->file_path, 'file_sha256' => $policyDocument->file_sha256];
+        $policyDocument->forceFill([
+            'file_path' => $path,
+            'file_name' => mb_substr((string) $file->getClientOriginalName(), 0, 200),
+            'file_sha256' => hash_file('sha256', Storage::disk(self::PDF_DISK)->path((string) $path)),
+            'file_size' => $file->getSize(),
+        ])->save();
+
+        $this->audit->log('policy_document.pdf_uploaded', $policyDocument, "PDF cargado: {$policyDocument->title} v{$policyDocument->version}", [], null, $before, ['file_path' => $path, 'file_sha256' => $policyDocument->file_sha256]);
+        $this->toast('PDF cargado.');
+
+        return back();
+    }
+
+    public function pdf(Request $request, PolicyDocument $policyDocument): StreamedResponse
+    {
+        $this->ensureOwned($policyDocument);
+        abort_if($policyDocument->file_path === null || ! Storage::disk(self::PDF_DISK)->exists($policyDocument->file_path), 404);
+
+        return Storage::disk(self::PDF_DISK)->response($policyDocument->file_path, $policyDocument->code.'-'.$policyDocument->version.'.pdf', ['Content-Type' => 'application/pdf']);
     }
 
     public function newVersion(Request $request, PolicyDocument $policyDocument): RedirectResponse

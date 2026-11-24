@@ -13,6 +13,7 @@ export type AnnouncementStats = {
     total: number;
     delivered: number;
     read: number;
+    confirmed: number;
     push_sent: number;
     failed: number;
 };
@@ -22,6 +23,7 @@ export type AnnouncementRow = {
     title: string;
     excerpt: string;
     priority: Priority;
+    requires_confirmation: boolean;
     audience_type: AudienceType;
     audience_label: string;
     audience_count: number;
@@ -44,6 +46,7 @@ export type AnnouncementsIndexProps = {
     filters: { status: AnnouncementStatus | null; search: string };
     settings: ReminderSettings;
     push: { enabled: boolean };
+    punch_receipt: { mandatory: boolean };
     can: { send: boolean };
 };
 
@@ -71,6 +74,7 @@ export type RecipientRow = {
     employee: { id: number; name: string; employee_number: string } | null;
     delivered_at: string | null;
     read_at: string | null;
+    confirmed_at: string | null;
     push_status: PushStatus;
     error: string | null;
 };
@@ -82,6 +86,6 @@ export type AnnouncementShowProps = {
         withdrawn_by: string | null;
     };
     recipients: LaravelPaginator<RecipientRow>;
-    filters: { state: 'read' | 'unread' | 'failed' | null };
+    filters: { state: 'read' | 'unread' | 'failed' | 'unconfirmed' | null };
     can: { send: boolean };
 };

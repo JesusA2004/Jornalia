@@ -1,16 +1,12 @@
 <?php
 
-use App\Domain\Attendance\AutoClockOut;
 use App\Domain\Notifications\Models\NotificationDispatch;
 use App\Domain\Notifications\NotificationSettings;
 use App\Enums\PunchType;
-use App\Events\PunchRecorded;
 use App\Models\Holiday;
 use App\Models\OrganizationSetting;
-use App\Models\Position;
 use App\Models\VacationRequest;
 use App\Notifications\AttendanceReminder;
-use App\Notifications\AutoClockOutRecorded;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Artisan;
 use Tests\Concerns\BuildsWorkforce;
@@ -118,25 +114,6 @@ it('no recuerda la salida si ya la marcó', function () {
     runReminders('2026-11-18 00:20:00');
 
     expect(remindersOf($this->user, AttendanceReminder::CLOCK_OUT))->toBe(0);
-});
-
-it('avisa la salida automática registrada por el sistema', function () {
-    $position = Position::query()->create(['name' => 'Asesor', 'code' => 'ASESOR', 'auto_clock_out_at' => '19:00:00']);
-    $this->employee->employmentOn('2026-11-17')->assignmentOn('2026-11-17')->update(['position_id' => $position->id]);
-
-    $this->punchAt($this->employee, PunchType::ClockIn, '2026-11-17 15:00:00');
-    $this->travelTo(CarbonImmutable::parse('2026-11-18 01:07:00', 'UTC'));
-    $punch = app(AutoClockOut::class)->closeIfDue($this->employee->fresh());
-    expect($punch)->not->toBeNull();
-
-    $notes = $this->user->notifications()->get()->filter(fn ($n) => $n->type === AutoClockOutRecorded::class);
-    expect($notes)->toHaveCount(1)
-        ->and($notes->first()->data['body'])->toBe('Tu jornada se cerró automáticamente a las 19:00.')
-        ->and($notes->first()->data['category'])->toBe('attendance');
-
-    // Reemitir el evento no duplica el aviso.
-    event(new PunchRecorded($punch));
-    expect($this->user->notifications()->where('type', AutoClockOutRecorded::class)->count())->toBe(1);
 });
 
 it('aísla los avisos por organización', function () {

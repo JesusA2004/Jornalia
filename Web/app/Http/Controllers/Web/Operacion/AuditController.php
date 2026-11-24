@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Operacion\Support\OperacionScope;
 use App\Http\Requests\Web\Operacion\ListFiltersRequest;
 use App\Models\AuditLog;
+use App\Models\Device;
 use App\Models\User;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
@@ -13,7 +14,9 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Bitácora inmutable de la organización activa (sólo lectura).
+ * Cumplimiento › Bitácora de cambios: bitácora inmutable de la organización
+ * activa (sólo lectura). Usuario, fecha y hora, acción, valor anterior y
+ * nuevo, dispositivo o IP.
  */
 final class AuditController extends Controller
 {
@@ -31,6 +34,12 @@ final class AuditController extends Controller
         'user' => 'Usuarios',
         'auth' => 'Acceso',
         'settings' => 'Configuración',
+        'organization' => 'Empresa',
+        'policy_document' => 'Documentos',
+        'announcement' => 'Comunicados',
+        'location' => 'Ubicación',
+        'schedule' => 'Horarios',
+        'signature' => 'Firmas',
     ];
 
     public function __invoke(ListFiltersRequest $request, CurrentOrganization $current): Response
@@ -41,7 +50,7 @@ final class AuditController extends Controller
         $userId = (int) $request->query('user_id', 0) ?: null;
         $tz = (string) ($current->get()?->timezone ?? 'UTC');
 
-        $query = AuditLog::query()->with('user:id,name,email')
+        $query = AuditLog::query()->with(['user:id,name,email'])
             ->where('organization_id', $orgId)
             ->when($module, fn ($q) => $q->where('action', 'like', $module.'.%'))
             ->when($userId, fn ($q) => $q->where('user_id', $userId))
@@ -53,7 +62,11 @@ final class AuditController extends Controller
             });
 
         $page = $query->orderByDesc('created_at')->orderByDesc('id')->paginate($request->perPage(25))->withQueryString();
+        $devices = Device::query()->withoutGlobalScopes()->where('organization_id', $orgId)
+            ->whereIn('id', $page->getCollection()->pluck('device_id')->filter()->unique()->values())
+            ->get(['id', 'name', 'platform'])->keyBy('id');
         $page->through(fn (AuditLog $l) => [
+            'device' => $l->device_id && isset($devices[$l->device_id]) ? $devices[$l->device_id]->name.' ('.$devices[$l->device_id]->platform.')' : null,
             'id' => $l->id,
             'action' => $l->action,
             'module' => strtok($l->action, '.'),
@@ -62,6 +75,9 @@ final class AuditController extends Controller
             'subject_type' => $l->subject_type,
             'subject_id' => $l->subject_id,
             'context' => $l->context,
+            'old_values' => $l->old_values,
+            'new_values' => $l->new_values,
+            'device_id' => $l->device_id,
             'user' => $l->user ? ['id' => $l->user->id, 'name' => $l->user->name, 'email' => $l->user->email] : null,
             'ip_address' => $l->ip_address,
             'user_agent' => $l->user_agent,
@@ -72,7 +88,7 @@ final class AuditController extends Controller
             ->orderBy('name')->limit(300)->get(['id', 'name', 'email'])
             ->map(fn (User $u) => ['value' => (string) $u->id, 'label' => $u->name, 'description' => $u->email])->values();
 
-        return Inertia::render('auditoria/Index', [
+        return Inertia::render('cumplimiento/Bitacora', [
             'logs' => $page,
             'filters' => [
                 'search' => $filters['search'] ?? '',

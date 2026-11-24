@@ -12,6 +12,7 @@ import SelectField from '@/components/app/SelectField.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import type { HelpStep, SelectOption } from '@/types';
@@ -61,6 +62,7 @@ const form = useForm({
     title: '',
     body: '',
     priority: 'normal' as Priority,
+    requires_confirmation: false,
     audience_type: 'all' as AudienceType,
     audience_ids: [] as string[],
     send_mode: 'now' as 'now' | 'scheduled',
@@ -236,6 +238,23 @@ function submit(): void {
                                 >
                             </ToggleGroup>
                         </FormField>
+                        <label
+                            class="flex cursor-pointer items-start justify-between gap-4 rounded-xl border px-4 py-3"
+                        >
+                            <span class="space-y-0.5">
+                                <span class="block text-sm font-medium"
+                                    >Pedir confirmación de lectura</span
+                                >
+                                <span
+                                    class="block text-xs text-muted-foreground"
+                                    >Para comunicados importantes.</span
+                                >
+                            </span>
+                            <Switch
+                                v-model="form.requires_confirmation"
+                                class="mt-0.5 shrink-0"
+                            />
+                        </label>
                     </div>
                 </SectionCard>
 

@@ -27,6 +27,8 @@ class AuditLog extends Model
     {
         return [
             'context' => 'array',
+            'old_values' => 'array',
+            'new_values' => 'array',
             'created_at' => 'immutable_datetime',
         ];
     }

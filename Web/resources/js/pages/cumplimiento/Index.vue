@@ -5,6 +5,7 @@ import {
     BookOpenText,
     ExternalLink,
     Gavel,
+    Hash,
     ListChecks,
     Scale,
     ShieldAlert,
@@ -36,6 +37,7 @@ import type {
     ComplianceAlertRow,
     ComplianceIndexProps,
 } from '@/types/operacion';
+import ComplianceTabs from './components/ComplianceTabs.vue';
 import ResolveAlertDialog from './components/ResolveAlertDialog.vue';
 import {
     SEVERITY_ICON,
@@ -47,7 +49,7 @@ import type { Severity } from './components/severity';
 defineOptions({
     layout: {
         breadcrumbs: [
-            { title: 'Operación' },
+            { title: 'Análisis' },
             { title: 'Cumplimiento', href: '/cumplimiento' },
         ],
     },
@@ -124,6 +126,8 @@ const legalRows = computed(() => {
         { label: 'Máximo diario — mixta', minutes: p.daily_max_mixed },
         { label: 'Horas extra por día', minutes: p.overtime_daily_max },
         { label: 'Horas extra por semana', minutes: p.overtime_weekly_max },
+        { label: 'Triples por semana', minutes: p.overtime_excess_weekly_max },
+        { label: 'Jornada total por día', minutes: p.daily_total_max },
         { label: 'Descanso mínimo en jornada', minutes: p.min_break_minutes },
     ];
 });
@@ -141,8 +145,13 @@ const help = [
     },
     {
         title: 'Normativa',
-        text: 'Parámetros y fuentes de la versión legal vigente hoy.',
+        text: 'Parámetros de la versión vigente hoy. Cambia sola el 1 de enero de cada tramo; RH la valida en Configuración › Normativa.',
         icon: Scale,
+    },
+    {
+        title: 'Alertas mínimas',
+        text: 'Jornada diaria o semanal excedida, tiempo extra cerca o sobre el tope, menores con tiempo extra, sin descanso semanal, omisión sin rectificar más de 2 días y hora del dispositivo distinta.',
+        icon: TriangleAlert,
     },
 ];
 </script>
@@ -150,10 +159,12 @@ const help = [
 <template>
     <PageHeader
         title="Cumplimiento"
-        description="Alertas laborales y normativa vigente."
+        description="Alertas legales, integridad del registro y bitácora."
         :icon="ShieldCheck"
         :help="help"
     />
+
+    <ComplianceTabs :open-alerts="summary.open" />
 
     <div class="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_25rem]">
         <div class="min-w-0 space-y-6">
@@ -423,6 +434,61 @@ const help = [
                 </ul>
             </SectionCard>
 
+            <SectionCard
+                v-if="integrity"
+                title="Integridad del registro"
+                :icon="Hash"
+                divided
+            >
+                <div class="space-y-2 text-sm">
+                    <StatusBadge
+                        :status="
+                            integrity.valid === null
+                                ? 'pending'
+                                : integrity.valid
+                                  ? 'valid'
+                                  : 'invalid'
+                        "
+                        :label="
+                            integrity.valid === null
+                                ? 'Sin verificar'
+                                : integrity.valid
+                                  ? 'Cadena íntegra'
+                                  : 'Con hallazgos'
+                        "
+                        size="sm"
+                    />
+                    <p class="text-xs text-muted-foreground">
+                        Verificación automática diaria ·
+                        {{
+                            integrity.last_verification_at
+                                ? formatDate(
+                                      integrity.last_verification_at,
+                                      'date',
+                                  )
+                                : '—'
+                        }}
+                    </p>
+                    <p class="text-xs text-muted-foreground">
+                        Anclaje externo automático ·
+                        {{
+                            integrity.last_anchor_at
+                                ? formatDate(integrity.last_anchor_at, 'date')
+                                : '—'
+                        }}
+                    </p>
+                    <p class="text-xs text-muted-foreground tabular-nums">
+                        Marcajes: {{ integrity.punches }} · Ajustes:
+                        {{ integrity.adjustments }}
+                    </p>
+                    <Link
+                        href="/cumplimiento/integridad"
+                        class="text-xs font-medium text-primary hover:underline"
+                        >Ver detalle</Link
+                    >
+                </div>
+            </SectionCard>
+
             <SectionCard title="Normativa vigente" :icon="Scale" divided>
                 <EmptyState
                     v-if="!legal"
@@ -458,12 +524,21 @@ const help = [
                         </div>
                         <StatusBadge
                             :label="
-                                legal.verified ? 'Verificada' : 'Sin verificar'
+                                legal.verified
+                                    ? 'Verificada por RH'
+                                    : 'Sin verificar'
                             "
                             :tone="legal.verified ? 'success' : 'warning'"
                             size="sm"
                         />
                     </div>
+                    <p
+                        v-if="legal.verified && legal.verified_by"
+                        class="text-xs text-muted-foreground"
+                    >
+                        {{ legal.verified_by }} ·
+                        {{ formatDate(legal.verified_at, 'date') }}
+                    </p>
 
                     <dl class="divide-y rounded-xl border">
                         <div

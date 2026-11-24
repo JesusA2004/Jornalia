@@ -10,8 +10,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Operacion\Support\OperacionScope;
 use App\Http\Requests\Web\Operacion\ListFiltersRequest;
 use App\Http\Requests\Web\Operacion\ResolveAlertRequest;
+use App\Models\AttendanceAdjustment;
+use App\Models\AuditLog;
 use App\Models\ComplianceAlert;
+use App\Models\IntegrityAnchor;
 use App\Models\LegalVersion;
+use App\Models\Punch;
+use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -23,7 +28,7 @@ use Inertia\Response;
 final class ComplianceController extends Controller
 {
     public const RULES = [
-        'missing_clock_out' => 'Jornada sin registro de salida',
+        'missing_clock_out' => 'Omisión de checada de salida',
         'daily_total_exceeded' => 'Jornada diaria total excedida',
         'rest_day_worked' => 'Trabajo en día de descanso',
         'holiday_worked' => 'Trabajo en día festivo',
@@ -35,6 +40,12 @@ final class ComplianceController extends Controller
         'weekly_ordinary_exceeded' => 'Jornada semanal ordinaria excedida',
         'no_weekly_rest' => 'Sin descanso semanal',
         'device_in_use' => 'Intento de uso de teléfono ajeno',
+        'missing_clock_in' => 'Omisión de checada de entrada',
+        'overtime_near_limit' => 'Tiempo extra cerca del tope semanal',
+        'unrectified_omission' => 'Omisión sin rectificar (más de 2 días)',
+        'clock_skew' => 'Diferencia de hora del dispositivo',
+        'integrity_failed' => 'Integridad: alteración detectada',
+        'integrity_anchor_failed' => 'Integridad: falló el anclaje externo',
     ];
 
     public const STATUSES = ['open' => 'Abierta', 'acknowledged' => 'Atendida', 'resolved' => 'Resuelta'];
@@ -100,6 +111,7 @@ final class ComplianceController extends Controller
                 'by_rule' => $byRule,
             ],
             'legal' => $this->legal($law),
+            'integrity' => $user->can('integrity.view') ? $this->integrity() : null,
             'filters' => [
                 'search' => $filters['search'] ?? '',
                 'branch_id' => isset($filters['branch_id']) ? (string) $filters['branch_id'] : null,
@@ -144,6 +156,23 @@ final class ComplianceController extends Controller
     }
 
     /**
+     * @return array{valid: bool|null, last_verification_at: string|null, last_anchor_at: string|null, punches: int, adjustments: int}
+     */
+    private function integrity(): array
+    {
+        $last = AuditLog::query()->where('organization_id', app(CurrentOrganization::class)->id())->where('action', 'integrity.verified')->orderByDesc('created_at')->orderByDesc('id')->first();
+        $anchor = IntegrityAnchor::query()->orderByDesc('created_at')->orderByDesc('id')->first();
+
+        return [
+            'valid' => $last !== null ? (bool) ($last->context['valid'] ?? false) : null,
+            'last_verification_at' => OperacionScope::iso($last?->created_at),
+            'last_anchor_at' => OperacionScope::iso($anchor?->created_at),
+            'punches' => Punch::query()->count(),
+            'adjustments' => AttendanceAdjustment::query()->count(),
+        ];
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     private function legal(LegalFramework $law): ?array
@@ -154,7 +183,7 @@ final class ComplianceController extends Controller
         } catch (LegalVersionNotFound) {
             return null;
         }
-        $version = LegalVersion::query()->where('code', $p->versionCode)->first();
+        $version = LegalVersion::query()->with('verifiedBy:id,name')->where('code', $p->versionCode)->first();
 
         return [
             'code' => $p->versionCode,
@@ -163,6 +192,8 @@ final class ComplianceController extends Controller
             'valid_to' => $version?->valid_to?->toDateString(),
             'verification_status' => $p->verificationStatus,
             'verified' => $p->isVerified(),
+            'verified_by' => $p->isVerified() ? $version?->verifiedBy?->name : null,
+            'verified_at' => $p->isVerified() ? OperacionScope::iso($version?->verified_at) : null,
             'notes' => $version?->notes,
             'sources' => array_values((array) ($version?->sources ?? [])),
             'parameters' => [
@@ -176,6 +207,8 @@ final class ComplianceController extends Controller
                 'overtime_daily_max' => $p->overtimeDailyMax,
                 'overtime_weekly_max' => $p->overtimeWeeklyMax,
                 'overtime_max_days_per_week' => $p->overtimeMaxDaysPerWeek,
+                'overtime_excess_weekly_max' => $p->overtimeExcessWeeklyMax,
+                'daily_total_max' => $p->dailyTotalMax,
                 'overtime_double_multiplier' => $p->overtimeDoubleMultiplier,
                 'overtime_excess_multiplier' => $p->overtimeExcessMultiplier,
                 'rest_days_per_week' => $p->restDaysPerWeek,

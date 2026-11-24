@@ -11,8 +11,24 @@ export type CompanyOrganization = {
     privacy_contact_email: string | null;
     brand_primary_color: string | null;
     logo_url: string | null;
+    official_logo_url: string;
     created_at: string | null;
 };
+
+export type CompanyLegalEntity = {
+    id: number | null;
+    legal_name: string | null;
+    rfc: string | null;
+    fiscal_address: string | null;
+    count: number;
+};
+
+export type CompanyPrivacyNotice = {
+    id: number;
+    version: string;
+    published_at: string | null;
+    has_pdf: boolean;
+} | null;
 
 export type CompanySummary = {
     legal_entities: number;
@@ -33,8 +49,6 @@ export type AttendancePolicyRow = {
     web_punch_allowed: boolean;
     max_clock_skew_seconds: number;
     min_location_accuracy_meters: number;
-    /** Salida automática general HH:MM (null = sin cierre). */
-    auto_clock_out_at: string | null;
     is_default: boolean;
     deleted: boolean;
     geofence_ids: string[];
@@ -63,23 +77,35 @@ export type OvertimePolicy = {
     allow_employee_request: boolean;
 };
 
+/** Tipo del catálogo CERRADO de incidencias (Configuración › Incidencias). */
 export type IncidenceTypeRow = {
     id: number;
     code: string;
     name: string;
     category: string;
+    category_label: string;
     description: string | null;
-    operational_effect: string;
     requires_evidence: boolean;
-    requires_approval: boolean;
-    affects_payroll: boolean;
+    evidence_kind: string | null;
+    requires_folio: boolean;
+    approval_route: string;
     employee_requestable: boolean;
-    is_system: boolean;
+    external_code: string | null;
+    is_omission: boolean;
     active: boolean;
-    valid_from: string | null;
-    valid_to: string | null;
     incidences_count: number;
-    deleted: boolean;
+};
+
+export type RectificationParameters = {
+    business_days: number;
+    confirmed_by_hr: boolean;
+    closed_through: string | null;
+};
+
+export type PeopleIncidenceStatus = {
+    configured: boolean;
+    last_success_at: string | null;
+    last_run_status: string | null;
 };
 
 export type ExtraDaysRow = {
@@ -137,6 +163,10 @@ export type PolicyDocumentRow = {
     created_by: string | null;
     acknowledgements_count: number;
     deleted: boolean;
+    file_name: string | null;
+    file_sha256: string | null;
+    file_size: number | null;
+    file_url: string | null;
 };
 
 export type LegalSource = {
@@ -147,13 +177,53 @@ export type LegalSource = {
     [key: string]: unknown;
 };
 
+export type LegalEditableKey =
+    | 'weekly_ordinary_max_minutes'
+    | 'daily_max_day'
+    | 'daily_max_night'
+    | 'daily_max_mixed'
+    | 'overtime_daily_max'
+    | 'overtime_weekly_max'
+    | 'overtime_max_days_per_week'
+    | 'overtime_excess_weekly_max'
+    | 'daily_total_max';
+
+export type LegalVerification = {
+    code: string | null;
+    name: string | null;
+    valid_from: string | null;
+    valid_to: string | null;
+    verified: boolean;
+    label: string;
+    verified_by: string | null;
+    verified_at: string | null;
+};
+
+export type LegalRevisionRow = {
+    id: number;
+    version: string | null;
+    action: string;
+    action_label: string;
+    user: string | null;
+    note: string | null;
+    changes: { field: string; before: unknown; after: unknown }[];
+    created_at: string;
+};
+
 export type LegalVersionRow = {
     id: number;
     code: string;
     name: string;
+    year: number;
     valid_from: string;
     valid_to: string | null;
     verification_status: string;
+    verified: boolean;
+    verified_by: string | null;
+    verified_at: string | null;
+    updated_by: string | null;
+    is_editable: boolean;
+    values: Record<LegalEditableKey, number | null>;
     is_current: boolean;
     checksum_ok: boolean;
     notes: string | null;
@@ -163,6 +233,7 @@ export type LegalVersionRow = {
         daily_max_minutes: Record<string, number>;
         night_window: Record<string, string>;
         overtime: Record<string, unknown>;
+        daily_total_max_minutes: number | null;
         min_break_minutes: number | null;
         rest_days_per_week: number | null;
         sunday_premium_min_percent: string | number | null;

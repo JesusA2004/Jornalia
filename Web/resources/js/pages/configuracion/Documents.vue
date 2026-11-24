@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { router, useForm } from '@inertiajs/vue3';
+import { router, useForm, usePage } from '@inertiajs/vue3';
 import {
     Archive,
     Check,
     CopyPlus,
     Eye,
     FileSignature,
+    FileText,
+    FileUp,
     Fingerprint,
     Lock,
     Pencil,
@@ -51,6 +53,8 @@ import SettingsNav from './components/SettingsNav.vue';
 import ToggleRow from './components/ToggleRow.vue';
 import type { ManageCan, PolicyDocumentRow } from './types';
 
+type RegistrationCode = { code: string; title: string; pdf_required: boolean };
+
 defineOptions({
     layout: {
         breadcrumbs: [
@@ -64,8 +68,65 @@ defineOptions({
 const props = defineProps<{
     documents: PolicyDocumentRow[];
     active_employees: number;
+    registration_codes: RegistrationCode[];
     can: ManageCan;
 }>();
+
+const page = usePage();
+const pageErrors = computed(
+    () => (page.props.errors ?? {}) as Record<string, string>,
+);
+
+/** Documentos del registro electrónico que aún no existen (se ofrecen como plantilla). */
+const missingRegistration = computed(() =>
+    props.registration_codes.filter(
+        (r) => !props.documents.some((d) => d.code === r.code),
+    ),
+);
+
+function pdfRequired(code: string): boolean {
+    return props.registration_codes.some(
+        (r) => r.code === code && r.pdf_required,
+    );
+}
+
+function createPreset(preset: RegistrationCode): void {
+    editing.value = null;
+    form.defaults({ ...blank(), code: preset.code, title: preset.title });
+    form.reset();
+    form.clearErrors();
+    editorTab.value = 'write';
+    open.value = true;
+}
+
+const pdfInput = ref<HTMLInputElement | null>(null);
+const pdfTarget = ref<PolicyDocumentRow | null>(null);
+const uploading = ref<number | null>(null);
+
+function pickPdf(doc: PolicyDocumentRow): void {
+    pdfTarget.value = doc;
+    pdfInput.value?.click();
+}
+
+function uploadPdf(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    const doc = pdfTarget.value;
+    input.value = '';
+    if (!file || !doc) {
+        return;
+    }
+    router.post(
+        PolicyDocumentController.uploadPdf.url(doc.id),
+        { file },
+        {
+            preserveScroll: true,
+            forceFormData: true,
+            onStart: () => (uploading.value = doc.id),
+            onFinish: () => (uploading.value = null),
+        },
+    );
+}
 
 const showInactive = ref(false);
 const inactiveCount = computed(
@@ -265,6 +326,11 @@ const help = [
         text: 'Cada aceptación queda registrada con fecha, dispositivo y huella del texto.',
         icon: Fingerprint,
     },
+    {
+        title: 'Aviso de privacidad',
+        text: 'AVISO_PRIVACIDAD exige su PDF para publicarse. CONVENIO_REGISTRO puede llevar PDF. Ambos se versionan y la app pide firmarlos.',
+        icon: FileText,
+    },
 ];
 </script>
 
@@ -281,14 +347,43 @@ const help = [
 
     <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 class="font-display text-lg font-bold">Documentos</h2>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
             <InactiveToggle v-model="showInactive" :count="inactiveCount" />
+            <template v-if="can.manage">
+                <Button
+                    v-for="preset in missingRegistration"
+                    :key="preset.code"
+                    variant="outline"
+                    @click="createPreset(preset)"
+                >
+                    <FileText class="icon-sm" />
+                    {{ preset.title }}
+                </Button>
+            </template>
             <Button v-if="can.manage" @click="create">
                 <Plus class="icon-sm" />
                 Nuevo documento
             </Button>
         </div>
     </div>
+
+    <input
+        ref="pdfInput"
+        type="file"
+        accept="application/pdf"
+        class="hidden"
+        aria-hidden="true"
+        tabindex="-1"
+        @change="uploadPdf"
+    />
+
+    <p
+        v-if="pageErrors.file"
+        role="alert"
+        class="mb-4 rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-sm text-danger-soft-foreground"
+    >
+        {{ pageErrors.file }}
+    </p>
 
     <EmptyState
         v-if="groups.length === 0"
@@ -389,6 +484,20 @@ const help = [
                             <span class="font-mono" :title="doc.sha256"
                                 >#{{ doc.sha256.slice(0, 10) }}</span
                             >
+                            <a
+                                v-if="doc.file_url"
+                                :href="doc.file_url"
+                                target="_blank"
+                                rel="noopener"
+                                class="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                                :title="doc.file_sha256 ?? undefined"
+                                ><FileText class="icon-xs" /> PDF</a
+                            >
+                            <span
+                                v-else-if="pdfRequired(doc.code)"
+                                class="font-medium text-warning-soft-foreground"
+                                >PDF pendiente</span
+                            >
                         </p>
                     </div>
                     <div class="flex gap-1">
@@ -419,6 +528,20 @@ const help = [
                                     @click="edit(doc)"
                                 >
                                     <Pencil class="icon-sm" />
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    :aria-label="
+                                        doc.file_url
+                                            ? 'Reemplazar PDF'
+                                            : 'Subir PDF'
+                                    "
+                                    :disabled="uploading === doc.id"
+                                    @click="pickPdf(doc)"
+                                >
+                                    <Spinner v-if="uploading === doc.id" />
+                                    <FileUp v-else class="icon-sm" />
                                 </Button>
                                 <Button
                                     variant="ghost"

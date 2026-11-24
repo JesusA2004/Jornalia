@@ -3,7 +3,9 @@ import {
     BookOpenCheck,
     CalendarClock,
     ExternalLink,
+    History,
     Moon,
+    Pencil,
     ShieldAlert,
     ShieldCheck,
     Sun,
@@ -15,12 +17,16 @@ import PageHeader from '@/components/app/PageHeader.vue';
 import SectionCard from '@/components/app/SectionCard.vue';
 import StatusBadge from '@/components/app/StatusBadge.vue';
 import { Button } from '@/components/ui/button';
+import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { Tone } from '@/types';
+import LegalVersionDialog from './components/LegalVersionDialog.vue';
 import SettingsNav from './components/SettingsNav.vue';
 import { civilDate, hours } from './format';
 import type {
+    LegalRevisionRow,
     LegalSource,
+    LegalVerification,
     LegalVacationTableRow,
     LegalVersionRow,
 } from './types';
@@ -37,16 +43,47 @@ defineOptions({
 
 const props = defineProps<{
     versions: LegalVersionRow[];
+    current: LegalVerification;
+    history: LegalRevisionRow[];
     vacation_table: LegalVacationTableRow[];
     today: string;
+    can: { manage: boolean };
 }>();
 
 const VERIFICATION: Record<string, { label: string; tone: Tone }> = {
-    verified: { label: 'Verificada', tone: 'success' },
+    verified: { label: 'Verificada por RH', tone: 'success' },
     unverified: { label: 'Sin verificar', tone: 'warning' },
-    pending: { label: 'Pendiente', tone: 'warning' },
-    provisional: { label: 'Provisional', tone: 'info' },
 };
+
+const FIELD_LABEL: Record<string, string> = {
+    weekly_ordinary_max_minutes: 'Jornada semanal',
+    daily_max_day: 'Diurna',
+    daily_max_night: 'Nocturna',
+    daily_max_mixed: 'Mixta',
+    overtime_daily_max: 'Extra por día',
+    overtime_weekly_max: 'Extra por semana',
+    overtime_max_days_per_week: 'Días con extra',
+    overtime_excess_weekly_max: 'Triples por semana',
+    daily_total_max: 'Jornada total diaria',
+};
+
+const dialogOpen = ref(false);
+const dialogMode = ref<'edit' | 'verify'>('edit');
+
+function openDialog(mode: 'edit' | 'verify'): void {
+    dialogMode.value = mode;
+    dialogOpen.value = true;
+}
+
+function changeValue(field: string, value: unknown): string {
+    if (value === null || value === undefined) {
+        return '—';
+    }
+
+    return field === 'overtime_max_days_per_week'
+        ? `${String(value)} d`
+        : hours(Number(value));
+}
 
 const verification = (status: string) =>
     VERIFICATION[status] ?? { label: status, tone: 'neutral' as Tone };
@@ -99,6 +136,8 @@ const overtime = computed(() => {
         days: Number(o.max_days_per_week ?? 0),
         double: String(o.double_rate_multiplier ?? '—'),
         excess: String(o.excess_rate_multiplier ?? '—'),
+        excessWeekly: Number(o.excess_weekly_max_minutes ?? 0),
+        dailyTotal: selected.value?.parameters.daily_total_max_minutes ?? null,
     };
 });
 
@@ -121,8 +160,18 @@ const help = [
     },
     {
         title: 'Verificación',
-        text: 'Indica si los parámetros fueron contrastados con la publicación oficial.',
+        text: 'Sólo RH marca «Verificada por RH»; queda su nombre y la fecha real. Cualquier cambio la regresa a «Sin verificar».',
         icon: ShieldCheck,
+    },
+    {
+        title: 'Cambio de tramo',
+        text: 'El 1 de enero de cada año se aplica sola la versión de ese tramo.',
+        icon: CalendarClock,
+    },
+    {
+        title: 'Historial',
+        text: 'Cada cambio y verificación queda con usuario, fecha, valor anterior y nuevo, también en la bitácora.',
+        icon: History,
     },
     {
         title: 'Integridad',
@@ -135,7 +184,7 @@ const help = [
 <template>
     <PageHeader
         title="Configuración"
-        description="Normativa laboral vigente (sólo lectura)."
+        description="Tabla legal por año. Única fuente de los parámetros."
         :icon="BookOpenCheck"
         :help="help"
         help-title="Normativa"
@@ -162,13 +211,25 @@ const help = [
                     <span class="font-mono text-xs font-semibold">{{
                         version.code
                     }}</span>
-                    <StatusBadge
-                        v-if="version.is_current"
-                        status="active"
-                        label="Vigente"
-                        tone="success"
-                        size="sm"
-                    />
+                    <div class="flex gap-1">
+                        <StatusBadge
+                            v-if="version.is_current"
+                            status="active"
+                            label="Vigente"
+                            tone="success"
+                            size="sm"
+                        />
+                        <StatusBadge
+                            :status="version.verification_status"
+                            :label="
+                                verification(version.verification_status).label
+                            "
+                            :tone="
+                                verification(version.verification_status).tone
+                            "
+                            size="sm"
+                        />
+                    </div>
                 </div>
                 <p class="mt-1 text-xs text-muted-foreground">
                     {{ civilDate(version.valid_from) }} –
@@ -208,6 +269,40 @@ const help = [
                         />
                     </div>
                 </template>
+
+                <div
+                    class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-surface-2 px-4 py-3 text-sm"
+                >
+                    <p v-if="selected.verified" class="text-muted-foreground">
+                        Verificada por
+                        <span class="font-medium text-foreground">{{
+                            selected.verified_by
+                        }}</span>
+                        el {{ formatDateTime(selected.verified_at) }}
+                    </p>
+                    <p v-else class="text-warning-soft-foreground">
+                        Sin verificar por RH.
+                    </p>
+                    <div
+                        v-if="can.manage && selected.is_editable"
+                        class="flex gap-2"
+                    >
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            @click="openDialog('edit')"
+                        >
+                            <Pencil class="icon-sm" /> Editar
+                        </Button>
+                        <Button
+                            v-if="!selected.verified && selected.checksum_ok"
+                            size="sm"
+                            @click="openDialog('verify')"
+                        >
+                            <ShieldCheck class="icon-sm" /> Verificar
+                        </Button>
+                    </div>
+                </div>
 
                 <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <div class="rounded-xl bg-brand-soft/60 p-4">
@@ -336,7 +431,29 @@ const help = [
                 :icon="TimerReset"
                 divided
             >
-                <div class="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                <div class="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                    <div class="rounded-xl bg-surface-2 p-3">
+                        <p class="text-xs text-muted-foreground">
+                            Triples por semana
+                        </p>
+                        <p class="font-semibold tabular-nums">
+                            {{ hours(overtime.excessWeekly) }}
+                        </p>
+                    </div>
+                    <div class="rounded-xl bg-surface-2 p-3">
+                        <p class="text-xs text-muted-foreground">
+                            Jornada total diaria
+                        </p>
+                        <p class="font-semibold tabular-nums">
+                            {{ hours(overtime.dailyTotal) }}
+                        </p>
+                    </div>
+                    <div class="rounded-xl bg-surface-2 p-3">
+                        <p class="text-xs text-muted-foreground">
+                            Menores de 18
+                        </p>
+                        <p class="font-semibold">Sin tiempo extra</p>
+                    </div>
                     <div class="rounded-xl bg-surface-2 p-3">
                         <p class="text-xs text-muted-foreground">Máx. diario</p>
                         <p class="font-semibold tabular-nums">
@@ -376,6 +493,62 @@ const help = [
                         </p>
                     </div>
                 </div>
+            </SectionCard>
+
+            <SectionCard
+                title="Historial de cambios"
+                :icon="History"
+                divided
+                padding="none"
+            >
+                <ul class="divide-y">
+                    <li
+                        v-for="item in history"
+                        :key="item.id"
+                        class="grid gap-1 px-5 py-3 text-sm"
+                    >
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="font-mono text-xs font-semibold">{{
+                                item.version
+                            }}</span>
+                            <StatusBadge
+                                :status="item.action"
+                                :label="item.action_label"
+                                :tone="
+                                    item.action === 'verified'
+                                        ? 'success'
+                                        : 'info'
+                                "
+                                size="sm"
+                            />
+                            <span class="text-xs text-muted-foreground">
+                                {{ item.user ?? '—' }} ·
+                                {{ formatDateTime(item.created_at) }}
+                            </span>
+                        </div>
+                        <p
+                            v-for="c in item.changes"
+                            :key="c.field"
+                            class="text-xs tabular-nums"
+                        >
+                            {{ FIELD_LABEL[c.field] ?? c.field }}:
+                            {{ changeValue(c.field, c.before) }} →
+                            {{ changeValue(c.field, c.after) }}
+                        </p>
+                        <p
+                            v-if="item.note"
+                            class="text-xs text-muted-foreground"
+                        >
+                            {{ item.note }}
+                        </p>
+                    </li>
+                    <li
+                        v-if="history.length === 0"
+                        class="px-5 py-4 text-sm text-muted-foreground"
+                    >
+                        Sin cambios registrados.
+                    </li>
+                </ul>
             </SectionCard>
 
             <SectionCard
@@ -463,4 +636,10 @@ const help = [
             </SectionCard>
         </div>
     </div>
+
+    <LegalVersionDialog
+        v-model:open="dialogOpen"
+        :version="selected"
+        :mode="dialogMode"
+    />
 </template>

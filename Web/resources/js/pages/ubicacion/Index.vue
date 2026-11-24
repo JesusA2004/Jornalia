@@ -193,8 +193,13 @@ const help: HelpStep[] = [
     },
     {
         icon: Activity,
-        title: 'Actualización',
-        text: 'El mapa se actualiza cada 30 s. Puedes pausarlo.',
+        title: 'Pausar mapa',
+        text: 'El mapa se actualiza cada 30 s. «Pausar mapa» sólo detiene esta vista; la app sigue registrando.',
+    },
+    {
+        icon: Route,
+        title: 'Reglas de uso',
+        text: `Seguimiento sólo en puestos de campo: inicia con la entrada, se pausa en descanso o comida y termina con la salida. Recorridos conservados ${props.tracking.retention_days} días.`,
     },
 ];
 </script>
@@ -212,10 +217,11 @@ const help: HelpStep[] = [
                 variant="outline"
                 size="sm"
                 :aria-pressed="polling"
+                title="Detiene sólo la actualización del mapa, no el registro."
                 @click="togglePolling"
             >
                 <component :is="polling ? Pause : Play" aria-hidden="true" />
-                {{ polling ? 'Pausar' : 'Reanudar' }}
+                {{ polling ? 'Pausar mapa' : 'Reanudar mapa' }}
             </Button>
         </template>
     </PageHeader>
@@ -316,7 +322,7 @@ const help: HelpStep[] = [
     <div class="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <!-- Mapa -->
         <div
-            class="relative h-[62vh] min-h-[420px] overflow-hidden rounded-xl border bg-muted/30 shadow-xs lg:h-[calc(100vh-18rem)]"
+            class="relative h-[55vh] min-h-[320px] overflow-hidden rounded-xl border bg-muted/30 shadow-xs sm:h-[62vh] sm:min-h-[420px] lg:h-[calc(100vh-18rem)]"
         >
             <Suspense>
                 <LiveMap

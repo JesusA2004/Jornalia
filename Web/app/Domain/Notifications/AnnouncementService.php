@@ -25,7 +25,7 @@ final class AnnouncementService
     ) {}
 
     /**
-     * @param  array{title:string, body:string, priority:string, audience_type:string, audience_ids:list<int>, scheduled_at:?CarbonImmutable}  $data
+     * @param  array{title:string, body:string, priority:string, audience_type:string, audience_ids:list<int>, scheduled_at:?CarbonImmutable, requires_confirmation?:bool}  $data
      */
     public function create(User $sender, array $data): Announcement
     {
@@ -36,6 +36,8 @@ final class AnnouncementService
             'title' => $data['title'],
             'body' => $data['body'],
             'priority' => $data['priority'] === 'high' ? 'high' : 'normal',
+            // Comunicado importante: el colaborador confirma la lectura en la app.
+            'requires_confirmation' => (bool) ($data['requires_confirmation'] ?? false),
             'audience_type' => $data['audience_type'],
             'audience_ids' => $data['audience_type'] === 'all' ? null : array_values(array_map('intval', $data['audience_ids'])),
             'status' => $scheduled ? 'scheduled' : 'sending',
@@ -45,6 +47,8 @@ final class AnnouncementService
 
         $this->audit->log('announcement.created', $announcement, 'Comunicado: '.$announcement->title, [
             'audience' => $announcement->audience_type,
+            'audience_ids' => $announcement->audience_ids,
+            'requires_confirmation' => $announcement->requires_confirmation,
             'scheduled_at' => $announcement->scheduled_at?->toIso8601String(),
         ]);
 
@@ -151,6 +155,32 @@ final class AnnouncementService
     }
 
     /**
+     * Confirmación explícita de lectura de un comunicado importante (idempotente).
+     * También marca como leído el aviso de la bandeja.
+     */
+    public function confirm(Announcement $announcement, User $user): AnnouncementRecipient
+    {
+        /** @var AnnouncementRecipient $recipient */
+        $recipient = AnnouncementRecipient::query()
+            ->where('announcement_id', $announcement->id)
+            ->where('user_id', $user->id)
+            ->firstOrFail();
+
+        if ($recipient->confirmed_at === null) {
+            $now = now();
+            $recipient->forceFill(['confirmed_at' => $now, 'read_at' => $recipient->read_at ?? $now])->save();
+            if ($recipient->notification_id !== null) {
+                DB::table('notifications')->where('id', $recipient->notification_id)->whereNull('read_at')->update(['read_at' => $now]);
+            }
+            $this->audit->log('announcement.confirmed', $announcement, 'Lectura confirmada: '.$announcement->title, [
+                'employee_id' => $recipient->employee_id,
+            ]);
+        }
+
+        return $recipient;
+    }
+
+    /**
      * Copia la lectura de la bandeja (notifications.read_at) a los destinatarios.
      */
     public function syncReadState(Announcement $announcement): void
@@ -165,7 +195,7 @@ final class AnnouncementService
 
     /**
      * @param  list<int>  $announcementIds
-     * @return array<int, array{total:int, delivered:int, read:int, push_sent:int, failed:int}>
+     * @return array<int, array{total:int, delivered:int, read:int, confirmed:int, push_sent:int, failed:int}>
      */
     public function stats(array $announcementIds): array
     {
@@ -179,6 +209,7 @@ final class AnnouncementService
             ->selectRaw('announcement_id, count(*) as total')
             ->selectRaw('sum(delivered_at is not null) as delivered')
             ->selectRaw('sum(read_at is not null) as read_count')
+            ->selectRaw('sum(confirmed_at is not null) as confirmed_count')
             ->selectRaw("sum(push_status = 'sent') as push_sent")
             ->selectRaw("sum(failed_at is not null or push_status = 'failed') as failed")
             ->get();
@@ -189,6 +220,7 @@ final class AnnouncementService
                 'total' => (int) $r->getAttribute('total'),
                 'delivered' => (int) $r->getAttribute('delivered'),
                 'read' => (int) $r->getAttribute('read_count'),
+                'confirmed' => (int) $r->getAttribute('confirmed_count'),
                 'push_sent' => (int) $r->getAttribute('push_sent'),
                 'failed' => (int) $r->getAttribute('failed'),
             ];

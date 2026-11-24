@@ -5,6 +5,7 @@ import {
     Blocks,
     CircleCheck,
     CircleX,
+    Clock3,
     Fingerprint,
     History,
     KeyRound,
@@ -29,13 +30,15 @@ import { formatNumber } from '@/lib/format';
 import { toPaginationMeta } from '@/lib/pagination';
 import type { DataTableColumn } from '@/types';
 import type { IntegrityIndexProps } from '@/types/operacion';
-import HashChip from './components/HashChip.vue';
+import HashChip from '@/pages/integridad/components/HashChip.vue';
+import ComplianceTabs from './components/ComplianceTabs.vue';
 
 defineOptions({
     layout: {
         breadcrumbs: [
-            { title: 'Operación' },
-            { title: 'Integridad', href: '/integridad' },
+            { title: 'Análisis' },
+            { title: 'Cumplimiento', href: '/cumplimiento' },
+            { title: 'Integridad del registro' },
         ],
     },
 });
@@ -89,8 +92,8 @@ const help = [
         icon: Anchor,
     },
     {
-        title: 'Verificar',
-        text: 'Recalcula todos los hashes y los contrasta con las anclas. Queda en bitácora.',
+        title: 'Automático',
+        text: 'Cada día se verifica y ancla sola. «Verificar ahora» es opcional. Si falla, RH y Sistemas reciben una alerta crítica.',
         icon: ScanSearch,
     },
 ];
@@ -98,10 +101,11 @@ const help = [
 
 <template>
     <PageHeader
-        title="Integridad"
-        description="Verificación del registro electrónico inalterable."
+        title="Cumplimiento"
+        description="Integridad del registro electrónico inalterable."
         :icon="Fingerprint"
         :help="help"
+        help-title="Integridad del registro"
     >
         <template v-if="canVerify" #actions>
             <Button
@@ -121,7 +125,78 @@ const help = [
         </template>
     </PageHeader>
 
+    <ComplianceTabs />
+
     <div class="space-y-6">
+        <section
+            class="grid gap-3 rounded-2xl border bg-card p-4 text-sm sm:grid-cols-3"
+            aria-label="Verificación automática"
+        >
+            <div class="flex items-start gap-2">
+                <Clock3
+                    class="mt-0.5 icon-sm text-muted-foreground"
+                    aria-hidden="true"
+                />
+                <div>
+                    <p class="font-medium">Verificación automática</p>
+                    <p class="text-xs text-muted-foreground">
+                        {{ automation.schedule }}
+                    </p>
+                </div>
+            </div>
+            <div class="flex items-start gap-2">
+                <Anchor
+                    class="mt-0.5 icon-sm text-muted-foreground"
+                    aria-hidden="true"
+                />
+                <div>
+                    <p class="font-medium">
+                        Anclaje externo
+                        <StatusBadge
+                            v-if="automation.last_anchor"
+                            :status="
+                                automation.last_anchor.ok ? 'valid' : 'invalid'
+                            "
+                            :label="
+                                automation.last_anchor.ok ? 'Correcto' : 'Falló'
+                            "
+                            size="sm"
+                        />
+                    </p>
+                    <p class="text-xs text-muted-foreground">
+                        <DateTimeDisplay
+                            v-if="automation.last_anchor"
+                            :value="automation.last_anchor.at"
+                            :timezone="timezone"
+                        />
+                        <template v-else>Sin anclas aún</template>
+                    </p>
+                </div>
+            </div>
+            <div class="flex items-start gap-2">
+                <KeyRound
+                    class="mt-0.5 icon-sm text-muted-foreground"
+                    aria-hidden="true"
+                />
+                <div>
+                    <p class="font-medium">Destino del ancla</p>
+                    <p class="text-xs text-muted-foreground">
+                        <template v-if="!automation.anchor_key_configured"
+                            >Clave de anclaje sin configurar</template
+                        >
+                        <template v-else-if="automation.anchor_storage.external"
+                            >Externo ({{
+                                automation.anchor_storage.driver
+                            }})</template
+                        >
+                        <template v-else
+                            >Local · almacenamiento WORM pendiente</template
+                        >
+                    </p>
+                </div>
+            </div>
+        </section>
+
         <Alert v-if="anchorError" variant="destructive">
             <KeyRound aria-hidden="true" />
             <AlertTitle>No se pudo anclar</AlertTitle>
@@ -164,7 +239,11 @@ const help = [
                             }}
                         </p>
                         <p class="text-sm text-muted-foreground">
-                            Última verificación
+                            {{
+                                latest.automatic
+                                    ? 'Verificación automática'
+                                    : 'Verificación manual'
+                            }}
                             <DateTimeDisplay
                                 :value="latest.at"
                                 :timezone="timezone"

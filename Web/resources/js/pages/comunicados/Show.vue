@@ -71,6 +71,9 @@ const stateOptions = [
     { value: 'read', label: 'Leídos' },
     { value: 'unread', label: 'Sin leer' },
     { value: 'failed', label: 'Fallidos' },
+    ...(props.announcement.requires_confirmation
+        ? [{ value: 'unconfirmed', label: 'Sin confirmar' }]
+        : []),
 ];
 
 const PUSH: Record<PushStatus, { label: string; tone: Tone }> = {
@@ -85,6 +88,9 @@ const columns: DataTableColumn<RecipientRow>[] = [
     { key: 'employee', label: 'Colaborador', mobile: 'title' },
     { key: 'delivered_at', label: 'Entregado', hideBelow: 'md' },
     { key: 'read_at', label: 'Leído' },
+    ...(props.announcement.requires_confirmation
+        ? [{ key: 'confirmed_at', label: 'Confirmó', hideBelow: 'sm' as const }]
+        : []),
     { key: 'push_status', label: 'Push', class: 'w-36' },
 ];
 
@@ -197,6 +203,14 @@ function toggleWithdrawn(): void {
                     :icon="CheckCheck"
                     tone="success"
                 />
+                <KpiTile
+                    v-if="a.requires_confirmation"
+                    label="Confirmaron"
+                    :value="a.stats.confirmed"
+                    :hint="`de ${a.stats.total}`"
+                    :icon="CheckCheck"
+                    tone="success"
+                />
                 <KpiTile label="Push" :value="a.stats.push_sent" :icon="Send" />
                 <KpiTile
                     label="Fallidos"
@@ -258,6 +272,13 @@ function toggleWithdrawn(): void {
                         :value="row.read_at"
                         format="relative"
                         fallback="—"
+                    />
+                </template>
+                <template #cell-confirmed_at="{ row }">
+                    <DateTimeDisplay
+                        :value="row.confirmed_at"
+                        format="relative"
+                        fallback="Pendiente"
                     />
                 </template>
                 <template #cell-push_status="{ row }">

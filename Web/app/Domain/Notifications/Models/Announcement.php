@@ -26,6 +26,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property CarbonImmutable|null $withdrawn_at
  * @property int $recipients_count
  * @property int|null $created_by
+ * @property bool $requires_confirmation
  */
 class Announcement extends Model
 {
@@ -48,6 +49,7 @@ class Announcement extends Model
             'sent_at' => 'datetime',
             'withdrawn_at' => 'datetime',
             'recipients_count' => 'integer',
+            'requires_confirmation' => 'boolean',
         ];
     }
 

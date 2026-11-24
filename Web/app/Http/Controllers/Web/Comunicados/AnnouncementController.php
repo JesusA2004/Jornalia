@@ -79,6 +79,8 @@ final class AnnouncementController extends Controller
             'filters' => ['status' => $filters['status'] ?? null, 'search' => $filters['search'] ?? ''],
             'settings' => $this->settings->all(),
             'push' => ['enabled' => $this->fcm->enabled()],
+            // El acuse de cada marcaje es obligatorio y no se puede desactivar.
+            'punch_receipt' => ['mandatory' => true],
             'can' => ['send' => $user->can('communications.send')],
         ]);
     }
@@ -115,6 +117,7 @@ final class AnnouncementController extends Controller
             'title' => ['required', 'string', 'max:80'],
             'body' => ['required', 'string', 'max:1000'],
             'priority' => ['required', 'in:normal,high'],
+            'requires_confirmation' => ['sometimes', 'boolean'],
             'audience_type' => ['required', Rule::in(Announcement::AUDIENCES)],
             'audience_ids' => ['exclude_if:audience_type,all', 'required', 'array', 'min:1', 'max:500'],
             'audience_ids.*' => ['integer', Rule::exists($tables[$request->input('audience_type')] ?? 'branches', 'id')->where('organization_id', $orgId)],
@@ -155,6 +158,7 @@ final class AnnouncementController extends Controller
             'audience_type' => $data['audience_type'],
             'audience_ids' => $ids,
             'scheduled_at' => $scheduledAt,
+            'requires_confirmation' => (bool) ($data['requires_confirmation'] ?? false),
         ]);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => $scheduledAt ? 'Comunicado programado.' : 'Comunicado enviado.']);
@@ -167,7 +171,7 @@ final class AnnouncementController extends Controller
         $user = $this->actor($request);
         $model = $this->find($user, $announcement);
         $filters = $request->validate([
-            'state' => ['nullable', 'in:read,unread,failed'],
+            'state' => ['nullable', 'in:read,unread,failed,unconfirmed'],
             'per_page' => ['nullable', 'integer', 'in:15,25,50,100'],
         ]);
 
@@ -180,6 +184,7 @@ final class AnnouncementController extends Controller
             ->when($filters['state'] ?? null, fn (Builder $q, string $state) => match ($state) {
                 'read' => $q->whereNotNull('read_at'),
                 'unread' => $q->whereNull('read_at')->whereNull('failed_at'),
+                'unconfirmed' => $q->whereNull('confirmed_at')->whereNull('failed_at'),
                 default => $q->where(fn ($w) => $w->whereNotNull('failed_at')->orWhere('push_status', AnnouncementRecipient::PUSH_FAILED)),
             })
             ->orderBy('id')
@@ -190,6 +195,7 @@ final class AnnouncementController extends Controller
                 'employee' => $r->employee ? ['id' => $r->employee->id, 'name' => $r->employee->fullName(), 'employee_number' => $r->employee->employee_number] : null,
                 'delivered_at' => $r->delivered_at?->toIso8601String(),
                 'read_at' => $r->read_at?->toIso8601String(),
+                'confirmed_at' => $r->confirmed_at?->toIso8601String(),
                 'push_status' => $r->push_status,
                 'error' => $r->error,
             ]);
@@ -268,7 +274,7 @@ final class AnnouncementController extends Controller
     }
 
     /**
-     * @param  array{total:int, delivered:int, read:int, push_sent:int, failed:int}|null  $stats
+     * @param  array{total:int, delivered:int, read:int, confirmed:int, push_sent:int, failed:int}|null  $stats
      * @return array<string, mixed>
      */
     private function row(Announcement $a, ?array $stats): array
@@ -278,6 +284,7 @@ final class AnnouncementController extends Controller
             'title' => $a->title,
             'excerpt' => mb_strimwidth($a->body, 0, 90, '…'),
             'priority' => $a->priority,
+            'requires_confirmation' => (bool) $a->requires_confirmation,
             'audience_type' => $a->audience_type,
             'audience_label' => self::AUDIENCE_LABELS[$a->audience_type] ?? $a->audience_type,
             'audience_count' => count((array) ($a->audience_ids ?? [])),
@@ -287,7 +294,7 @@ final class AnnouncementController extends Controller
             'withdrawn_at' => $a->withdrawn_at?->toIso8601String(),
             'created_at' => $a->created_at?->toIso8601String(),
             'created_by' => $a->createdBy?->name,
-            'stats' => $stats ?? ['total' => 0, 'delivered' => 0, 'read' => 0, 'push_sent' => 0, 'failed' => 0],
+            'stats' => $stats ?? ['total' => 0, 'delivered' => 0, 'read' => 0, 'confirmed' => 0, 'push_sent' => 0, 'failed' => 0],
         ];
     }
 

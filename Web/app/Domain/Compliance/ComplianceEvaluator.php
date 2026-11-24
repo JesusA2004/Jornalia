@@ -4,7 +4,7 @@ namespace App\Domain\Compliance;
 
 use App\Domain\Legal\LegalFramework;
 use App\Domain\Legal\LegalParameters;
-use App\Domain\Legal\OvertimeCalculator;
+use App\Domain\Legal\WeeklyOvertimeCalculator;
 use App\Enums\AlertSeverity;
 use App\Enums\ApprovalStatus;
 use App\Enums\WorkdayStatus;
@@ -21,7 +21,7 @@ use Carbon\CarbonImmutable;
 final class ComplianceEvaluator
 {
     public function __construct(
-        private readonly OvertimeCalculator $overtime,
+        private readonly WeeklyOvertimeCalculator $overtime,
         private readonly LegalFramework $law,
     ) {}
 
@@ -31,7 +31,10 @@ final class ComplianceEvaluator
         $anomalies = (array) $day->anomalies;
 
         $this->toggle($employee, $date, 'missing_clock_out', in_array('missing_clock_out', $anomalies, true), AlertSeverity::Warning,
-            'Jornada sin salida registrada.', 'LFT art. 132 fr. XXXIV (registro de inicio y fin)');
+            'Omisión de checada de salida: requiere rectificación firmada.', 'LFT art. 132 fr. XXXIV (registro de inicio y fin)');
+
+        $this->toggle($employee, $date, 'missing_clock_in', in_array('missing_clock_in', $anomalies, true), AlertSeverity::Warning,
+            'Omisión de checada de entrada: requiere rectificación firmada.', 'LFT art. 132 fr. XXXIV (registro de inicio y fin)');
 
         $this->toggle($employee, $date, 'daily_total_exceeded', $law->dailyTotalMax !== null && $day->worked_minutes > $law->dailyTotalMax, AlertSeverity::Critical,
             'La jornada total (ordinaria + extraordinaria) rebasa el máximo diario legal.', 'LFT art. 68 (reforma DOF 01-05-2026)', ['worked_minutes' => $day->worked_minutes, 'limit' => $law->dailyTotalMax]);
@@ -72,11 +75,16 @@ final class ComplianceEvaluator
             ->orderBy('date')
             ->get();
 
-        $excess = [];
+        // Mismo cálculo semanal por colaborador que Panel, Horas extra y NOI.
+        $input = [];
         foreach ($days as $d) {
-            $excess[$d->date->toDateString()] = (int) $d->excess_minutes;
+            $input[$d->date->toDateString()] = [
+                'worked' => (int) $d->worked_minutes,
+                'excess' => (int) $d->excess_minutes,
+                'minor' => WeeklyOvertimeCalculator::isMinorOn($employee, $d->date) === true,
+            ];
         }
-        $classified = $this->overtime->classifyWeek($excess, $law);
+        $classified = $this->overtime->classify($input, $law);
 
         foreach ($classified as $date => $c) {
             $record = OvertimeRecord::query()->firstOrNew(['employee_id' => $employee->id, 'date' => $date]);
@@ -94,15 +102,24 @@ final class ComplianceEvaluator
                 'legal_version_code' => $law->versionCode,
             ]);
             if (! $record->exists || $changed) {
-                // Si cambia el tiempo registrado, la autorización previa debe revisarse.
+                // Todo tiempo extra registrado queda «pendiente» para autorizar o
+                // justificar; si cambia, la decisión previa debe revisarse.
                 $record->status = ApprovalStatus::Pending;
-                $record->authorized_minutes = min((int) $record->authorized_minutes, $c['excess']);
+                $record->authorized_minutes = max(0, min((int) $record->authorized_minutes, $c['excess']));
             }
             $record->save();
 
             $this->toggle($employee, $date, 'overtime_over_limit', $c['over_limit'] > 0, AlertSeverity::Critical,
                 'Tiempo extraordinario que rebasa los límites legales.', 'LFT arts. 66 y 68', ['over_limit_minutes' => $c['over_limit']]);
         }
+
+        // Tiempo extra cerca del tope semanal (≥ 80 %), sin haberlo rebasado: alerta preventiva.
+        $weekExcess = (int) collect($classified)->sum('excess');
+        $weekOver = (int) collect($classified)->sum('over_limit');
+        $nearThreshold = (int) ceil($law->overtimeWeeklyMax * 0.8);
+        $this->toggle($employee, $weekStart->toDateString(), 'overtime_near_limit', $law->overtimeWeeklyMax > 0 && $weekOver === 0 && $weekExcess >= $nearThreshold, AlertSeverity::Warning,
+            'Tiempo extra de la semana cerca del tope legal ('.intdiv($law->overtimeWeeklyMax, 60).' h).', 'LFT art. 66',
+            ['overtime_minutes' => $weekExcess, 'limit' => $law->overtimeWeeklyMax]);
 
         $ordinary = $days->sum(fn (WorkdaySummary $d) => max(0, (int) $d->worked_minutes - (int) $d->excess_minutes));
         $this->toggle($employee, $weekStart->toDateString(), 'weekly_ordinary_exceeded', $ordinary > $law->weeklyOrdinaryMaxMinutes, AlertSeverity::Warning,

@@ -1,19 +1,21 @@
 <script setup lang="ts">
-import { router, useForm } from '@inertiajs/vue3';
+import { Link, router, useForm } from '@inertiajs/vue3';
 import {
     Building2,
     Check,
+    FileText,
     ImageUp,
     Landmark,
     MapPin,
     Palette,
     ShieldCheck,
     Store,
-    Trash2,
+    Undo2,
     Users,
 } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import CompanySettingsController from '@/actions/App/Http/Controllers/Web/Admin/CompanySettingsController';
+import PolicyDocumentController from '@/actions/App/Http/Controllers/Web/Admin/PolicyDocumentController';
 import ComboboxField from '@/components/app/ComboboxField.vue';
 import ConfirmDialog from '@/components/app/ConfirmDialog.vue';
 import FileDropzone from '@/components/app/FileDropzone.vue';
@@ -26,9 +28,10 @@ import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import SettingsNav from './components/SettingsNav.vue';
 import type {
+    CompanyLegalEntity,
     CompanyOrganization,
+    CompanyPrivacyNotice,
     CompanySummary,
-    ManageCan,
     Option,
 } from './types';
 
@@ -43,38 +46,30 @@ defineOptions({
 
 const props = defineProps<{
     organization: CompanyOrganization;
+    legal_entity: CompanyLegalEntity;
+    privacy_notice: CompanyPrivacyNotice;
+    palette: string[];
     summary: CompanySummary;
     timezones: Option[];
-    can: ManageCan;
+    can: { manage: boolean; documents: boolean };
 }>();
 
 const form = useForm({
+    legal_name: props.legal_entity.legal_name ?? '',
+    rfc: props.legal_entity.rfc ?? '',
     name: props.organization.name,
     timezone: props.organization.timezone as string | null,
+    fiscal_address: props.legal_entity.fiscal_address ?? '',
     privacy_contact_email: props.organization.privacy_contact_email ?? '',
-    brand_primary_color: props.organization.brand_primary_color ?? '',
+    brand_primary_color: (
+        props.organization.brand_primary_color ?? '#225C54'
+    ).toUpperCase(),
 });
-
-const PRESETS = [
-    '#C8853F',
-    '#1F6FEB',
-    '#0F766E',
-    '#7C3AED',
-    '#DC2626',
-    '#111827',
-];
-
-const colorValid = computed(
-    () =>
-        !form.brand_primary_color ||
-        /^#[0-9A-Fa-f]{6}$/.test(form.brand_primary_color),
-);
 
 function save(): void {
     form.transform((data) => ({
         ...data,
         privacy_contact_email: data.privacy_contact_email || null,
-        brand_primary_color: data.brand_primary_color || null,
     })).put(CompanySettingsController.update.url(), { preserveScroll: true });
 }
 
@@ -102,36 +97,50 @@ function uploadLogo(): void {
     });
 }
 
-const removing = ref(false);
-const confirmRemove = ref(false);
+const restoring = ref(false);
+const confirmRestore = ref(false);
 
-function removeLogo(): void {
+function restoreOfficial(): void {
     router.post(
         CompanySettingsController.removeLogo.url(),
         {},
         {
             preserveScroll: true,
-            onStart: () => (removing.value = true),
-            onFinish: () => (removing.value = false),
+            onStart: () => (restoring.value = true),
+            onFinish: () => (restoring.value = false),
         },
     );
 }
 
+const logoSrc = computed(
+    () =>
+        preview.value ??
+        props.organization.logo_url ??
+        props.organization.official_logo_url,
+);
+
+const documentsUrl = PolicyDocumentController.index.url();
+
 const help = [
     {
-        title: 'Nombre y zona horaria',
-        text: 'La zona se usa por defecto cuando un centro de trabajo no define la suya.',
-        icon: Building2,
+        title: 'Datos fiscales',
+        text: 'Razón social, RFC y domicilio fiscal de la Constancia de Situación Fiscal. Se usan en reportes y documentos.',
+        icon: Landmark,
     },
     {
         title: 'Contacto de privacidad',
-        text: 'Aparece en avisos de privacidad y acuses de los colaboradores.',
+        text: 'Correo real del responsable de datos personales. Queda pendiente hasta que RH y Jurídico lo definan.',
         icon: ShieldCheck,
     },
     {
-        title: 'Logotipo',
-        text: 'PNG, JPG o WebP de hasta 2 MB. Se muestra en el panel y documentos.',
-        icon: ImageUp,
+        title: 'Aviso de privacidad',
+        text: 'PDF obligatorio para colaboradores. Se carga y versiona en Documentos; la app lo pide aceptar.',
+        icon: FileText,
+    },
+    {
+        title: 'Identidad',
+        text: 'Color institucional #225C54 con acentos dorados #AF8B51 y logotipo oficial sin modificaciones.',
+        icon: Palette,
     },
 ];
 </script>
@@ -139,7 +148,7 @@ const help = [
 <template>
     <PageHeader
         title="Configuración"
-        description="Datos de la empresa e identidad visual."
+        description="Datos de la empresa, identidad visual y reglas del registro."
         :icon="Building2"
         :help="help"
         help-title="Datos de la empresa"
@@ -181,22 +190,58 @@ const help = [
     <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <SectionCard title="Datos generales" :icon="Building2" divided>
             <form class="grid gap-5" @submit.prevent="save">
-                <FormField
-                    label="Nombre comercial"
-                    :error="form.errors.name"
-                    required
-                    v-slot="{ id, describedBy }"
+                <div
+                    class="grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
                 >
-                    <Input
-                        :id="id"
-                        v-model="form.name"
-                        :disabled="!can.manage"
-                        :aria-describedby="describedBy"
-                        :aria-invalid="form.errors.name ? true : undefined"
-                    />
-                </FormField>
+                    <FormField
+                        label="Razón social"
+                        :error="form.errors.legal_name"
+                        required
+                        v-slot="{ id, describedBy }"
+                    >
+                        <Input
+                            :id="id"
+                            v-model="form.legal_name"
+                            :disabled="!can.manage"
+                            :aria-describedby="describedBy"
+                            :aria-invalid="
+                                form.errors.legal_name ? true : undefined
+                            "
+                        />
+                    </FormField>
+                    <FormField
+                        label="RFC"
+                        :error="form.errors.rfc"
+                        required
+                        v-slot="{ id, describedBy }"
+                    >
+                        <Input
+                            :id="id"
+                            v-model="form.rfc"
+                            class="font-mono uppercase"
+                            maxlength="13"
+                            :disabled="!can.manage"
+                            :aria-describedby="describedBy"
+                            :aria-invalid="form.errors.rfc ? true : undefined"
+                        />
+                    </FormField>
+                </div>
 
                 <div class="grid gap-5 sm:grid-cols-2">
+                    <FormField
+                        label="Nombre comercial"
+                        :error="form.errors.name"
+                        required
+                        v-slot="{ id, describedBy }"
+                    >
+                        <Input
+                            :id="id"
+                            v-model="form.name"
+                            :disabled="!can.manage"
+                            :aria-describedby="describedBy"
+                            :aria-invalid="form.errors.name ? true : undefined"
+                        />
+                    </FormField>
                     <FormField
                         label="Zona horaria"
                         :error="form.errors.timezone"
@@ -212,78 +257,108 @@ const help = [
                             search-placeholder="Buscar zona…"
                         />
                     </FormField>
+                </div>
 
+                <FormField
+                    label="Domicilio fiscal"
+                    :error="form.errors.fiscal_address"
+                    required
+                    v-slot="{ id, describedBy }"
+                >
+                    <Input
+                        :id="id"
+                        v-model="form.fiscal_address"
+                        :disabled="!can.manage"
+                        :aria-describedby="describedBy"
+                        :aria-invalid="
+                            form.errors.fiscal_address ? true : undefined
+                        "
+                    />
+                </FormField>
+
+                <div class="grid gap-5 sm:grid-cols-2">
                     <FormField
                         label="Contacto de privacidad"
                         :error="form.errors.privacy_contact_email"
+                        required
                         v-slot="{ id, describedBy }"
                     >
                         <Input
                             :id="id"
                             v-model="form.privacy_contact_email"
                             type="email"
-                            placeholder="privacidad@empresa.mx"
+                            placeholder="Correo del responsable de datos personales · por definir"
+                            :class="
+                                !form.privacy_contact_email &&
+                                'border-warning/60 bg-warning-soft/40'
+                            "
                             :disabled="!can.manage"
                             :aria-describedby="describedBy"
                         />
                     </FormField>
+
+                    <FormField
+                        label="Aviso de privacidad para colaboradores"
+                        required
+                    >
+                        <Link
+                            :href="documentsUrl"
+                            :class="[
+                                'flex h-9 items-center gap-2 rounded-md border px-3 text-sm',
+                                privacy_notice?.has_pdf
+                                    ? 'bg-card hover:bg-accent'
+                                    : 'border-warning/60 bg-warning-soft/40 text-warning-soft-foreground',
+                            ]"
+                        >
+                            <FileText class="icon-sm" aria-hidden="true" />
+                            <template v-if="privacy_notice?.has_pdf">
+                                PDF vigente · v{{ privacy_notice.version }}
+                            </template>
+                            <template v-else>Subir PDF vigente</template>
+                        </Link>
+                    </FormField>
                 </div>
 
                 <FormField
-                    label="Color de marca"
-                    :error="
-                        form.errors.brand_primary_color ||
-                        (!colorValid ? 'Usa un color como #1F6FEB.' : null)
-                    "
-                    v-slot="{ id }"
+                    label="Color institucional"
+                    :error="form.errors.brand_primary_color"
                 >
                     <div class="flex flex-wrap items-center gap-3">
-                        <div class="flex gap-2">
+                        <div class="flex flex-wrap gap-2">
                             <button
-                                v-for="color in PRESETS"
+                                v-for="color in palette"
                                 :key="color"
                                 type="button"
                                 :disabled="!can.manage"
                                 class="flex size-8 items-center justify-center rounded-full ring-offset-2 ring-offset-card transition-standard hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                                 :class="
-                                    form.brand_primary_color?.toLowerCase() ===
-                                        color.toLowerCase() &&
+                                    form.brand_primary_color === color &&
                                     'ring-2 ring-foreground'
                                 "
                                 :style="{ backgroundColor: color }"
                                 :aria-label="`Usar ${color}`"
+                                :aria-pressed="
+                                    form.brand_primary_color === color
+                                "
                                 @click="form.brand_primary_color = color"
                             >
                                 <Check
-                                    v-if="
-                                        form.brand_primary_color?.toLowerCase() ===
-                                        color.toLowerCase()
-                                    "
-                                    class="icon-xs text-white"
+                                    v-if="form.brand_primary_color === color"
+                                    class="icon-xs text-white mix-blend-difference"
                                 />
                             </button>
                         </div>
-                        <div class="relative w-36">
-                            <Palette
-                                class="pointer-events-none absolute top-1/2 left-2.5 icon-sm -translate-y-1/2 text-muted-foreground"
-                            />
-                            <Input
-                                :id="id"
-                                v-model="form.brand_primary_color"
-                                placeholder="#C8853F"
-                                class="pl-8 font-mono uppercase"
-                                :disabled="!can.manage"
-                            />
-                        </div>
+                        <span
+                            class="rounded-md border px-2 py-1 font-mono text-xs"
+                            >{{ form.brand_primary_color }}</span
+                        >
                     </div>
                 </FormField>
 
                 <div v-if="can.manage" class="flex justify-end border-t pt-5">
                     <Button
                         type="submit"
-                        :disabled="
-                            form.processing || !form.isDirty || !colorValid
-                        "
+                        :disabled="form.processing || !form.isDirty"
                     >
                         <Spinner v-if="form.processing" />
                         <Check v-else class="icon-sm" />
@@ -296,22 +371,22 @@ const help = [
         <SectionCard title="Logotipo" :icon="ImageUp" divided>
             <div class="grid gap-4">
                 <div
-                    class="flex h-36 items-center justify-center overflow-hidden rounded-xl border bg-[conic-gradient(at_50%_50%,var(--surface-2)_25%,var(--card)_0_50%,var(--surface-2)_0_75%,var(--card)_0)] bg-[length:16px_16px]"
+                    class="flex h-36 items-center justify-center overflow-hidden rounded-xl bg-brand-deep"
                 >
                     <img
-                        v-if="preview || organization.logo_url"
-                        :src="preview ?? organization.logo_url ?? undefined"
+                        :src="logoSrc"
                         alt="Logotipo de la empresa"
-                        class="max-h-28 max-w-[85%] object-contain drop-shadow-sm"
+                        class="max-h-24 max-w-[80%] object-contain"
                     />
-                    <div
-                        v-else
-                        class="flex flex-col items-center gap-2 text-muted-foreground"
-                    >
-                        <Building2 class="icon-lg" />
-                        <span class="text-xs">Sin logotipo</span>
-                    </div>
                 </div>
+                <p class="text-center text-xs text-muted-foreground">
+                    {{
+                        organization.logo_url
+                            ? 'Archivo cargado'
+                            : 'Logotipo oficial'
+                    }}
+                    · se usa en la app, reportes e inspección.
+                </p>
 
                 <template v-if="can.manage">
                     <FileDropzone
@@ -320,8 +395,8 @@ const help = [
                         :multiple="false"
                         :max-files="1"
                         :max-size-mb="2"
-                        title="Arrastra tu logotipo"
-                        description="PNG, JPG o WebP · máx. 2 MB"
+                        title="Reemplazar"
+                        description="Archivo oficial · PNG, JPG o WebP · máx. 2 MB"
                         :invalid="!!logoForm.errors.logo"
                     />
                     <p
@@ -343,11 +418,11 @@ const help = [
                         <Button
                             v-if="organization.logo_url"
                             variant="outline"
-                            :disabled="removing"
-                            @click="confirmRemove = true"
+                            :disabled="restoring"
+                            @click="confirmRestore = true"
                         >
-                            <Trash2 class="icon-sm" />
-                            Quitar
+                            <Undo2 class="icon-sm" />
+                            Oficial
                         </Button>
                     </div>
                 </template>
@@ -356,10 +431,10 @@ const help = [
     </div>
 
     <ConfirmDialog
-        v-model:open="confirmRemove"
-        title="¿Quitar el logotipo?"
-        description="El archivo se conserva en el historial; puedes subir otro cuando quieras."
-        confirm-label="Quitar"
-        @confirm="removeLogo"
+        v-model:open="confirmRestore"
+        title="¿Usar el logotipo oficial?"
+        description="El archivo cargado se conserva en el historial."
+        confirm-label="Usar oficial"
+        @confirm="restoreOfficial"
     />
 </template>

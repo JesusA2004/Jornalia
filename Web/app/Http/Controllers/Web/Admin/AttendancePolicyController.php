@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Domain\Audit\AuditLogger;
 use App\Domain\Biometrics\FaceVerificationProvider;
-use App\Domain\Workforce\AutoClockOutAdvisor;
 use App\Enums\AuthMethod;
 use App\Enums\LocationMode;
 use App\Http\Requests\Web\Admin\Concerns\OrganizationRules;
@@ -49,7 +48,6 @@ class AttendancePolicyController extends AdminController
                     'web_punch_allowed' => $p->web_punch_allowed,
                     'max_clock_skew_seconds' => (int) $p->max_clock_skew_seconds,
                     'min_location_accuracy_meters' => (int) $p->min_location_accuracy_meters,
-                    'auto_clock_out_at' => $p->auto_clock_out_at ? substr((string) $p->auto_clock_out_at, 0, 5) : null,
                     'is_default' => $p->is_default,
                     'deleted' => $p->trashed(),
                     'geofence_ids' => $p->geofences->pluck('id')->map(fn ($id) => (string) $id)->values(),
@@ -117,8 +115,7 @@ class AttendancePolicyController extends AdminController
         });
 
         $this->audit->log('attendance_policy.updated', $attendancePolicy, "Política de asistencia actualizada: {$attendancePolicy->name}", ['before' => $before, 'after' => $data]);
-        $warning = app(AutoClockOutAdvisor::class)->warningForAssigned('attendance_policy_id', $attendancePolicy->id, $data['auto_clock_out_at'] ?? null);
-        $this->toast('Política actualizada. Aplica a los marcajes nuevos; los registrados se conservan.'.($warning ? ' Atención: '.$warning : ''), $warning ? 'warning' : 'success');
+        $this->toast('Política actualizada. Aplica a los marcajes nuevos; los registrados se conservan.');
 
         return back();
     }
@@ -175,7 +172,6 @@ class AttendancePolicyController extends AdminController
             'max_clock_skew_seconds' => ['required', 'integer', 'min:30', 'max:3600'],
             'min_location_accuracy_meters' => ['required', 'integer', 'min:5', 'max:1000'],
             'is_default' => ['required', 'boolean'],
-            'auto_clock_out_at' => ['nullable', 'date_format:H:i'],
             'geofence_ids' => [Rule::requiredIf($request->input('location_mode') === LocationMode::Geofence->value), 'array'],
             'geofence_ids.*' => ['integer', $this->existsInOrg('geofences')],
         ], [
@@ -184,7 +180,7 @@ class AttendancePolicyController extends AdminController
         ], [
             'name' => 'nombre', 'location_mode' => 'modo de ubicación', 'allowed_auth_methods' => 'métodos permitidos',
             'offline_max_hours' => 'horas máximas sin conexión', 'max_clock_skew_seconds' => 'tolerancia de reloj',
-            'min_location_accuracy_meters' => 'precisión mínima', 'auto_clock_out_at' => 'salida automática', 'geofence_ids' => 'geocercas',
+            'min_location_accuracy_meters' => 'precisión mínima', 'geofence_ids' => 'geocercas',
         ]);
 
         if ($data['location_mode'] === LocationMode::Geofence->value && count($data['geofence_ids'] ?? []) === 0) {

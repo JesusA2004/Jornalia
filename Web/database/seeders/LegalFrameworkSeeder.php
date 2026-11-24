@@ -26,16 +26,33 @@ final class LegalFrameworkSeeder extends Seeder
 
         foreach ($data['versions'] as $v) {
             $parameters = array_diff_key($v, array_flip(['code', 'name', 'valid_from', 'valid_to', 'verification_status', 'sources', 'notes']));
-            LegalVersion::query()->updateOrCreate(['code' => $v['code']], [
+            $existing = LegalVersion::query()->where('code', $v['code'])->first();
+            $metadata = [
                 'name' => $v['name'],
                 'valid_from' => $v['valid_from'],
                 'valid_to' => $v['valid_to'],
-                'verification_status' => $v['verification_status'],
-                'parameters' => $parameters,
                 'sources' => $v['sources'] ?? [],
                 'notes' => $v['notes'] ?? null,
-                'checksum' => LegalFramework::checksum($parameters),
-            ]);
+            ];
+
+            if ($existing === null) {
+                // Nunca se siembra como «verificada»: sólo RH la valida desde Configuración › Normativa.
+                LegalVersion::query()->create($metadata + [
+                    'code' => $v['code'],
+                    'verification_status' => LegalVersion::STATUS_UNVERIFIED,
+                    'parameters' => $parameters,
+                    'checksum' => LegalFramework::checksum($parameters),
+                ]);
+
+                continue;
+            }
+
+            // Si RH ya editó o verificó la versión, sus parámetros prevalecen sobre el archivo fuente.
+            $existing->fill($metadata);
+            if ($existing->updated_by === null && $existing->verified_by === null) {
+                $existing->fill(['parameters' => $parameters, 'checksum' => LegalFramework::checksum($parameters)]);
+            }
+            $existing->save();
         }
 
         foreach ($data['vacation_table'] as $row) {

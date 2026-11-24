@@ -3,8 +3,7 @@
 namespace App\Http\Controllers\Web\Operacion;
 
 use App\Domain\Attendance\IntegrityAnchorService;
-use App\Domain\Attendance\IntegrityVerifier;
-use App\Domain\Audit\AuditLogger;
+use App\Domain\Compliance\IntegrityMonitor;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Operacion\Support\OperacionScope;
 use App\Http\Requests\Web\Operacion\ListFiltersRequest;
@@ -18,8 +17,9 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Integridad del registro: verificación de cadenas de hash (marcajes y
- * ajustes) contra anclas externas firmadas. Cada verificación queda en la
+ * Cumplimiento › Integridad del registro: verificación de cadenas de hash
+ * (marcajes y ajustes) contra anclas externas firmadas. Corre sola cada día
+ * (scheduler); el botón manual es opcional. Cada ejecución queda en la
  * bitácora inmutable con su resultado.
  */
 final class IntegrityController extends Controller
@@ -51,11 +51,19 @@ final class IntegrityController extends Controller
                 'id' => $l->id,
                 'at' => OperacionScope::iso($l->created_at),
                 'by' => $l->user?->name,
+                'automatic' => (bool) ($l->context['automatic'] ?? $l->user_id === null),
                 'valid' => (bool) ($l->context['valid'] ?? false),
                 'chains' => array_values((array) ($l->context['chains'] ?? [])),
             ])->values();
 
-        return Inertia::render('integridad/Index', [
+        $lastAnchorLog = AuditLog::query()->where('organization_id', $orgId)
+            ->whereIn('action', ['integrity.anchored', 'integrity.anchor_failed'])
+            ->orderByDesc('created_at')->orderByDesc('id')->first();
+
+        $disk = (string) config('integrity.anchor_disk', 'anchors');
+        $driver = (string) config("filesystems.disks.{$disk}.driver", 'local');
+
+        return Inertia::render('cumplimiento/Integridad', [
             'chains' => [
                 $this->head('punches', 'Marcajes originales', Punch::class),
                 $this->head('adjustments', 'Ajustes por rectificación', AttendanceAdjustment::class),
@@ -63,47 +71,47 @@ final class IntegrityController extends Controller
             'anchors' => $page,
             'latest' => $verifications->first(),
             'history' => $verifications,
+            'automation' => [
+                'schedule' => 'Diaria 03:30 (verificación y anclaje) · anclaje cada hora',
+                'last_anchor' => $lastAnchorLog ? [
+                    'at' => OperacionScope::iso($lastAnchorLog->created_at),
+                    'ok' => $lastAnchorLog->action === 'integrity.anchored',
+                    'automatic' => (bool) ($lastAnchorLog->context['automatic'] ?? false),
+                    'error' => $lastAnchorLog->context['error'] ?? null,
+                ] : null,
+                'anchor_key_configured' => (string) config('integrity.anchor_key') !== '',
+                'anchor_storage' => [
+                    'disk' => $disk,
+                    'driver' => $driver,
+                    // Sólo un almacenamiento fuera del servidor (S3 con Object Lock u otro WORM) es externo real.
+                    'external' => $driver !== 'local',
+                ],
+            ],
             'can' => ['verify' => $request->user()->can('integrity.verify')],
             'timezone' => (string) ($this->current->get()?->timezone ?? 'UTC'),
         ]);
     }
 
-    public function verify(ListFiltersRequest $request, IntegrityVerifier $verifier, AuditLogger $audit): RedirectResponse
+    public function verify(ListFiltersRequest $request, IntegrityMonitor $monitor): RedirectResponse
     {
-        $orgId = (int) $this->current->id();
-        $chains = [];
-        foreach (['punches', 'adjustments'] as $chain) {
-            $result = $verifier->verify($orgId, $chain);
-            $result['errors_total'] = count($result['errors']);
-            $result['errors'] = array_slice($result['errors'], 0, 200);
-            $result['label'] = $chain === 'punches' ? 'Marcajes originales' : 'Ajustes por rectificación';
-            $chains[] = $result;
-        }
-        $valid = collect($chains)->every(fn ($c) => $c['valid']);
+        $result = $monitor->verify($this->current->require(), automatic: false);
 
-        $audit->log('integrity.verified', null, $valid
-            ? 'Verificación de integridad sin hallazgos'
-            : 'Verificación de integridad con hallazgos', ['valid' => $valid, 'chains' => $chains], $orgId);
-
-        Inertia::flash('toast', $valid
+        Inertia::flash('toast', $result['valid']
             ? ['type' => 'success', 'message' => 'Cadenas íntegras: no se detectaron alteraciones.']
-            : ['type' => 'error', 'message' => 'Se detectaron inconsistencias en la cadena de integridad. Revisa el detalle.']);
+            : ['type' => 'error', 'message' => 'Se detectaron inconsistencias. Se avisó a RH y Sistemas.']);
 
         return back();
     }
 
-    public function anchor(ListFiltersRequest $request, IntegrityAnchorService $anchors, AuditLogger $audit): RedirectResponse
+    public function anchor(ListFiltersRequest $request, IntegrityMonitor $monitor): RedirectResponse
     {
-        $orgId = (int) $this->current->id();
-        try {
-            $created = $anchors->anchor($orgId);
-        } catch (\RuntimeException $e) {
-            return back()->withErrors(['anchor' => $e->getMessage()]);
+        $result = $monitor->anchor($this->current->require(), automatic: false);
+        if (! $result['ok']) {
+            return back()->withErrors(['anchor' => (string) $result['error']]);
         }
-        $audit->log('integrity.anchored', null, 'Anclaje manual de cadenas ('.count($created).')', ['anchors' => count($created)], $orgId);
 
-        Inertia::flash('toast', ['type' => count($created) > 0 ? 'success' : 'info', 'message' => count($created) > 0
-            ? 'Se registraron '.count($created).' anclas externas.'
+        Inertia::flash('toast', ['type' => $result['created'] > 0 ? 'success' : 'info', 'message' => $result['created'] > 0
+            ? "Se registraron {$result['created']} anclas externas."
             : 'Las cadenas ya estaban ancladas en su último registro.']);
 
         return back();
